@@ -96,3 +96,67 @@ export function engineSound(speed: number, throttle: number, on: boolean): void 
   engine.osc2.frequency.setTargetAtTime(f * 0.5, t, 0.05);
   engine.gain.gain.setTargetAtTime(on ? 0.05 + throttle * 0.05 : 0, t, 0.1);
 }
+
+// A burst of noise through a filter: explosions, whooshes, crashes.
+function noise(at: number, dur: number, gain: number, from: number, to: number, type: BiquadFilterType = 'lowpass'): void {
+  if (!ctx || !master) return;
+  const n = Math.floor(ctx.sampleRate * dur);
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const f = ctx.createBiquadFilter();
+  f.type = type;
+  f.frequency.setValueAtTime(from, at);
+  f.frequency.exponentialRampToValueAtTime(to, at + dur);
+  const g = ctx.createGain();
+  g.gain.value = gain;
+  src.connect(f).connect(g).connect(master);
+  src.start(at);
+}
+
+const now = () => ctx?.currentTime ?? 0;
+
+export const sfx = {
+  box: () => {
+    tone(1318, now(), 0.08, 'triangle', 0.15);
+    tone(1760, now() + 0.06, 0.12, 'triangle', 0.12);
+  },
+  tick: () => tone(1500 + Math.random() * 600, now(), 0.03, 'square', 0.04),
+  got: () => [784, 988, 1175].forEach((f, i) => tone(f, now() + i * 0.05, 0.12, 'triangle', 0.16)),
+  pop: () => {
+    noise(now(), 0.12, 0.4, 3000, 400, 'bandpass');
+    tone(220, now(), 0.15, 'sine', 0.2);
+  },
+  throw: () => noise(now(), 0.3, 0.25, 600, 3000, 'bandpass'),
+  bass: () => {
+    if (!ctx || !master) return;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(160, now());
+    o.frequency.exponentialRampToValueAtTime(32, now() + 1.2);
+    g.gain.setValueAtTime(0.6, now());
+    g.gain.exponentialRampToValueAtTime(0.001, now() + 1.3);
+    o.connect(g).connect(master);
+    o.start();
+    o.stop(now() + 1.4);
+  },
+  boom: (volume = 1) => {
+    noise(now(), 1.2, 0.9 * volume, 1800, 60);
+    tone(55, now(), 0.6, 'sine', 0.4 * volume);
+  },
+  hit: (volume = 1) => {
+    noise(now(), 0.35, 0.5 * volume, 2500, 200);
+    tone(300, now(), 0.25, 'sawtooth', 0.08 * volume);
+  },
+  shield: () => [1568, 2093].forEach((f, i) => tone(f, now() + i * 0.07, 0.25, 'sine', 0.14)),
+  slip: () => noise(now(), 0.5, 0.3, 300, 2500, 'bandpass'),
+  turbo: (level: number) => {
+    noise(now(), 0.4, 0.3, 800, 4000, 'highpass');
+    tone(level === 2 ? 660 : 520, now(), 0.2, 'sawtooth', 0.06);
+  },
+  bump: (s: number) => tone(90 + Math.random() * 30, now(), 0.12, 'square', Math.min(0.2, s * 0.02)),
+  finish: (place: number) => (place <= 3 ? [523, 659, 784, 1047, 1319, 1568] : [392, 523, 659]).forEach((f, i) => tone(f, now() + i * 0.11, 0.35, 'triangle', 0.22)),
+};

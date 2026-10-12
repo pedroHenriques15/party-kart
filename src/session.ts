@@ -1,25 +1,36 @@
 // Rooms over WebRTC (PeerJS). Everyone drives their own car in their own browser; the host relays
-// where everyone is, keeps the leaderboard and the round's clock.
+// where everyone is and what they throw, drives the bots, keeps the leaderboard and the clock.
 import Peer, { type DataConnection } from 'peerjs';
+import type { ItemEv } from './game/items.ts';
 import { DRIVERS } from './render/drivers.ts';
 
 const PREFIX = 'partykart-pk26-';
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 export const HOST_ID = 'host';
-const MAX_MEMBERS = 8;
+export const MAX_RACERS = 8;
 const PING_MS = 1000;
-const SILENT_MS = 6000;
-export const COUNTDOWN_MS = 3500;
+const SILENT_MS = 15000; // generous: a slow computer can freeze for seconds as a round loads
+export const COUNTDOWN_MS = 4000;
+const FINISH_GRACE_MS = 30000; // after the winner, how long the rest have to finish
+
+export interface Settings {
+  mode: 'race' | 'time';
+  laps: number;
+  minutes: number; // time attack
+  items: boolean;
+  catchUp: boolean;
+  bots: number;
+}
 
 export interface Member {
   id: string;
   name: string;
   driver: string;
+  bot: boolean;
 }
 
-export interface Lobby {
+export interface Lobby extends Settings {
   code: string;
-  minutes: number;
   members: Member[];
   racing: boolean;
 }
@@ -35,8 +46,9 @@ export interface Snap {
   uy: number;
   uz: number;
   spd: number;
-  st: number;
-  b: number; // boosting
+  st: number; // steering
+  P: number; // progress, metres counting laps
+  fl: number; // status flags (game/arena.ts, FLAG)
   g: number; // grounded
 }
 
@@ -44,8 +56,11 @@ export interface Entry {
   id: string;
   name: string;
   driver: string;
-  best: number | null;
+  bot: boolean;
+  best: number | null; // best lap, ms
   laps: number;
+  fin: number | null; // race ms at the finish
+  P: number;
 }
 
 type ToHost =
@@ -53,6 +68,8 @@ type ToHost =
   | { t: 'pick'; driver: string }
   | { t: 'pos'; s: Snap }
   | { t: 'lap'; ms: number }
+  | { t: 'fin'; ms: number }
+  | { t: 'ev'; ev: ItemEv }
   | { t: 'honk' }
   | { t: 'ping' };
 
@@ -60,8 +77,9 @@ type ToClient =
   | { t: 'lobby'; lobby: Lobby; you: string }
   | { t: 'cars'; list: Snap[] }
   | { t: 'board'; list: Entry[] }
-  | { t: 'start'; goIn: number; endIn: number }
+  | { t: 'start'; goIn: number; endIn: number; grid: Record<string, number> }
   | { t: 'end'; list: Entry[] }
+  | { t: 'ev'; ev: ItemEv }
   | { t: 'honk'; id: string }
   | { t: 'bye'; why: string };
 
@@ -101,14 +119,17 @@ export interface Room {
   cars: Map<string, { at: number; s: Snap }[]>; // the others' recent snapshots
   isHost: boolean;
   onLobby: () => void;
-  onStart: (goIn: number, endIn: number) => void;
+  onStart: (goIn: number, endIn: number, grid: Record<string, number>) => void;
   onEnd: (list: Entry[]) => void;
   onHonk: (id: string) => void;
   onBoard: () => void;
+  onEv: (ev: ItemEv) => void;
   onClose: (why: string) => void;
   pick(driver: string): void;
   sendPos(s: Snap): void;
-  sendLap(ms: number): void;
+  sendLap(ms: number, id?: string): void;
+  sendFin(ms: number, id?: string): void;
+  sendEv(ev: ItemEv): void;
   honk(): void;
   leave(): void;
 }
@@ -121,6 +142,7 @@ function pushSnap(cars: Room['cars'], s: Snap): void {
 }
 
 const num = (v: unknown, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : 0);
+const str = (v: unknown, max = 64) => (typeof v === 'string' ? v.slice(0, max) : '');
 
 function cleanSnap(id: string, s: Snap): Snap {
   return {
@@ -134,9 +156,33 @@ function cleanSnap(id: string, s: Snap): Snap {
     uz: num(s.uz, -1, 1),
     spd: num(s.spd, -100, 100),
     st: num(s.st, -1, 1),
-    b: s.b ? 1 : 0,
+    P: num(s.P, -1e6, 1e6),
+    fl: num(s.fl, 0, 65535) | 0,
     g: s.g ? 1 : 0,
   };
+}
+
+// An item event from someone else: only what's expected, with their id as the owner, so nobody
+// throws things in someone else's name.
+function cleanEv(from: string, ev: ItemEv): ItemEv | null {
+  if (!ev || typeof ev !== 'object') return null;
+  const id = str(ev.id);
+  const n = (v: unknown) => num(v, -1e7, 1e7);
+  switch (ev.k) {
+    case 'proj':
+      if (!['disco', 'drone', 'bomb'].includes(ev.kind)) return null;
+      return { k: 'proj', id, kind: ev.kind, owner: from, t0: n(ev.t0), p0: n(ev.p0), lat: num(ev.lat, -20, 20), v: num(ev.v, -200, 200), target: ev.target === undefined ? undefined : str(ev.target) };
+    case 'haz':
+      return { k: 'haz', id, kind: 'pudim', owner: from, t0: n(ev.t0), idx: num(ev.idx, 0, 1e5) | 0, lat: num(ev.lat, -20, 20) };
+    case 'bass':
+      return { k: 'bass', id, owner: from, t0: n(ev.t0), p0: n(ev.p0) };
+    case 'hit':
+      return { k: 'hit', id, item: str(ev.item), victim: ev.victim === null ? null : from, blocked: !!ev.blocked, how: str(ev.how, 16), x: n(ev.x), y: n(ev.y), z: n(ev.z) };
+    case 'boom':
+      return { k: 'boom', id, owner: str(ev.owner), victim: from, x: n(ev.x), y: n(ev.y), z: n(ev.z) };
+    default:
+      return null;
+  }
 }
 
 interface Remote {
@@ -151,21 +197,35 @@ export class HostRoom implements Room {
   board: Entry[] = [];
   cars = new Map<string, { at: number; s: Snap }[]>();
   onLobby = () => {};
-  onStart: (goIn: number, endIn: number) => void = () => {};
+  onStart: Room['onStart'] = () => {};
   onEnd: (list: Entry[]) => void = () => {};
   onHonk: (id: string) => void = () => {};
   onBoard = () => {};
+  onEv: (ev: ItemEv) => void = () => {};
   onClose: (why: string) => void = () => {};
   private peer: Peer;
   private remotes = new Map<string, Remote>();
   private latest = new Map<string, Snap>();
   private goAt = 0;
   private endAt = 0;
+  private firstFin = 0;
+  private grid: Record<string, number> = {};
   private timers: ReturnType<typeof setInterval>[] = [];
 
-  private constructor(peer: Peer, code: string, name: string, driver: string) {
+  private constructor(peer: Peer, name: string, driver: string) {
     this.peer = peer;
-    this.lobby = { code, minutes: 4, members: [{ id: HOST_ID, name, driver: validDriver(driver) }], racing: false };
+    this.lobby = {
+      code: peer.id.slice(PREFIX.length),
+      mode: 'race',
+      laps: 3,
+      minutes: 4,
+      items: true,
+      catchUp: true,
+      bots: 3,
+      members: [{ id: HOST_ID, name, driver: validDriver(driver), bot: false }],
+      racing: false,
+    };
+    this.syncBots();
     peer.on('connection', (c) => this.accept(c));
     peer.on('disconnected', () => {
       if (!peer.destroyed) peer.reconnect();
@@ -185,33 +245,26 @@ export class HostRoom implements Room {
         const list = [...this.latest.values()];
         for (const r of this.remotes.values()) this.send(r.conn, { t: 'cars', list });
       }, 1000 / 15),
-      setInterval(() => {
-        if (this.lobby.racing && performance.now() >= this.endAt) this.finish();
-      }, 250),
+      setInterval(() => this.checkEnd(), 250),
     );
   }
 
   static async create(name: string, driver: string): Promise<HostRoom> {
     for (let i = 0; ; i++) {
       try {
-        return new HostRoom(await openPeer(PREFIX + makeCode()), '', name, driver).withCode();
+        return new HostRoom(await openPeer(PREFIX + makeCode()), name, driver);
       } catch (e) {
         if (errType(e) !== 'unavailable-id' || i >= 3) throw e;
       }
     }
   }
 
-  private withCode(): this {
-    this.lobby.code = this.peer.id.slice(PREFIX.length);
-    return this;
-  }
-
   private send(c: DataConnection, m: ToClient): void {
     if (c.open) void c.send(m);
   }
 
-  private broadcast(m: ToClient): void {
-    for (const r of this.remotes.values()) this.send(r.conn, m);
+  private broadcast(m: ToClient, except?: string): void {
+    for (const [id, r] of this.remotes) if (id !== except) this.send(r.conn, m);
   }
 
   private accept(c: DataConnection): void {
@@ -220,8 +273,22 @@ export class HostRoom implements Room {
     c.on('error', () => this.drop(c.peer));
   }
 
+  private humans(): Member[] {
+    return this.lobby.members.filter((m) => !m.bot);
+  }
+
+  // The bots take the drivers nobody picked, up to the number asked for and the grid's size.
+  private syncBots(): void {
+    const humans = this.humans();
+    const taken = new Set(humans.map((m) => m.driver));
+    const free = DRIVERS.filter((d) => !taken.has(d.id));
+    const n = Math.max(0, Math.min(this.lobby.bots, MAX_RACERS - humans.length, free.length));
+    const bots = free.slice(0, n).map((d, k) => ({ id: `bot-${k + 1}`, name: d.name, driver: d.id, bot: true }));
+    this.lobby.members = [...humans, ...bots];
+  }
+
   private freeDriver(want: string, except: string): string {
-    const taken = new Set(this.lobby.members.filter((m) => m.id !== except).map((m) => m.driver));
+    const taken = new Set(this.humans().filter((m) => m.id !== except).map((m) => m.driver));
     if (!taken.has(want)) return want;
     return DRIVERS.find((d) => !taken.has(d.id))?.id ?? want;
   }
@@ -231,17 +298,23 @@ export class HostRoom implements Room {
     const r = this.remotes.get(c.peer);
     if (r) r.heard = performance.now();
     if (m.t === 'hello' && !r) {
-      if (this.lobby.members.length >= MAX_MEMBERS) {
+      if (this.humans().length >= MAX_RACERS) {
         this.send(c, { t: 'bye', why: 'The room is full.' });
         setTimeout(() => c.close(), 500);
         return;
       }
       this.remotes.set(c.peer, { conn: c, heard: performance.now() });
-      this.lobby.members.push({ id: c.peer, name: cleanName(m.name), driver: this.freeDriver(validDriver(m.driver), c.peer) });
+      const humans = this.humans();
+      humans.push({ id: c.peer, name: cleanName(m.name), driver: this.freeDriver(validDriver(m.driver), c.peer), bot: false });
+      this.lobby.members = [...humans, ...this.lobby.members.filter((x) => x.bot)];
+      if (!this.lobby.racing) this.syncBots();
       this.entry(c.peer);
       this.changed();
-      // Joining mid-round: straight in.
-      if (this.lobby.racing) this.send(c, { t: 'start', goIn: this.goAt - performance.now(), endIn: this.endAt - performance.now() });
+      // Joining mid-round: straight in, at the back of the grid.
+      if (this.lobby.racing) {
+        this.grid[c.peer] = Object.keys(this.grid).length;
+        this.send(c, { t: 'start', goIn: this.goAt - performance.now(), endIn: this.endAt - performance.now(), grid: this.grid });
+      }
       this.send(c, { t: 'board', list: this.board });
     } else if (!r) {
       return;
@@ -251,8 +324,17 @@ export class HostRoom implements Room {
       const s = cleanSnap(c.peer, m.s);
       this.latest.set(c.peer, s);
       pushSnap(this.cars, s);
+      const e = this.board.find((x) => x.id === c.peer);
+      if (e) e.P = s.P;
     } else if (m.t === 'lap') {
       this.lapFor(c.peer, num(m.ms, 1000, 3_600_000));
+    } else if (m.t === 'fin') {
+      this.finFor(c.peer, num(m.ms, 1000, 3_600_000));
+    } else if (m.t === 'ev') {
+      const ev = cleanEv(c.peer, m.ev);
+      if (!ev || !this.lobby.racing) return;
+      this.broadcast({ t: 'ev', ev }, c.peer);
+      this.onEv(ev);
     } else if (m.t === 'honk') {
       this.honkFor(c.peer);
     }
@@ -261,33 +343,42 @@ export class HostRoom implements Room {
   private drop(id: string): void {
     if (!this.remotes.delete(id)) return;
     this.lobby.members = this.lobby.members.filter((m) => m.id !== id);
+    if (!this.lobby.racing) this.syncBots();
     this.latest.delete(id);
     this.cars.delete(id);
+    this.board = this.board.filter((e) => e.id !== id);
     this.changed();
   }
 
   private entry(id: string): Entry {
-    const m = this.lobby.members.find((x) => x.id === id)!;
+    const m = this.lobby.members.find((x) => x.id === id);
     let e = this.board.find((x) => x.id === id);
     if (!e) {
-      e = { id, name: m.name, driver: m.driver, best: null, laps: 0 };
+      e = { id, name: m?.name ?? '?', driver: m?.driver ?? DRIVERS[0].id, bot: !!m?.bot, best: null, laps: 0, fin: null, P: -1e6 };
       this.board.push(e);
     }
-    e.name = m.name;
-    e.driver = m.driver;
+    if (m) {
+      e.name = m.name;
+      e.driver = m.driver;
+    }
     return e;
   }
 
   private sortBoard(): void {
-    this.board.sort((a, b) => (a.best ?? Infinity) - (b.best ?? Infinity) || b.laps - a.laps);
+    if (this.lobby.mode === 'race') {
+      this.board.sort((a, b) => (a.fin !== null || b.fin !== null ? (a.fin ?? Infinity) - (b.fin ?? Infinity) : b.P - a.P));
+    } else {
+      this.board.sort((a, b) => (a.best ?? Infinity) - (b.best ?? Infinity) || b.laps - a.laps);
+    }
   }
 
   private pickFor(id: string, driver: string): void {
     const m = this.lobby.members.find((x) => x.id === id);
     if (!m || this.lobby.racing) return;
     const d = validDriver(driver);
-    if (this.lobby.members.some((x) => x.id !== id && x.driver === d)) return;
+    if (this.humans().some((x) => x.id !== id && x.driver === d)) return;
     m.driver = d;
+    this.syncBots();
     this.entry(id);
     this.changed();
   }
@@ -297,6 +388,19 @@ export class HostRoom implements Room {
     const e = this.entry(id);
     e.laps++;
     if (e.best === null || ms < e.best) e.best = ms;
+    this.boardChanged();
+  }
+
+  private finFor(id: string, ms: number): void {
+    if (!this.lobby.racing || this.lobby.mode !== 'race') return;
+    const e = this.entry(id);
+    if (e.fin !== null) return;
+    e.fin = ms;
+    if (!this.firstFin) this.firstFin = performance.now();
+    this.boardChanged();
+  }
+
+  private boardChanged(): void {
     this.sortBoard();
     this.broadcast({ t: 'board', list: this.board });
     this.onBoard();
@@ -308,57 +412,86 @@ export class HostRoom implements Room {
   }
 
   private changed(): void {
-    for (const [id] of this.remotes) {
-      const r = this.remotes.get(id)!;
-      this.send(r.conn, { t: 'lobby', lobby: this.lobby, you: id });
-    }
+    for (const [id, r] of this.remotes) this.send(r.conn, { t: 'lobby', lobby: this.lobby, you: id });
     this.onLobby();
   }
 
-  setMinutes(minutes: number): void {
+  configure(s: Partial<Settings>): void {
     if (this.lobby.racing) return;
-    this.lobby.minutes = minutes;
+    Object.assign(this.lobby, s);
+    this.syncBots();
     this.changed();
   }
 
   start(): void {
     const now = performance.now();
+    this.syncBots();
     this.goAt = now + COUNTDOWN_MS;
-    this.endAt = this.goAt + this.lobby.minutes * 60_000;
+    const race = this.lobby.mode === 'race';
+    this.endAt = this.goAt + (race ? (this.lobby.laps * 150 + 60) * 1000 : this.lobby.minutes * 60_000);
+    this.firstFin = 0;
     this.board = [];
     for (const m of this.lobby.members) this.entry(m.id);
+    // A random grid.
+    const order = this.lobby.members.map((m) => m.id).sort(() => Math.random() - 0.5);
+    this.grid = Object.fromEntries(order.map((id, k) => [id, k]));
     this.latest.clear();
     this.cars.clear();
     this.lobby.racing = true;
     this.changed();
     this.broadcast({ t: 'board', list: this.board });
-    this.broadcast({ t: 'start', goIn: COUNTDOWN_MS, endIn: this.endAt - now });
-    this.onStart(COUNTDOWN_MS, this.endAt - now);
+    this.broadcast({ t: 'start', goIn: COUNTDOWN_MS, endIn: this.endAt - now, grid: this.grid });
+    this.onStart(COUNTDOWN_MS, this.endAt - now, this.grid);
+  }
+
+  private checkEnd(): void {
+    if (!this.lobby.racing) return;
+    const now = performance.now();
+    const race = this.lobby.mode === 'race';
+    const allIn = race && this.board.length > 0 && this.board.every((e) => e.fin !== null);
+    const graceOver = race && this.firstFin > 0 && now - this.firstFin > FINISH_GRACE_MS;
+    if (allIn || graceOver || now >= this.endAt) this.finish();
   }
 
   private finish(): void {
     this.lobby.racing = false;
     this.sortBoard();
     this.broadcast({ t: 'end', list: this.board });
+    this.syncBots();
     this.changed();
     this.onEnd(this.board);
   }
 
-  // Ends the round now (the host's "End round").
   endNow(): void {
     if (this.lobby.racing) this.finish();
+  }
+
+  // How long the others have left to finish once someone has, for the screen.
+  graceLeft(): number | null {
+    return this.firstFin ? Math.max(0, FINISH_GRACE_MS - (performance.now() - this.firstFin)) : null;
   }
 
   pick(driver: string): void {
     this.pickFor(HOST_ID, driver);
   }
 
+  // Ours, or a bot's.
   sendPos(s: Snap): void {
-    this.latest.set(HOST_ID, { ...s, id: HOST_ID });
+    this.latest.set(s.id, s);
+    const e = this.board.find((x) => x.id === s.id);
+    if (e) e.P = s.P;
   }
 
-  sendLap(ms: number): void {
-    this.lapFor(HOST_ID, ms);
+  sendLap(ms: number, id = HOST_ID): void {
+    this.lapFor(id, ms);
+  }
+
+  sendFin(ms: number, id = HOST_ID): void {
+    this.finFor(id, ms);
+  }
+
+  sendEv(ev: ItemEv): void {
+    if (this.lobby.racing) this.broadcast({ t: 'ev', ev });
   }
 
   honk(): void {
@@ -374,14 +507,15 @@ export class HostRoom implements Room {
 export class ClientRoom implements Room {
   readonly isHost = false;
   you = '';
-  lobby: Lobby = { code: '', minutes: 4, members: [], racing: false };
+  lobby: Lobby = { code: '', mode: 'race', laps: 3, minutes: 4, items: true, catchUp: true, bots: 0, members: [], racing: false };
   board: Entry[] = [];
   cars = new Map<string, { at: number; s: Snap }[]>();
   onLobby = () => {};
-  onStart: (goIn: number, endIn: number) => void = () => {};
+  onStart: Room['onStart'] = () => {};
   onEnd: (list: Entry[]) => void = () => {};
   onHonk: (id: string) => void = () => {};
   onBoard = () => {};
+  onEv: (ev: ItemEv) => void = () => {};
   onClose: (why: string) => void = () => {};
   private peer: Peer;
   private conn: DataConnection;
@@ -444,11 +578,14 @@ export class ClientRoom implements Room {
         break;
       case 'start':
         this.cars.clear();
-        this.onStart(m.goIn, m.endIn);
+        this.onStart(m.goIn, m.endIn, m.grid);
         break;
       case 'end':
         this.board = m.list;
         this.onEnd(m.list);
+        break;
+      case 'ev':
+        this.onEv(m.ev);
         break;
       case 'honk':
         if (m.id !== this.you) this.onHonk(m.id);
@@ -472,6 +609,14 @@ export class ClientRoom implements Room {
 
   sendLap(ms: number): void {
     this.send({ t: 'lap', ms });
+  }
+
+  sendFin(ms: number): void {
+    this.send({ t: 'fin', ms });
+  }
+
+  sendEv(ev: ItemEv): void {
+    this.send({ t: 'ev', ev });
   }
 
   honk(): void {

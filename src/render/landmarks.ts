@@ -4,13 +4,16 @@
 import * as THREE from 'three';
 import type { Tag } from '../track/layout.ts';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
+import { RIVER_HALF_W } from '../track/layout.ts';
+import { SPOTS } from './braga.ts';
 import { buildDriverFigure, DRIVERS } from './drivers.ts';
+import { bake, mat as kitMat } from './kit.ts';
 import * as tex from './textures.ts';
+import { riverDistance } from './world.ts';
 
 type Ground = (x: number, z: number) => number;
 
-const mat = (color: string, o: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
-  new THREE.MeshStandardMaterial({ color, roughness: 0.8, ...o });
+const mat = kitMat;
 const WHITE = mat('#f3f0e8');
 const STONE = mat('#b9ad98');
 const GRANITE = mat('#9c968c');
@@ -66,6 +69,7 @@ export function buildLandmarks(track: Track, ground: Ground): { group: THREE.Gro
     for (let k = 0; k < 9; k++) {
       const jet = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1, 8), jetMat);
       const a = (k / 8) * Math.PI * 2;
+      jet.userData.moves = true;
       if (k < 8) jet.position.set(Math.cos(a) * 6, 0.8, Math.sin(a) * 6);
       else jet.position.set(0, 3, 0);
       f.add(jet);
@@ -129,6 +133,7 @@ export function buildLandmarks(track: Track, ground: Ground): { group: THREE.Gro
     const f = at(track, 90, 0, 14);
     const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(2.6, 2), mat('#e9eef5', { metalness: 0.9, roughness: 0.12, flatShading: true, emissive: '#3a3f4a' }));
     ball.position.copy(f.pos);
+    ball.userData.moves = true;
     g.add(ball);
     const wireMat = new THREE.LineBasicMaterial({ color: '#333' });
     const poleL = at(track, 90, -14);
@@ -166,8 +171,10 @@ export function buildLandmarks(track: Track, ground: Ground): { group: THREE.Gro
 
   // ---- The old town: narrow houses with tiled roofs, the Sé, the Arco da Porta Nova. ----
   const se = tag('se');
-  houses(g, track, 300, 470, 4, ['#f2e3c6', '#e9c9c0', '#f4f0e6', '#d9e2c8', '#f0d9a8', '#cfdbe6'], ground, 4, (i, side) => side > 0 && Math.abs(i - se) < 30);
-  houses(g, track, 2330, 2500, 5, ['#f4f0e6', '#e8dcc7', '#efe6d2'], ground, 18);
+  const taken = (i: number, side: number) =>
+    (side > 0 && Math.abs(i - se) < 30) || Object.values(SPOTS).some((s) => s.side === side && Math.abs(i - s.i) <= s.half);
+  houses(g, track, 290, 475, 4, OLD_TOWN, ground, 4, taken);
+  houses(g, track, 2330, 2500, 5, AVENIDA, ground, 18, taken);
   {
     const cathedral = new THREE.Group();
     cathedral.add(box(32, 14, 16, STONE, -4, 0, 0));
@@ -318,6 +325,7 @@ export function buildLandmarks(track: Track, ground: Ground): { group: THREE.Gro
       car.add(box(5.2, 0.4, 3, WHITE, 0, 3, 0));
       for (const x of [-1.5, 0, 1.5]) car.add(box(1, 1.2, 2.9, mat('#cfe7ff'), x, 1.5, 0));
       car.rotation.set(0, yaw, pitch, 'YZX');
+      car.userData.moves = true;
       g.add(car);
       cars.push(car);
     }
@@ -414,9 +422,8 @@ export function buildLandmarks(track: Track, ground: Ground): { group: THREE.Gro
     bb.rotation.y += (side > 0 ? -1 : 1) * 0.5 - Math.PI / 2;
   }
 
-  // ---- Trees, and mountains far away. ----
-  trees(g, track, ground);
-  const far = new THREE.MeshLambertMaterial({ color: '#7d8f7a' });
+  // ---- Mountains far away. ----
+  const far = new THREE.MeshStandardMaterial({ color: '#6f8270', roughness: 1, flatShading: true });
   for (let k = 0; k < 28; k++) {
     const a = (k / 28) * Math.PI * 2;
     const r = 1300 + (k % 3) * 120;
@@ -425,7 +432,7 @@ export function buildLandmarks(track: Track, ground: Ground): { group: THREE.Gro
     g.add(m);
   }
 
-  return { group: g, update: (t) => updates.forEach((u) => u(t)), stage: stageSpot };
+  return { group: bake(g), update: (t) => updates.forEach((u) => u(t)), stage: stageSpot };
 }
 
 function crowdTexture(): THREE.CanvasTexture {
@@ -446,6 +453,21 @@ function crowdTexture(): THREE.CanvasTexture {
   return t;
 }
 
+// House fronts: plaster colour and shutters.
+const OLD_TOWN: [string, string][] = [
+  ['#f2e3c6', '#2f5d3a'],
+  ['#e9c9c0', '#5a3a22'],
+  ['#f4f0e6', '#2f4f7a'],
+  ['#d9e2c8', '#5a3a22'],
+  ['#f0d9a8', '#2f5d3a'],
+  ['#cfdbe6', '#7a2f2f'],
+];
+const AVENIDA: [string, string][] = [
+  ['#f4f0e6', '#2f4f7a'],
+  ['#e8dcc7', '#2f5d3a'],
+  ['#efe6d2', '#5a3a22'],
+];
+
 // Houses along both sides of a stretch of road, instanced by colour.
 function houses(
   g: THREE.Group,
@@ -453,7 +475,7 @@ function houses(
   from: number,
   to: number,
   floors: number,
-  colors: string[],
+  colors: [string, string][],
   ground: Ground,
   setback = 4,
   skip: (i: number, side: number) => boolean = () => false,
@@ -469,61 +491,26 @@ function houses(
       const lateral = side * (s.w / 2 + setback + depth / 2);
       const p = surfacePoint(s, lateral, 0);
       if (distanceToRoad(track, p.x, p.z).d < depth / 2 + setback - 0.5) continue;
+      if (riverDistance(p.x, p.z) < RIVER_HALF_W + 10) continue;
       const h = floors * 3.2 + Math.random() * 3;
       const yaw = -Math.atan2(s.t.z, s.t.x);
       const y = ground(p.x, p.z);
       const m = new THREE.Matrix4().compose(new THREE.Vector3(p.x, y + h / 2, p.z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)), new THREE.Vector3(8.6, h, depth));
       byColor[Math.floor(Math.random() * colors.length)].push(m);
-      roofs.push(new THREE.Matrix4().compose(new THREE.Vector3(p.x, y + h + 1.5, p.z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw + Math.PI / 4, 0)), new THREE.Vector3(6.6, 3, depth * 0.78)));
+      roofs.push(new THREE.Matrix4().compose(new THREE.Vector3(p.x, y + h + 1.5, p.z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw + Math.PI / 4, 0)), new THREE.Vector3(6.9, 3, depth * 0.82)));
     }
   }
-  colors.forEach((color, k) => {
+  colors.forEach(([color, shutters], k) => {
     const list = byColor[k];
     if (!list.length) return;
-    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ map: tex.facade(color, floors) }), list.length);
+    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ map: tex.townFacade(color, floors, shutters), roughness: 0.9 }), list.length);
     list.forEach((m, j) => im.setMatrixAt(j, m));
+    im.castShadow = true;
+    im.receiveShadow = true;
     g.add(im);
   });
   const rm = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 4), ROOF, roofs.length);
   roofs.forEach((m, j) => rm.setMatrixAt(j, m));
+  rm.castShadow = true;
   g.add(rm);
-}
-
-function trees(g: THREE.Group, track: Track, ground: Ground): void {
-  const pts: THREE.Vector3[] = [];
-  const N = track.samples.length;
-  // Lines of plane trees along the Avenida and the run home.
-  for (let i = N - 200; i < N + 260; i += 12) {
-    const s = track.samples[i % N];
-    for (const side of [-1, 1]) {
-      const p = surfacePoint(s, side * (s.w / 2 + 3.5), 0);
-      pts.push(new THREE.Vector3(p.x, ground(p.x, p.z), p.z));
-    }
-  }
-  // Woods on the hills, clear of the road, the town and the stadium.
-  let seed = 7;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let k = 0; k < 1400 && pts.length < 900; k++) {
-    const x = -450 + rnd() * 1330;
-    const z = -700 + rnd() * 940;
-    const { d } = distanceToRoad(track, x, z);
-    const town = x > -120 && x < 420 && z > -200 && z < 60;
-    const stadium = x > -170 && x < 80 && z > -300 && z < -195;
-    const stairs = x > 640 && x < 730 && z < -230 && z > -460;
-    if (d < 9 || town || stadium || stairs) continue;
-    pts.push(new THREE.Vector3(x, ground(x, z), z));
-  }
-  const crown = new THREE.InstancedMesh(new THREE.ConeGeometry(2.6, 7, 7), new THREE.MeshLambertMaterial({ color: '#3f6b35' }), pts.length);
-  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3, 0.4, 2.5, 6), new THREE.MeshLambertMaterial({ color: '#6b4f33' }), pts.length);
-  const m = new THREE.Matrix4();
-  const col = new THREE.Color();
-  pts.forEach((p, k) => {
-    const sc = 0.8 + ((k * 37) % 10) / 20;
-    m.makeScale(sc, sc, sc).setPosition(p.x, p.y + 1.25 * sc, p.z);
-    trunk.setMatrixAt(k, m);
-    m.makeScale(sc, sc, sc).setPosition(p.x, p.y + (2.5 + 3.5) * sc, p.z);
-    crown.setMatrixAt(k, m);
-    crown.setColorAt(k, col.setHSL(0.27 + ((k * 13) % 10) / 200, 0.4, 0.28 + ((k * 7) % 10) / 100));
-  });
-  g.add(trunk, crown);
 }

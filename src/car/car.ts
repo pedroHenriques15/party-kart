@@ -21,6 +21,9 @@ const COYOTE = 0.12; // s after leaving the ground that the car still drives as 
 const HALF_W = 1.0;
 const WALL_H = 1.3;
 const FALL_RESPAWN = 0.9; // s off the road and well below it before a respawn
+// The drift mini-turbo: drift this long, let go, and get this much boost.
+export const TURBO1 = 0.8;
+export const TURBO2 = 1.7;
 
 export interface Input {
   throttle: number; // 0..1
@@ -30,6 +33,13 @@ export interface Input {
 }
 
 export const NO_INPUT: Input = { throttle: 0, brake: 0, steer: 0, drift: false };
+
+// What power-ups and catch-up do to the car: multiply its top speed and its acceleration.
+export interface Mods {
+  vmax: number;
+  acc: number;
+}
+const NO_MODS: Mods = { vmax: 1, acc: 1 };
 
 export interface Car {
   p: V;
@@ -42,7 +52,12 @@ export interface Car {
   falling: number; // s spent fallen off
   air: number; // s since last on the ground
   drifting: boolean;
+  drift: number; // s into the current drift, for the mini-turbo
+  turbo: number; // 1 or 2 when a drift let go just now earned a mini-turbo
   wallHit: number; // speed lost against a wall this step, for sounds
+  landed: number; // how hard it just landed (m/s down), 0 if it didn't
+  lat: number; // metres right of the road's centre line
+  h: number; // metres above the road
 }
 
 export function newCar(track: Track, i: number, speed = 0): Car {
@@ -58,7 +73,12 @@ export function newCar(track: Track, i: number, speed = 0): Car {
     falling: 0,
     air: 0,
     drifting: false,
+    drift: 0,
+    turbo: 0,
     wallHit: 0,
+    landed: 0,
+    lat: 0,
+    h: 0,
   };
 }
 
@@ -71,8 +91,11 @@ export function turnRate(speed: number): number {
 }
 
 // Advances the car by dt. Returns true when it fell off and should respawn.
-export function stepCar(c: Car, inp: Input, track: Track, dt: number): boolean {
+export function stepCar(c: Car, inp: Input, track: Track, dt: number, mods: Mods = NO_MODS): boolean {
   c.wallHit = 0;
+  c.landed = 0;
+  c.turbo = 0;
+  const vmax = VMAX * mods.vmax;
   const flat = v3(Math.cos(c.yaw), 0, Math.sin(c.yaw));
   const s0 = track.samples[c.idx];
 
@@ -84,15 +107,27 @@ export function stepCar(c: Car, inp: Input, track: Track, dt: number): boolean {
     let vR = dot(c.v, r);
 
     let a = 0;
-    if (inp.throttle > 0) a += vF >= -0.5 ? ACC * inp.throttle * Math.max(0, 1 - vF / VMAX) : BRAKE * inp.throttle;
+    if (inp.throttle > 0) a += vF >= -0.5 ? ACC * mods.acc * inp.throttle * Math.max(0, 1 - vF / vmax) : BRAKE * inp.throttle;
     if (inp.brake > 0) a -= vF > 0.5 ? BRAKE * inp.brake : REVERSE * inp.brake * Math.max(0, 1 + vF / VREV);
     if (s0.boost) c.boost = BOOST_TIME;
-    if (c.boost > 0 && vF < VBOOST) a += BOOST_ACC;
+    if (c.boost > 0 && vF < VBOOST * mods.vmax) a += BOOST_ACC;
+    // Above top speed (after a boost, or shrunk), ease back down to it.
+    if (c.boost <= 0 && vF > vmax + 0.5) a -= (vF - vmax) * 1.5;
     a -= vF * Math.abs(vF) * DRAG + (Math.abs(vF) > 0.1 ? Math.sign(vF) * ROLL : 0);
     if (inp.throttle === 0 && inp.brake === 0 && Math.abs(vF) < 0.6) vF = 0;
     vF += a * dt;
 
+    const wasDrifting = c.drifting;
     c.drifting = inp.drift && Math.abs(vF) > 12;
+    // A drift held into the corner charges a mini-turbo, let go when you straighten up.
+    if (c.drifting && Math.abs(inp.steer) > 0.3) c.drift += dt;
+    if (wasDrifting && !c.drifting) {
+      if (c.drift >= TURBO2) c.turbo = 2;
+      else if (c.drift >= TURBO1) c.turbo = 1;
+      if (c.turbo) c.boost = Math.max(c.boost, c.turbo === 2 ? 1.1 : 0.6);
+      c.drift = 0;
+    }
+    if (!c.drifting) c.drift = 0;
     vR *= Math.exp(-(c.drifting ? DRIFT_GRIP : GRIP) * dt);
     // Keep whatever speed the car has off the surface (none on the road, some on a crest).
     c.v = add(add(scale(f, vF), scale(r, vR)), scale(n, dot(c.v, n)));
@@ -105,7 +140,6 @@ export function stepCar(c: Car, inp: Input, track: Track, dt: number): boolean {
   } else {
     c.v.y -= G * dt;
     c.yaw += inp.steer * 0.9 * dt;
-    c.drifting = false;
     // Level out slowly in the air.
     c.up = norm(add(c.up, scale(v3(0, 1, 0), dt * 1.5)));
   }
@@ -121,6 +155,7 @@ export function stepCar(c: Car, inp: Input, track: Track, dt: number): boolean {
     const vn = dot(c.v, s.n);
     if (vn < 0) c.v = addScaled(c.v, s.n, -vn);
     if (c.air > 0.3 && vn < -10) c.v = scale(c.v, 0.97); // a hard landing costs a little
+    if (c.air > 0.25) c.landed = -vn;
     c.grounded = true;
     c.air = 0;
   } else {
@@ -142,6 +177,8 @@ export function stepCar(c: Car, inp: Input, track: Track, dt: number): boolean {
     }
   }
 
+  c.lat = loc.lateral;
+  c.h = loc.h;
   const lost = (!loc.onRoad && loc.h < -3) || loc.h < -12 || c.p.y < -40;
   c.falling = lost ? c.falling + dt : 0;
   return c.falling > FALL_RESPAWN;

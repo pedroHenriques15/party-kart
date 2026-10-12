@@ -27,14 +27,15 @@ export type Tag =
   | 'lip'
   | 'stadium-in'
   | 'kicker'
-  | 'stadium-out';
+  | 'stadium-out'
+  | 'items'; // a row of item boxes across the road
 
 export const LAYOUT: Point[] = [
   // The Avenida Central, eastwards. The Praça da República and its fountain at the west end.
   { p: [-60, 0, 0], w: 18, walls: true, surface: 'asphalt', tag: 'fountain' },
   { p: [0, 0, 0], tag: 'start' },
   { p: [100, 0, 0] },
-  { p: [200, 0, 0] },
+  { p: [200, 0, 0], tag: 'items' },
   { p: [270, 0, -3] },
   // Left into the old town: narrow, past the Sé, under the Arco da Porta Nova.
   { p: [312, 0, -25], w: 13, surface: 'cobble' },
@@ -43,7 +44,7 @@ export const LAYOUT: Point[] = [
   { p: [352, 1, -155], tag: 'cp' },
   // Out of town and up towards Bom Jesus.
   { p: [380, 3, -205], w: 14, surface: 'asphalt' },
-  { p: [420, 6, -245] },
+  { p: [420, 6, -245], tag: 'items' },
   { p: [470, 9, -260] },
   // The switchbacks, hairpin after hairpin.
   { p: [560, 14, -260], tag: 'cp' },
@@ -62,7 +63,7 @@ export const LAYOUT: Point[] = [
   { p: [612, 39, -410] },
   // The sanctuary at the top, then the run-up to the jump.
   { p: [560, 40, -412], tag: 'church' },
-  { p: [500, 40, -412] },
+  { p: [500, 40, -412], tag: 'items' },
   { p: [455, 40, -412] },
   { p: [436, 41, -412] },
   { p: [426, 42.6, -412], tag: 'lip', walls: false },
@@ -72,7 +73,7 @@ export const LAYOUT: Point[] = [
   { p: [370, 30.5, -412] },
   { p: [320, 25.5, -411] },
   { p: [270, 20.5, -405], w: 15, walls: true, tag: 'cp' },
-  { p: [210, 15, -385] },
+  { p: [210, 15, -385], tag: 'items' },
   { p: [150, 10, -355] },
   { p: [100, 6, -315], bank: -0.1 },
   { p: [62, 3, -272], bank: 0 },
@@ -81,14 +82,32 @@ export const LAYOUT: Point[] = [
   { p: [10, 1, -246], tag: 'boost' },
   { p: [-20, 3.5, -245], tag: 'kicker' },
   { p: [-35, 1, -245] },
-  { p: [-70, 1, -245], w: 16 },
+  { p: [-70, 1, -245], w: 16, tag: 'items' },
   { p: [-110, 1, -245], surface: 'asphalt', tag: 'stadium-out' },
   // The long left-hander home, banked.
   { p: [-150, 1, -240], w: 18, bank: 0.12, tag: 'cp' },
   { p: [-190, 0.5, -215] },
   { p: [-212, 0, -170] },
-  { p: [-215, 0, -110] },
+  { p: [-215, 0, -110], tag: 'items' },
   { p: [-195, 0, -55] },
   { p: [-150, 0, -15], bank: 0, tag: 'boost' },
   { p: [-105, 0, 0] },
 ];
+
+// The Rio Este, from the west across the run home, south of the stadium, under the old town's
+// road and away east: [x, z] points. Where the road crosses it, there's a bridge.
+export const RIVER: [number, number][] = [
+  [-520, -122],
+  [-330, -134],
+  [-213, -138],
+  [-120, -152],
+  [-20, -160],
+  [100, -150],
+  [230, -140],
+  [350, -148],
+  [480, -170],
+  [650, -186],
+  [940, -192],
+];
+export const RIVER_HALF_W = 9;
+export const WATER_Y = -2;

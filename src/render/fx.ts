@@ -1,4 +1,6 @@
-// Particles: each driver's trail (confetti, money, gas, flames…) and the confetti for a lap.
+// Particles: each driver's trail (confetti, money, gas, flames…), confetti for a lap, drift
+// sparks, tyre smoke, dust, and the bits that fly when something's hit. A few pools, each one
+// draw call: a normal one, a glowing one for sparks, a big soft one for smoke.
 import * as THREE from 'three';
 import type { Trail } from './drivers.ts';
 
@@ -50,18 +52,36 @@ export class Particles {
   private carry = new Map<string, number>();
   private c = new THREE.Color();
 
-  constructor() {
+  constructor(size = 0.55, glow = false) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
     this.points = new THREE.Points(
       geo,
-      new THREE.PointsMaterial({ size: 0.55, map: dot(), vertexColors: true, transparent: true, depthWrite: false, alphaTest: 0.05 }),
+      new THREE.PointsMaterial({
+        size,
+        map: dot(),
+        vertexColors: true,
+        transparent: true,
+        depthWrite: false,
+        alphaTest: glow ? 0 : 0.05,
+        blending: glow ? THREE.AdditiveBlending : THREE.NormalBlending,
+        toneMapped: !glow,
+      }),
     );
     this.points.frustumCulled = false;
   }
 
-  private add(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, color: string, grav: number): void {
+  // A spray of n particles from a point: spread is how fast they fly out, up how fast they rise.
+  spray(at: { x: number; y: number; z: number }, n: number, colors: string[], spread: number, up: number, life: number, grav = -9): void {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = spread * (0.3 + Math.random() * 0.7);
+      this.add(at.x, at.y, at.z, Math.cos(a) * sp, up * (0.4 + Math.random() * 0.6), Math.sin(a) * sp, life * (0.6 + Math.random() * 0.6), colors[i % colors.length], grav);
+    }
+  }
+
+  add(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, color: string, grav: number): void {
     if (this.ps.length >= MAX) this.ps.shift();
     this.c.set(color);
     this.ps.push({ x, y, z, vx, vy, vz, life, max: life, r: this.c.r, g: this.c.g, b: this.c.b, grav });

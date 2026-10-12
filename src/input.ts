@@ -6,7 +6,11 @@ const KEYS = {
   right: ['ArrowRight', 'KeyD'],
   drift: ['Space'],
 };
-const ACTIONS: Record<string, 'respawn' | 'restart' | 'horn' | 'camera'> = {
+const ACTIONS: Record<string, 'respawn' | 'restart' | 'horn' | 'camera' | 'use'> = {
+  KeyE: 'use',
+  ShiftLeft: 'use',
+  ShiftRight: 'use',
+  KeyQ: 'use',
   Enter: 'respawn',
   NumpadEnter: 'respawn',
   Backspace: 'restart',

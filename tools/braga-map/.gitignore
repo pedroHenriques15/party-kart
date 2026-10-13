@@ -1,0 +1,2 @@
+# What fetch.mjs downloads, about 20 MB. build.mjs turns it into braga.json.
+.cache/

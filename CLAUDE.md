@@ -48,6 +48,9 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   players, open a second tab with the invite link (`?room=<code>`). Rooms go through PeerJS's public
   server, so this needs internet access.
 - `?exp= ?sun= ?hemi= ?env= ?fog=` override the lighting (`src/render/look.ts`), for tuning.
+- `?view=x,y,z,tx,ty,tz` holds the race's camera at (x, y, z), looking at (tx, ty, tz), to look at
+  the scenery from anywhere (the sights on the hills, say). Take positions from
+  `tools/braga-map/braga.json` or `course.json`; heights are metres above `ELEV0`.
 - The touch controls show on a touch screen: Chrome's device toolbar, or Playwright with
   `hasTouch` and `isMobile`. Drive them with real touches (CDP's `Input.dispatchTouchEvent`), not
   synthetic events.
@@ -66,7 +69,7 @@ How a race runs:
 
 - `buildTrack(AMIGOS)` turns the points in `src/track/amigos.ts` (Braga's real streets, made by
   `course.mjs`) into a road sampled every metre from the start line. A sample index is roughly
-  metres from the line, and the lap is about 7.3 km (N ≈ 7300 samples).
+  metres from the line, and the lap is about 8.1 km (N ≈ 8150 samples).
 - `stepCar` (`src/car/car.ts`) is the handling. It always runs at a fixed `DT = 1/120` s, in the
   game and in the tests alike.
 - An `Arena` is one browser's view of a race: the clock, every car's `CarInfo`, the projectiles and
@@ -112,6 +115,9 @@ How a race runs:
   `src/render/amigos-data.ts` come from `tools/braga-map/course.mjs`: change the tool and run it
   again, never the files. It needs the map's data (`fetch.mjs`, into `.cache/`) and the
   waypoints in `.cache/places.json`. See "The track" in `docs/making-changes.md`.
+- **The road's width is kerb to kerb.** A sample's `w` is the carriageway, and the walls stand at
+  its edges. The pavements, central reservations and lane lines beyond and on it are only drawn
+  (`kerbs` and `lanes`, carried through the layout like `w`), so karts never drive on them.
 - **The friends' houses stay out of the repo, which is public.** The waypoints are only in the
   ignored `.cache/places.json` and the shared map's database. The easter eggs stand 44–50 m past
   the houses, never at them, and nothing names whose street is whose. Keep it that way.
@@ -129,16 +135,17 @@ How a race runs:
   animate needs `userData.moves = true` on it or a parent, or it gets frozen into the merged mesh.
 - **`mat()` caches materials by colour and settings**, so changing one changes every mesh that
   uses it. A kart's body paint is its own because gold plating recolours it.
-- **The peer id prefix** `partykart-pk27-` in `src/session.ts` decides which builds can see each
+- **The peer id prefix** `partykart-pk28-` in `src/session.ts` decides which builds can see each
   other's rooms. The deployed game and a dev build share rooms while it matches. Change it when the
   message format changes incompatibly, or the track changes.
 - **Item rolls and bot patience use `Math.random`.** That's fine because only one browser ever
   simulates a given car. Never have several browsers each re-simulate something that rolls dice.
-- **The eight-bot race test is flaky.** "eight bots race a lap…" asserts that the lead changes
-  at least once, and fails now and then because its item rolls are random. Rerun it before
-  assuming you broke something, and look at the printed summary.
-- **The tests guard the track and the tuning.** They check a loop of 6.5–8 km with 5
-  checkpoints, an autopilot lap with no respawns and a second lap of 170–240 s, the first track's
+- **The eight-bot race test rolls dice.** "eight bots race a lap…" asserts that the lead changes
+  at least once. Its item rolls are random, so it could still fail now and then, though since the
+  bots spread across the road to pass (`steerLine` in `src/game/bot.ts`) it rarely does. Rerun it
+  before assuming you broke something, and look at the printed summary.
+- **The tests guard the track and the tuning.** They check a loop of 7–9 km with 5
+  checkpoints, an autopilot lap with no respawns and a second lap of 170–260 s, the first track's
   jump flying over 1 s and landing at any speed from 60 to 158 km/h, every item turning up at some
   place in the race, and eight bots all finishing a lap within 60 s of each other. A change to the
   track, the physics or the item odds has to keep them passing.

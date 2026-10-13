@@ -230,14 +230,15 @@ export class TouchPad {
   }
 
   // The item button wears the item: its icon, '?' while the roulette spins, or nothing.
-  item(icon: string, uses: number, rolling: boolean): void {
-    const key = `${icon}|${uses}|${rolling}`;
+  item(icon: string, uses: number, rolling: boolean, guarded: boolean): void {
+    const key = `${icon}|${uses}|${rolling}|${guarded}`;
     if (key === this.shown) return;
     this.shown = key;
     this.itemBtn.textContent = rolling ? '?' : icon;
     if (uses > 1) this.itemBtn.append(el('uses', `×${uses}`));
     this.itemBtn.classList.toggle('rolling', rolling);
     this.itemBtn.classList.toggle('full', !rolling && !!icon);
+    this.itemBtn.classList.toggle('guarded', guarded);
   }
 
   controls(): Held {

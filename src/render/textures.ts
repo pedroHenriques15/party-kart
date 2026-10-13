@@ -21,34 +21,76 @@ function noise(g: CanvasRenderingContext2D, w: number, h: number, n: number, alp
   }
 }
 
-// u runs across the road (0 left edge, 1 right), v along it.
+// u runs across the road (0 left edge, 1 right), v along it. The lines are painted on it
+// separately, as the street has them.
 export const asphalt = () =>
   canvas(256, 256, (g) => {
-    g.fillStyle = '#3b3f47';
+    g.fillStyle = '#44464b';
     g.fillRect(0, 0, 256, 256);
     noise(g, 256, 256, 9000, 0.12);
-    g.fillStyle = '#f2f2f2';
-    g.fillRect(6, 0, 6, 256);
-    g.fillRect(244, 0, 6, 256);
-    g.fillStyle = '#d6b14a';
-    g.fillRect(126, 0, 4, 120);
+    // Patches and repairs, a little darker.
+    for (let i = 0; i < 6; i++) {
+      g.fillStyle = 'rgba(30,31,34,0.18)';
+      g.fillRect(Math.random() * 256, Math.random() * 256, 20 + Math.random() * 60, 10 + Math.random() * 40);
+    }
   });
 
-// Calçada portuguesa: small white limestone setts with a dark wave.
-export const cobble = () =>
+// Granite setts, the paralelos of Braga's older streets, in rows across the road; 2 m a tile.
+export const setts = () =>
   canvas(256, 256, (g) => {
-    g.fillStyle = '#b8b2a6';
+    g.fillStyle = '#5d5b57';
     g.fillRect(0, 0, 256, 256);
-    for (let y = 0; y < 256; y += 10) {
-      for (let x = (y / 10) % 2 ? 5 : 0; x < 256; x += 10) {
-        const wave = Math.sin((x / 256) * Math.PI * 4 + (y / 256) * Math.PI * 2) > 0.55;
-        const l = wave ? 40 + Math.random() * 20 : 215 + Math.random() * 30;
-        g.fillStyle = `rgb(${l},${l},${l - 6})`;
+    for (let y = 0; y < 256; y += 16) {
+      for (let x = (y / 16) % 2 ? -10 : 0; x < 256; x += 21) {
+        const l = 92 + Math.random() * 40;
+        g.fillStyle = `rgb(${l},${l - 2},${l - 6})`;
         g.beginPath();
-        g.roundRect(x + 1, y + 1, 8, 8, 2);
+        g.roundRect(x + 1.5, y + 1.5, 18 + Math.random() * 2, 13, 3);
         g.fill();
       }
     }
+    noise(g, 256, 256, 5000, 0.1);
+  });
+
+// The pavements' calçada: small limestone setts, white and pale grey, set close; 2.5 m a tile.
+export const calcada = () =>
+  canvas(256, 256, (g) => {
+    g.fillStyle = '#9e9a92';
+    g.fillRect(0, 0, 256, 256);
+    for (let y = 0; y < 256; y += 8) {
+      for (let x = (y / 8) % 2 ? 4 : 0; x < 256; x += 8) {
+        const l = 196 + Math.random() * 44;
+        g.fillStyle = `rgb(${l},${l - 2},${l - 7})`;
+        g.beginPath();
+        g.roundRect(x + 0.8 + Math.random() * 0.6, y + 0.8 + Math.random() * 0.6, 6.4, 6.4, 1.6);
+        g.fill();
+      }
+    }
+  });
+
+// Granite: the kerbstones, and the bridges' parapets.
+export const granite = () =>
+  canvas(128, 128, (g) => {
+    g.fillStyle = '#a7a39b';
+    g.fillRect(0, 0, 128, 128);
+    noise(g, 128, 128, 5000, 0.18);
+    noise(g, 128, 128, 1500, 0.25, true);
+    g.fillStyle = 'rgba(60,58,54,0.5)';
+    g.fillRect(0, 0, 2, 128);
+  });
+
+// A painted line along the road, dashed: 3 m of white, then 4 m of road (v runs 7 m a tile).
+export const dash = () =>
+  canvas(16, 112, (g) => {
+    g.fillStyle = 'rgba(240,240,232,0.95)';
+    g.fillRect(0, 0, 16, 48);
+  });
+
+// A zebra crossing's bars: u across the road a metre a tile, half of it white.
+export const zebra = () =>
+  canvas(64, 16, (g) => {
+    g.fillStyle = 'rgba(242,242,236,0.95)';
+    g.fillRect(0, 0, 32, 16);
   });
 
 export const grass = () =>
@@ -127,17 +169,19 @@ export const checker = () =>
     }
   });
 
-// A sign: big text on a colour, with an optional line under it.
-export function sign(text: string, sub = '', bg = '#111318', fg = '#ffffff', w = 1024, h = 192): THREE.CanvasTexture {
+// A sign: big text on a colour, with an optional line under it, in a gold frame unless `frame` is ''.
+export function sign(text: string, sub = '', bg = '#111318', fg = '#ffffff', w = 1024, h = 192, frame = '#d4af37'): THREE.CanvasTexture {
   return canvas(
     w,
     h,
     (g) => {
       g.fillStyle = bg;
       g.fillRect(0, 0, w, h);
-      g.strokeStyle = '#d4af37';
-      g.lineWidth = 10;
-      g.strokeRect(5, 5, w - 10, h - 10);
+      if (frame) {
+        g.strokeStyle = frame;
+        g.lineWidth = 10;
+        g.strokeRect(5, 5, w - 10, h - 10);
+      }
       g.fillStyle = fg;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
@@ -210,15 +254,6 @@ export function nameTag(text: string, color: string): THREE.CanvasTexture {
     false,
   );
 }
-
-// Red and white kerbs, striped along the road.
-export const kerb = () =>
-  canvas(32, 128, (g) => {
-    for (let i = 0; i < 4; i++) {
-      g.fillStyle = i % 2 ? '#f4f4f4' : '#d6262b';
-      g.fillRect(0, i * 32, 32, 32);
-    }
-  });
 
 // Blue and white azulejos, as on the Palácio do Raio: a tile pattern with granite-framed windows.
 export function azulejo(floors: number): THREE.CanvasTexture {
@@ -511,6 +546,23 @@ export const flatRoof = () =>
       g.fillRect(Math.random() * 220, Math.random() * 220, 20 + Math.random() * 40, 20 + Math.random() * 40);
     }
   });
+
+// A streak of air for the slipstream: clear at both ends, brightest just behind the middle.
+export function windStreak(): THREE.CanvasTexture {
+  return canvas(
+    128,
+    4,
+    (g) => {
+      const grad = g.createLinearGradient(0, 0, 128, 0);
+      grad.addColorStop(0, 'rgba(255,255,255,0)');
+      grad.addColorStop(0.35, 'rgba(255,255,255,1)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 128, 4);
+    },
+    false,
+  );
+}
 
 // Grain for the ground: multiplied into its colours, tiled every few metres, so the big map
 // painted under everything doesn't look smeared up close. Linear, not a colour.

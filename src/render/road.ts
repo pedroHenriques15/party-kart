@@ -1,5 +1,6 @@
-// The road itself, whatever the track: its surfaces, kerbs, the skirts under its edges, the party
-// banners along it, boost pads, the start line and gates, bridges, and the lights along it.
+// The road itself, whatever the track: its surfaces and the lines painted on it, the kerbs and
+// pavements and central reservations beside it, the skirts under its edges, the party's banners
+// at the start, boost pads, the start line and gates, bridges, and the lights along it.
 import * as THREE from 'three';
 import { surfacePoint, type Sample, type Track } from '../track/track.ts';
 import * as tex from './textures.ts';
@@ -7,8 +8,10 @@ import * as tex from './textures.ts';
 // How many samples from `from` to `to`, round the loop; [0, N] is all the way round.
 const stretch = (N: number, from: number, to: number) => (to - from === N ? N : (to - from + N) % N);
 
-// A strip along the road between two lateral offsets, lifted off the surface by `lift`.
-export function ribbon(track: Track, from: number, to: number, side: (s: Sample) => [number, number], lift: number, vScale: number): THREE.BufferGeometry {
+// A strip along the road between two lateral offsets, lifted off the surface by `lift`. Its
+// texture runs a tile every vScale metres along it, and across it from 0 to 1, or a tile every
+// uScale metres when that's given.
+export function ribbon(track: Track, from: number, to: number, side: (s: Sample) => [number, number], lift: number, vScale: number, uScale = 0): THREE.BufferGeometry {
   const N = track.samples.length;
   const pos: number[] = [];
   const uv: number[] = [];
@@ -20,7 +23,8 @@ export function ribbon(track: Track, from: number, to: number, side: (s: Sample)
     const L = surfacePoint(s, a, lift);
     const R = surfacePoint(s, b, lift);
     pos.push(L.x, L.y, L.z, R.x, R.y, R.z);
-    uv.push(0, v, 1, v);
+    if (uScale) uv.push(a / uScale, v, b / uScale, v);
+    else uv.push(0, v, 1, v);
     v += 1 / vScale;
     if (k > 0) {
       // Wound to face up, out of the surface.
@@ -95,46 +99,90 @@ export function buildRoad(track: Track, overWater: (s: Sample) => boolean, signs
   const N = track.samples.length;
 
   // The road, a mesh per surface.
-  const surfaces = { asphalt: tex.asphalt(), cobble: tex.cobble(), grass: tex.grass() };
-  const scaleV = { asphalt: 10, cobble: 6, grass: 16 };
+  const surfaces = { asphalt: tex.asphalt(), cobble: tex.setts(), grass: tex.grass() };
   for (const kind of ['asphalt', 'cobble', 'grass'] as const) {
     const mat = new THREE.MeshStandardMaterial({ map: surfaces[kind], roughness: kind === 'asphalt' ? 0.82 : 0.9, metalness: 0 });
-    if (kind === 'cobble') surfaces.cobble.repeat.set(2, 1);
     for (const [a, b] of runs(track, (s) => s.surface === kind)) {
-      const m = new THREE.Mesh(ribbon(track, a, b, (s) => [-s.w / 2, s.w / 2], 0.02, scaleV[kind]), mat);
+      const m = new THREE.Mesh(kind === 'asphalt' ? ribbon(track, a, b, (s) => [-s.w / 2, s.w / 2], 0.02, 10) : ribbon(track, a, b, (s) => [-s.w / 2, s.w / 2], 0.02, 2, 2), mat);
       m.receiveShadow = true;
       group.add(m);
     }
   }
 
-  // Kerbs, red and white, where the road bends.
+  // The lines painted on it, white, as the street has them: lanes dashed, and a solid line down
+  // the middle of a two-way road of four lanes or more.
   {
-    const bend = (i: number) => {
-      const a = track.samples[(i - 6 + N) % N].t;
-      const b = track.samples[(i + 6) % N].t;
-      return Math.abs(Math.atan2(a.x * b.z - a.z * b.x, a.x * b.x + a.z * b.z)) / 12;
-    };
-    const kerbMat = new THREE.MeshStandardMaterial({ map: tex.kerb(), roughness: 0.7 });
-    for (const [a, b] of runs(track, (s, i) => s.surface === 'asphalt' && bend(i) > 0.012)) {
-      for (const side of [-1, 1]) {
-        const k = new THREE.Mesh(ribbon(track, a, b, (s) => (side < 0 ? [-s.w / 2, -s.w / 2 + 0.9] : [s.w / 2 - 0.9, s.w / 2]), 0.035, 2), kerbMat);
-        k.receiveShadow = true;
-        group.add(k);
+    const dashed = new THREE.MeshStandardMaterial({ map: tex.dash(), transparent: true, alphaTest: 0.4, roughness: 0.6 });
+    const solid = new THREE.MeshStandardMaterial({ color: '#efefe8', roughness: 0.6 });
+    for (const [a, b] of runs(track, (s) => s.lanes !== 0 && s.lanes !== 1 && s.lanes !== -1)) {
+      // A run with the same lanes all along it.
+      let from = a;
+      const len = stretch(N, a, b);
+      for (let k = 1; k <= len; k++) {
+        const i = (a + k) % N;
+        if (k < len && track.samples[i].lanes === track.samples[from].lanes) continue;
+        const lanes = track.samples[from].lanes;
+        const n = Math.abs(lanes);
+        for (let j = 1; j < n; j++) {
+          const middle = lanes > 0 && n >= 4 && j === n / 2;
+          const at = (s: Sample): [number, number] => {
+            const x = -s.w / 2 + (s.w * j) / n;
+            return [x - 0.07, x + 0.07];
+          };
+          group.add(new THREE.Mesh(ribbon(track, from, i, at, 0.03, 7), middle ? solid : dashed));
+        }
+        from = i;
       }
     }
   }
 
-  // Under the edges, down to the ground, so a raised road doesn't float; but not over water,
-  // where the bridges are.
-  const skirtMat = new THREE.MeshStandardMaterial({ color: '#77736b', side: THREE.DoubleSide, roughness: 0.9 });
-  for (const [a, b] of runs(track, (s) => !overWater(s))) {
-    for (const side of [-1, 1]) group.add(new THREE.Mesh(wall(track, a, b, (s) => (side * s.w) / 2, -6, 0.02, 20), skirtMat));
+  // Beyond each edge: a pavement of calçada behind a granite kerb, a central reservation, or
+  // nothing; and under it all, down to the ground, so a raised road doesn't float. Bridges get a
+  // parapet instead of a skirt.
+  {
+    const KERB = 0.15;
+    const graniteTex = tex.granite();
+    const granite = new THREE.MeshStandardMaterial({ map: graniteTex, roughness: 0.85, side: THREE.DoubleSide });
+    const paving = new THREE.MeshStandardMaterial({ map: tex.calcada(), roughness: 0.8 });
+    const verge = new THREE.MeshStandardMaterial({ map: tex.ground(), roughness: 0.95 });
+    const skirtMat = new THREE.MeshStandardMaterial({ color: '#77736b', side: THREE.DoubleSide, roughness: 0.9 });
+    for (const [k, side] of [[0, -1], [1, 1]] as const) {
+      const edge = (s: Sample) => (side * s.w) / 2;
+      const out = (s: Sample) => side * (s.w / 2 + Math.abs(s.kerbs[k]));
+      const span = (s: Sample, a: number, b: number): [number, number] => (side < 0 ? [-(s.w / 2 + b), -(s.w / 2 + a)] : [s.w / 2 + a, s.w / 2 + b]);
+      // The kerb, wherever there's something beyond the edge.
+      for (const [a, b] of runs(track, (s) => s.kerbs[k] !== 0)) {
+        group.add(new THREE.Mesh(wall(track, a, b, edge, 0, KERB, 1), granite));
+        group.add(new THREE.Mesh(ribbon(track, a, b, (s) => span(s, 0, 0.25), KERB, 1, 1), granite));
+      }
+      // Pavements.
+      for (const [a, b] of runs(track, (s) => s.kerbs[k] > 0)) {
+        const m = new THREE.Mesh(ribbon(track, a, b, (s) => span(s, 0.25, s.kerbs[k]), KERB, 2.5, 2.5), paving);
+        m.receiveShadow = true;
+        group.add(m);
+      }
+      for (const [a, b] of runs(track, (s) => s.kerbs[k] > 0 && !overWater(s))) group.add(new THREE.Mesh(wall(track, a, b, out, -6, KERB, 20), skirtMat));
+      // Central reservations: grass when there's room, setts when not, a kerb either side.
+      for (const [a, b] of runs(track, (s) => s.kerbs[k] < 0)) {
+        group.add(new THREE.Mesh(ribbon(track, a, b, (s) => span(s, 0.25, -s.kerbs[k] - 0.25), KERB, 2, 2), track.samples[a].kerbs[k] < -2 ? verge : paving));
+        group.add(new THREE.Mesh(ribbon(track, a, b, (s) => span(s, -s.kerbs[k] - 0.25, -s.kerbs[k]), KERB, 1, 1), granite));
+        group.add(new THREE.Mesh(wall(track, a, b, out, -0.6, KERB, 1), granite));
+      }
+      // Nothing beyond: the skirt at the edge itself.
+      for (const [a, b] of runs(track, (s) => s.kerbs[k] === 0 && !overWater(s))) group.add(new THREE.Mesh(wall(track, a, b, edge, -6, 0.02, 20), skirtMat));
+      // Parapets on the bridges.
+      for (const [a, b] of runs(track, (s) => overWater(s))) {
+        const outer = (s: Sample) => side * (s.w / 2 + Math.max(0.3, s.kerbs[k]));
+        group.add(new THREE.Mesh(wall(track, a, b, outer, -0.5, 1.1, 2), granite));
+        group.add(new THREE.Mesh(ribbon(track, a, b, (s) => (side < 0 ? [outer(s) - 0.35, outer(s)] : [outer(s), outer(s) + 0.35]), 1.1, 1, 1), granite));
+      }
+    }
   }
 
-  // The walls: white party banners.
+  // The party's barriers, white with its name, along the kerbs at the start.
   const wallMat = new THREE.MeshStandardMaterial({ map: tex.banner(), side: THREE.DoubleSide, roughness: 0.6 });
-  for (const [a, b] of runs(track, (s) => s.walls)) {
-    for (const side of [-1, 1]) group.add(new THREE.Mesh(wall(track, a, b, (s) => side * (s.w / 2 + 0.15), 0, 1.15, 8), wallMat));
+  for (const [a, b] of runs(track, (_s, i) => i < 160 || i > N - 160)) {
+    for (const side of [-1, 1]) group.add(new THREE.Mesh(wall(track, a, b, (s) => side * (s.w / 2 + 0.4), 0.15, 1.3, 8), wallMat));
   }
 
   // Boost pads, their arrows running.
@@ -176,8 +224,9 @@ export function bridge(track: Track, a: number, b: number, waterY: number, halfW
   hole.absellipse(0, spring, r, rise, 0, Math.PI, false);
   hole.lineTo(-r, bottom + 0.3);
   shape.holes.push(hole);
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: mid.w + 0.6, bevelEnabled: false });
-  geo.translate(0, 0, -(mid.w + 0.6) / 2);
+  const width = mid.w + Math.max(0.3, mid.kerbs[0]) + Math.max(0.3, mid.kerbs[1]) + 0.6;
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false });
+  geo.translate(0, 0, -width / 2 + (Math.max(0.3, mid.kerbs[1]) - Math.max(0.3, mid.kerbs[0])) / 2);
   const stone = new THREE.MeshStandardMaterial({ map: tex.rock(), color: '#cfc6b6', roughness: 0.9 });
   const g = new THREE.Group();
   const m = new THREE.Mesh(geo, stone);
@@ -262,11 +311,13 @@ export function lamps(track: Track, ground: (x: number, z: number) => number, wh
     const s = track.samples[i];
     if (!where(s, i)) continue;
     side = -side;
-    const p = surfacePoint(s, side * (s.w / 2 + 1.6), 0);
-    const y = Math.max(ground(p.x, p.z), p.y - 1);
+    const k = side < 0 ? 0 : 1;
+    const off = s.kerbs[k] > 0.8 ? 0.55 : s.kerbs[k] < -1 ? -s.kerbs[k] / 2 : 1.4;
+    const p = surfacePoint(s, side * (s.w / 2 + off), 0);
+    const y = s.kerbs[k] !== 0 ? p.y + 0.15 : Math.max(ground(p.x, p.z), p.y - 1);
     const yaw = -Math.atan2(s.t.z, s.t.x);
     posts.push(new THREE.Matrix4().makeTranslation(p.x, y + 3.5, p.z));
-    const arm = surfacePoint(s, side * (s.w / 2 + 0.2), 0);
+    const arm = surfacePoint(s, side * (s.w / 2 + off - 1.8), 0);
     heads.push(new THREE.Matrix4().compose(new THREE.Vector3(arm.x, y + 6.9, arm.z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)), new THREE.Vector3(1, 1, 1)));
   }
   const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.14, 7, 8), new THREE.MeshStandardMaterial({ color: '#2e3a33', metalness: 0.5, roughness: 0.5 }), posts.length);

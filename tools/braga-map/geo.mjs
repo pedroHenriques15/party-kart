@@ -37,10 +37,10 @@ function decodePNG(buf) {
   return { w, h, bpp, data: out };
 }
 
-// Height above the sea at (x, z), from the Terrain Tiles fetch.mjs downloaded (zoom 14, Terrarium
-// encoding), interpolated between pixels.
-export function relief(demDir) {
-  const Z = 14, tiles = new Map();
+// Height above the sea at (x, z), from the Terrain Tiles fetch.mjs downloaded (Terrarium encoding),
+// interpolated between pixels: zoom 14 over the map, 11 for the horizon round it.
+export function relief(demDir, Z = 14) {
+  const tiles = new Map();
   const tile = (tx, ty) => {
     const k = tx + '_' + ty;
     if (!tiles.has(k)) tiles.set(k, decodePNG(fs.readFileSync(path.join(demDir, `${Z}_${k}.png`))));

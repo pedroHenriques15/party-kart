@@ -1,5 +1,5 @@
 // The race's screen furniture: place and lap, the item slot, the clock, the minimap, the order,
-// what just happened to whom, the speed, and speed lines when boosting.
+// what just happened to whom, the speed, and speed lines when boosting or in a slipstream.
 import type { CarInfo } from './game/arena.ts';
 import { ITEMS, type ItemKind } from './game/items.ts';
 import type { Track } from './track/track.ts';
@@ -122,6 +122,8 @@ export class Hud {
     rolling: boolean;
     speed: number;
     boosting: boolean;
+    slip: number; // the slipstream's strength, 0 to 1
+    shield: boolean; // the bodyguard's on
     center: { text: string; cls: string } | null;
     split: { text: string; cls: string } | null;
   }): void {
@@ -135,25 +137,28 @@ export class Hud {
     e.clock.textContent = o.clock;
     const icon = e.item.querySelector('.icon')!;
     const uses = e.item.querySelector('.uses')!;
+    e.item.classList.toggle('guarded', o.shield);
     if (o.rolling) {
       icon.textContent = ROLL_ICONS[Math.floor(performance.now() / 70) % ROLL_ICONS.length];
-      e.item.className = 'item rolling';
+      e.item.classList.add('rolling');
+      e.item.classList.remove('full');
       uses.textContent = '';
       e.itemName.textContent = '';
     } else if (o.item) {
       icon.textContent = ITEMS[o.item.kind].icon;
-      e.item.className = 'item full';
+      e.item.classList.add('full');
+      e.item.classList.remove('rolling');
       uses.textContent = o.item.uses > 1 ? `×${o.item.uses}` : '';
       e.itemName.textContent = `${ITEMS[o.item.kind].name}: ${ITEMS[o.item.kind].blurb}`;
     } else {
       icon.textContent = '';
       uses.textContent = '';
-      e.item.className = 'item';
+      e.item.classList.remove('full', 'rolling');
       e.itemName.textContent = '';
     }
     e.speed.textContent = String(Math.round(o.speed * 3.6));
     e.speed.dataset.boost = o.boosting ? '1' : '';
-    e.lines.style.opacity = o.boosting ? String(Math.min(0.9, (o.speed - 30) / 20)) : '0';
+    e.lines.style.opacity = String(Math.max(o.boosting ? Math.min(0.9, (o.speed - 30) / 20) : 0, o.slip * 0.7));
     if (o.center) {
       e.center.textContent = o.center.text;
       e.center.className = `center ${o.center.cls}`;

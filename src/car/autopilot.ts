@@ -1,6 +1,6 @@
 // Drives the track by itself: for the tests, and for the cars on the menu screens.
 import { angleDiff, clamp } from '../math.ts';
-import type { Track } from '../track/track.ts';
+import { surfacePoint, type Track } from '../track/track.ts';
 import { speedOf, turnRate, type Car, type Input } from './car.ts';
 
 // The fastest speed that can still turn as tightly as curvature k (radians per metre).
@@ -9,11 +9,13 @@ function cornerSpeed(k: number): number {
   return 6;
 }
 
-export function autopilot(c: Car, track: Track, caution = 1): Input {
+// line: where across the road to drive, from -1 (the left edge) to 1 (the right), 0 the middle.
+export function autopilot(c: Car, track: Track, caution = 1, line = 0): Input {
   const N = track.samples.length;
   const s = track.samples;
   const speed = speedOf(c);
-  const ahead = s[(c.idx + Math.round(6 + speed * 0.35)) % N].p;
+  const aim = s[(c.idx + Math.round(6 + speed * 0.35)) % N];
+  const ahead = surfacePoint(aim, line * Math.max(0, aim.w / 2 - 1.6), 0);
   const want = Math.atan2(ahead.z - c.p.z, ahead.x - c.p.x);
   const steer = clamp(angleDiff(want, c.yaw) * 2.2, -1, 1);
 

@@ -18,7 +18,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/game/arena.ts` | sim | `Arena`: one browser's view of a race. `FLAG`: status bits sent with positions |
 | `src/game/racer.ts` | sim | `Racer`: a car this browser drives (laps, boxes, items, hits, bumps, slipstream, catch-up) |
 | `src/game/items.ts` | sim | What the items are, the odds by place, the events, where a projectile is at a given time |
-| `src/game/bot.ts` | sim | The bots' driving and when they use their items |
+| `src/game/bot.ts` | sim | The bots' driving (each on its own line across the road, moving out to pass) and when they use their items |
 | `src/session.ts` | browser | Rooms over PeerJS: `HostRoom` and `ClientRoom` |
 | `src/main.ts` | browser | The screens, the race loop, the cameras, and the glue between all of it |
 | `src/hud.ts` | browser | The race screen: place, lap, item slot, clock, minimap, order, feed |
@@ -107,7 +107,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk27-` plus a five-character room code, and the invite link is `?room=<code>`.
+`partykart-pk28-` plus a five-character room code, and the invite link is `?room=<code>`.
 
 ### Messages
 
@@ -215,10 +215,12 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
 - **The city** (`render/city.ts`), from `amigos-data.ts`: a JSON header, then 16-bit numbers,
   in base64, made by `tools/braga-map/course.mjs`.
   - The land is the real relief on a 10 m grid (20 m on Low), level with the road beside it and
-    blending back within 30 m, with the river's bed cut through it. Further off, the whole map's
-    hills every 50 m, tucked under it.
+    blending back within 30 m, with the river's bed cut through it, and level under the stadium.
+    Further off, the whole map's hills every 50 m, coloured by the map's woods and towns and tucked
+    under it, and the horizon's hills 15 km round every 250 m (`horizon` in `sights.ts`).
   - What's on the land is painted onto one canvas over the land: the parks, woods and fields,
-    water, squares, every other street with its pavements, the railway. It's 1 m a pixel on High,
+    water, squares, every other street at its own width with its pavements, the railway. It's 1 m
+    a pixel on High,
     1.4 on Medium, 2 on Low. A fine grain, tiled by world position (`onBeforeCompile`), keeps it
     from looking smeared up close.
   - Buildings are their footprints from the map, raised to their floors: walls textured a floor
@@ -226,11 +228,18 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     flats, and hipped or gabled roofs over each footprint's rectangle where it nearly fills it
     (flat otherwise). Churches get a tower. They're seven meshes in all, one per material.
   - Then the trees (`plantTrees`, plain crowns in 800 m tiles), the Rio Este and its bridges,
-    lamps, a blue-and-white plate for each street, brown signs to landmarks, the party at the start
-    (where the lobby shows your car), and the easter eggs (`eggs.ts`).
-- **The road** (`render/road.ts`), the same for any track: the ribbon, kerbs where it bends, the
-  skirts under its edges, the party banners, boost pads, the start line and gates, bridges, string
-  lights and lamps.
+    lamps, zebra crossings, traffic lights and bus stops (`streetFurniture`), a blue-and-white
+    plate for each street, brown signs to landmarks, the party at the start (where the lobby shows
+    your car), and the easter eggs (`eggs.ts`).
+  - The sights (`sights.ts`): Bom Jesus and its Escadório and the Sameiro on the hills, at twice
+    their size so they show from the track; the cross on the Picoto; the Estádio 1.º de Maio with
+    its track, terraces, covered stand and floodlights; Makro's and the Altice Forum's signs; and
+    the Tourigalo's bull.
+- **The road** (`render/road.ts`), the same for any track: the ribbon (asphalt, or granite setts),
+  the white lines painted on it as each stretch's `lanes` says, and beyond its edges, as `kerbs`
+  says, granite kerbs with calçada pavements behind them, central reservations, or nothing; the
+  skirts under its edges, parapets on the bridges, the party's banners at the start, boost pads,
+  the start line and gates, string lights and lamps.
 - **The first track's world** (`render/world.ts`, with `landmarks.ts`, `braga.ts` and
   `buildTrees`) is kept for reference, and nothing builds it.
 - **Few draw calls**: `mat()` shares one material per colour and settings, and `bake()` merges each

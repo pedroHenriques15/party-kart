@@ -11,6 +11,12 @@ export interface Point {
   bank?: number;
   walls?: boolean; // carried on until changed
   surface?: Surface; // carried on until changed
+  // How it's dressed, for drawing only; each carried on until changed. lanes: the lanes painted on
+  // it (0 for no lines), negative when it's one way. kerbs: what's beyond the left and right
+  // edges, a pavement (its width, positive), a central reservation (its width, negative) or
+  // nothing (0).
+  lanes?: number;
+  kerbs?: [number, number];
   tag?: Tag;
 }
 

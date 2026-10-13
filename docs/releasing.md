@@ -12,7 +12,7 @@ Settings → Pages: deploy from a branch, `gh-pages`, `/ (root)`.
    npm run check && npm test
    ```
 
-   If "eight bots race a lap…" fails on "the lead changes", run it again. That test is flaky
+   If "eight bots race a lap…" fails on "the lead changes", run it again. That test rolls dice
    (see `CLAUDE.md`).
 2. **Commit it to `main` and push.**
 

@@ -25,6 +25,9 @@ const DT = 1 / 120;
 // ?autodrive: the autopilot drives your car (for testing the game in a browser). With &at=<sample>
 // as well, your car starts the race there, to look at one part of the track.
 const AUTODRIVE = new URLSearchParams(location.search).has('autodrive');
+// ?view=x,y,z,tx,ty,tz holds the race's camera at (x, y, z) looking at (tx, ty, tz), for looking
+// at the scenery.
+const VIEW = new URLSearchParams(location.search).get('view')?.split(',').map(Number) ?? null;
 const START_AT = AUTODRIVE ? Number(new URLSearchParams(location.search).get('at')) || 0 : 0;
 const track = buildTrack(AMIGOS);
 const N = track.samples.length;
@@ -166,6 +169,7 @@ interface RaceCtx {
   lastBeep: number;
   shake: number;
   timeUp: boolean;
+  vice: number; // performance.now() until which the café's cigarette and beer last
 }
 
 let race: RaceCtx | null = null;
@@ -345,7 +349,7 @@ function howTo(): HTMLElement {
       h('li', { class: 'touch-only' }, h('b', {}, 'Steer'), ' with your left thumb, dragging left and right anywhere on that half of the screen. The kart goes by itself; ', h('b', {}, 'Brake'), ' slows it down, and reverses once it stops. Best with the phone sideways.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Drift'), ' hold it through a corner; when the sparks turn blue, then orange, let go for a mini-turbo.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Items'), ' drive through the ? boxes, then tap the item button (swipe it down to throw backwards). The further behind you are, the better what you get.'),
-      h('li', {}, h('b', {}, 'Slipstream'), ' sit close behind a car for a second and you get a boost.'),
+      h('li', {}, h('b', {}, 'Slipstream'), ' get right behind a car and it pulls you along, the closer the harder; pull out to pass and it carries you for a moment.'),
       h('li', { class: 'keys-only' }, h('b', {}, 'Enter'), ' back to your last checkpoint. ', h('b', {}, 'H'), ' horn · ', h('b', {}, 'C'), ' camera · ', h('b', {}, 'M'), ' sound.'),
       h('li', { class: 'touch-only' }, h('b', {}, '↺'), ' back to your last checkpoint. The horn, the camera and the sound are at the top.'),
       h(
@@ -633,6 +637,7 @@ function startRace(goIn: number, endIn: number, grid: Record<string, number>): v
     center: null,
     lastBeep: 99,
     shake: 0,
+    vice: 0,
     timeUp: false,
   };
   scene.add(ctx.items.group);
@@ -715,6 +720,11 @@ function eggReact(r: RaceCtx | null, events: EggEvent[]): void {
       sfx.chime();
       r?.hud.feed('🛒 Contente card: +1 point', 'big');
     }
+    if (e.kind === 'smoke' && r) {
+      sfx.pop();
+      r.vice = performance.now() + 15000;
+      r.hud.feed('🚬🍺 One for the road, from the café', 'big');
+    }
   }
 }
 
@@ -775,8 +785,10 @@ function noteForMe(r: RaceCtx, n: Note): void {
         sfx.pop();
         fx.spray(me.car.p, 50, ['#fff8e0', '#ffe9a8', '#ffffff'], 4, 7, 0.9);
       } else if (n.kind === 'gold') sfx.got();
-      else if (n.kind === 'shield') sfx.shield();
-      else if (n.kind !== 'bass') sfx.throw();
+      else if (n.kind === 'shield') {
+        sfx.shield();
+        flashSplit(r, '🛡️ Bodyguard on: it blocks the next hit', 'faster', 1600);
+      } else if (n.kind !== 'bass') sfx.throw();
       break;
     case 'hit':
       sfx.hit(1);
@@ -797,7 +809,6 @@ function noteForMe(r: RaceCtx, n: Note): void {
       break;
     case 'slip':
       sfx.slip();
-      flashSplit(r, '💨 Slipstream!', 'neutral', 900);
       break;
     case 'turbo':
       sfx.turbo(n.level);
@@ -957,8 +968,14 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
     const info = x.info();
     pose(k.model.group, c.p.x, c.p.y, c.p.z, c.yaw, c.up);
     const fwd = c.v.x * Math.cos(c.yaw) + c.v.z * Math.sin(c.yaw);
-    k.model.update(speedOf(c) * Math.sign(fwd || 1), x === me ? r.steer : (r.bots.find((b) => b.racer === x)?.steer ?? 0), dt, c.grounded, info.flags);
+    const vice = x === me && now < r.vice;
+    k.model.update(speedOf(c) * Math.sign(fwd || 1), x === me ? r.steer : (r.bots.find((b) => b.racer === x)?.steer ?? 0), dt, c.grounded, info.flags, vice);
     kartEffects(x.id, k, c.p.x, c.p.y, c.p.z, c.yaw, speedOf(c), info.flags, c.grounded, dt);
+    // A wisp from the cigarette now and then: small puffs, left hanging behind as the kart goes.
+    if (vice && Math.random() < dt * 8) {
+      const tip = k.model.ember.getWorldPosition(new THREE.Vector3());
+      fx.add(tip.x, tip.y + 0.05, tip.z, (Math.random() - 0.5) * 0.3, 1.2, (Math.random() - 0.5) * 0.3, 0.9, '#d9d9d6', 0.8);
+    }
   }
   r.items.update(a, me.taken, now / 1000, dt);
   engineSound(speedOf(me.car), r.throttle, true);
@@ -1006,10 +1023,12 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
     rolling: me.roll > 0,
     speed: speedOf(me.car),
     boosting: me.car.boost > 0,
+    slip: me.slip,
+    shield: me.shield,
     center,
     split: r.split && now < r.split.until ? r.split : null,
   });
-  pad.item(me.item ? ITEMS[me.item.kind].icon : '', me.item?.uses ?? 0, me.roll > 0);
+  pad.item(me.item ? ITEMS[me.item.kind].icon : '', me.item?.uses ?? 0, me.roll > 0, me.shield);
   if (me.roll > 0 && Math.floor(now / 70) !== Math.floor((now - dt * 1000) / 70)) sfx.tick();
   if (Math.floor(now / 250) !== Math.floor((now - dt * 1000) / 250)) {
     if (isRace) {
@@ -1036,6 +1055,11 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
 const camPos = new THREE.Vector3(0, 30, 40);
 const camLook = new THREE.Vector3();
 function chase(r: RaceCtx, dt: number): void {
+  if (VIEW?.length === 6) {
+    camera.position.set(VIEW[0], VIEW[1], VIEW[2]);
+    camera.lookAt(VIEW[3], VIEW[4], VIEW[5]);
+    return;
+  }
   const c = r.me.car;
   const close = r.cam === 1;
   const f = new THREE.Vector3(Math.cos(c.yaw), 0, Math.sin(c.yaw));
@@ -1052,7 +1076,7 @@ function chase(r: RaceCtx, dt: number): void {
     r.shake *= Math.exp(-dt * 6);
   }
   camera.lookAt(camLook);
-  let fov = 66 + Math.min(20, spd * 0.32) + (c.boost > 0 ? 6 : 0);
+  let fov = 66 + Math.min(20, spd * 0.32) + (c.boost > 0 ? 6 : 0) + r.me.slip * 4;
   // On a phone held upright, open the view up, or the road is a slot down the middle.
   if (camera.aspect < 1) fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(fov / 2)) / Math.sqrt(camera.aspect)));
   if (Math.abs(camera.fov - fov) > 0.1) {

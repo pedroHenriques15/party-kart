@@ -49,9 +49,9 @@ function drive(seconds: number, pilot: (c: Car) => Input = (c) => autopilot(c, t
   return out;
 }
 
-test('the track is a closed loop of about 7 km, with its checkpoints in order', () => {
+test('the track is a closed loop of about 8 km, with its checkpoints in order', () => {
   const s = track.samples;
-  assert.ok(track.length > 6500 && track.length < 8000, `length ${track.length.toFixed(0)} m`);
+  assert.ok(track.length > 7000 && track.length < 9000, `length ${track.length.toFixed(0)} m`);
   for (let i = 0; i < s.length; i++) {
     const gap = Math.hypot(s[(i + 1) % s.length].p.x - s[i].p.x, s[(i + 1) % s.length].p.y - s[i].p.y, s[(i + 1) % s.length].p.z - s[i].p.z);
     assert.ok(gap > 0.5 && gap < 1.5, `sample ${i} to the next is ${gap.toFixed(2)} m`);
@@ -71,13 +71,13 @@ test('locate: on the centre line, beside it, and above it', () => {
 });
 
 test('the autopilot laps the track cleanly', () => {
-  const d = drive(460);
+  const d = drive(540);
   console.log(
     `laps ${d.laps.map((ms) => (ms / 1000).toFixed(1)).join(', ')} s; respawns ${d.respawns}; longest air ${d.maxAir.toFixed(2)} s; top ${(d.topSpeed * 3.6).toFixed(0)} km/h; wall hits ${d.wallHits}`,
   );
   assert.equal(d.respawns, 0);
   assert.ok(d.laps.length >= 2, `only ${d.laps.length} laps`);
-  assert.ok(d.laps[1] > 170000 && d.laps[1] < 240000, `lap ${d.laps[1]} ms`);
+  assert.ok(d.laps[1] > 170000 && d.laps[1] < 260000, `lap ${d.laps[1]} ms`);
 });
 
 test("the first track's jump lands on the road at any speed up to flat out", () => {

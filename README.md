@@ -10,7 +10,7 @@ nothing to maintain. All names are parodies, and all faces are cartoons.
 2. **Copy invite link** and send it to your friends. They open it, pick a driver, **Join**.
 3. Choose the mode and **Start**. Empty places on the grid are bots (you choose how many).
 
-**Race**: 1 to 3 laps (a lap is about three and a half minutes), a starting grid, positions, power-ups, catch-up. **Time attack**: everyone
+**Race**: 1 to 3 laps (a lap is about four minutes), a starting grid, positions, power-ups, catch-up. **Time attack**: everyone
 drives at once, through each other; your best lap before the clock runs out counts, against
 the ghost of your best.
 
@@ -47,22 +47,30 @@ The power-ups, from the **?** boxes. The further behind you are, the better what
 | 💣 Party bomb | Goes for the leader, and catches anyone close |
 | 👑 Gold plating | Faster, untouchable; spins whoever you touch |
 | 🔊 Bass drop | Shrinks everyone ahead of you |
-| 🛡️ Bodyguard | Blocks the next hit |
+| 🛡️ Bodyguard | On as soon as you get it, and blocks the next hit. Your item slot stays free for the next box |
 
-Also: sit close behind a car for a second for a **slipstream** boost; karts **bump**; and with
+Also: get right behind a car and its **slipstream** pulls you along at once, harder the closer you
+are, and carries you on for a moment when you pull out to pass; karts **bump**; and with
 **catch-up** on, the further behind the leader, the more top speed. All of it can be switched off
 in the lobby.
 
-**The track, the Volta dos Amigos**: 7.3 km of Braga as it is, through four friends'
+**The track, the Volta dos Amigos**: 8.1 km of Braga as it is, through five friends'
 neighbourhoods south and east of the centre. Every street, building, park and tree round it comes
 from OpenStreetMap, and the hills from the real relief, 64 m from the lowest point to the highest.
 From the line on the Rua do Fujacal, down the Avenida da Liberdade and over the Rio Este at São
-João da Ponte; up past the Largo da Devesa to the slopes of the Picoto; along the river on the Rua
-de Baixo, then Lamaçães's avenues and roundabouts; back west round the Picoto by the Picoto
+João da Ponte; up past the Largo da Devesa to the slopes of the Picoto; up the Avenida 31 de
+Janeiro and the Avenida João XXI and back down the Rua Bernardo Sequeira, then Lamaçães's avenues
+and roundabouts, past Makro and the Tourigalo's bull; back west round the Picoto by the Picoto
 Adventure Park, and down the Avenida Doutor Viriato Amaral Nunes past the Estádio 1.º de Maio and
 the Altice Forum; through a new link into what was the dead end of the Rua Nova do Couteiro, over
-the river again, and home. A blue-and-white plate names each street as you turn into it. Look out
-for a dog, a dentist and a supermarket.
+the river again, and home.
+
+The streets are as wide as they are (never under 9 m, so eight karts fit), with their lanes
+painted white, their zebra crossings, traffic lights and bus stops, calçada pavements behind
+granite kerbs, central reservations where the avenues have them, and granite setts where the
+street is cobbled. A blue-and-white plate names each street as you turn into it. Bom Jesus and the
+Sameiro stand on the hills to the east, drawn twice their size so you can find them, and the cross
+on top of the Picoto. Look out for a dog, a dentist, a supermarket and a café.
 
 The first track, the cartoon Braga Grand Prix (the Avenida, the Sé, the switchbacks of Bom Jesus
 and the jump), is kept in the code for reference, but the game doesn't race it any more.

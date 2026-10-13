@@ -2,6 +2,7 @@
 // every face is the same friendly cartoon face.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { windStreak } from './textures.ts';
 
 export type Body = 'kart' | 'limo' | 'stroller' | 'vintage' | 'van';
 export type Extra =
@@ -291,7 +292,9 @@ export interface KartModel {
   group: THREE.Group;
   driver: Driver;
   exhaust: THREE.Vector3[]; // where the exhausts are, in the kart's frame
-  update: (speed: number, steer: number, dt: number, grounded: boolean, flags: number) => void;
+  ember: THREE.Object3D; // the cigarette's lit end, where its smoke comes from
+  // vice: the café's easter egg is on, a cigarette and a beer for the driver.
+  update: (speed: number, steer: number, dt: number, grounded: boolean, flags: number, vice?: boolean) => void;
 }
 
 const GOLD = 1;
@@ -299,6 +302,9 @@ const SHIELD = 2;
 const SPIN = 4;
 const SHRINK = 8;
 const BOOST = 16;
+const SLIP = 256;
+
+let windTex: THREE.CanvasTexture | null = null;
 
 // The car around the figure. Forward is +x, right is +z; the wheels sit on y = 0.
 export function buildKart(d: Driver): KartModel {
@@ -458,6 +464,27 @@ export function buildKart(d: Driver): KartModel {
   bubble.visible = false;
   group.add(bubble);
 
+  // The slipstream's wind: streaks of air running back past the kart, round its sides and over it.
+  windTex ??= windStreak();
+  const windGeo = new THREE.BoxGeometry(3.2, 0.06, 0.06);
+  const winds = [
+    [0.4, -1.3],
+    [0.9, -1.2],
+    [1.4, -0.9],
+    [0.4, 1.3],
+    [0.9, 1.2],
+    [1.4, 0.9],
+    [1.8, -0.35],
+    [1.8, 0.35],
+  ].map(([y, z], k) => {
+    const m = new THREE.Mesh(windGeo, new THREE.MeshBasicMaterial({ color: '#e4f6ff', map: windTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    m.position.set(0, y, z);
+    m.visible = false;
+    group.add(m);
+    return { m, phase: (k * 3) / 8 + Math.random() * 0.1 };
+  });
+  let wind = 0;
+
   // Wheels: the front ones on pivots to steer.
   const wheels: THREE.Group[] = [];
   const pivots: THREE.Group[] = [];
@@ -474,6 +501,33 @@ export function buildKart(d: Driver): KartModel {
   }
 
   const head = fig.getObjectByName('head')!;
+
+  // The café's easter egg: a cigarette in the corner of the mouth, and a beer swigged now and then.
+  const cig = new THREE.Group();
+  cig.add(new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.24, 6), std('#f4f1ea', { roughness: 0.6 })));
+  const ember = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.03, 6), new THREE.MeshBasicMaterial({ color: '#ff5a1a', toneMapped: false }));
+  ember.position.y = 0.13;
+  cig.add(ember);
+  cig.rotation.z = -Math.PI / 2 - 0.2;
+  cig.position.set(0.6, -0.19, 0.12);
+  cig.visible = false;
+  head.add(cig);
+  const beer = new THREE.Group();
+  const bottle = std('#4a6e22', { roughness: 0.15, metalness: 0.1 });
+  beer.add(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.24, 10), bottle));
+  beer.add(new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.072, 0.09, 10), std('#f2e6c4')));
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.06, 0.13, 8), bottle);
+  neck.position.y = 0.18;
+  beer.add(neck);
+  beer.children.forEach((m) => (m.position.y += 0.12));
+  beer.scale.setScalar(1.6);
+  beer.visible = false;
+  fig.add(beer);
+  // Held out to the right, and tipped up to the corner of the mouth: big, so it shows from the
+  // chase camera behind the head.
+  const hold = { x: 0.35, y: 0.85, z: 0.8, a: 0.25 };
+  const swig = { x: 0.7, y: 1.62, z: 0.62, a: 2.25 };
+
   const baseColor = shell.color.clone();
   const baseMetal = shell.metalness;
   let spin = 0;
@@ -486,7 +540,8 @@ export function buildKart(d: Driver): KartModel {
     group,
     driver: d,
     exhaust,
-    update(speed, steer, dt, grounded, flags) {
+    ember,
+    update(speed, steer, dt, grounded, flags, vice = false) {
       t += dt;
       for (const w of wheels) w.rotation.z -= (speed / 0.42) * dt;
       for (const pv of pivots) pv.rotation.y = -steer * 0.45;
@@ -515,6 +570,23 @@ export function buildKart(d: Driver): KartModel {
       for (const f of flames) {
         f.visible = !!(flags & BOOST);
         if (f.visible) f.scale.set(1, 0.8 + Math.random() * 0.6, 1);
+      }
+      cig.visible = beer.visible = vice;
+      if (vice) {
+        // A swig every few seconds: the bottle up to the mouth and tipped, then back down.
+        const p = (t % 3.4) / 3.4;
+        const w = p < 0.32 ? Math.sin((p / 0.32) * Math.PI) : 0;
+        beer.position.set(hold.x + (swig.x - hold.x) * w, hold.y + (swig.y - hold.y) * w, hold.z + (swig.z - hold.z) * w);
+        beer.rotation.z = hold.a + (swig.a - hold.a) * w;
+        ember.scale.setScalar(0.8 + Math.random() * 0.5);
+      }
+      wind += ((flags & SLIP ? 1 : 0) - wind) * Math.min(1, dt * 5);
+      for (const w of winds) {
+        w.m.visible = wind > 0.02;
+        if (!w.m.visible) continue;
+        w.phase = (w.phase + dt * 2.2) % 1;
+        w.m.position.x = 2.2 - w.phase * 5;
+        (w.m.material as THREE.MeshBasicMaterial).opacity = wind * 0.9 * Math.sin(Math.PI * w.phase);
       }
     },
   };

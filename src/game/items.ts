@@ -18,7 +18,7 @@ export const ITEMS: Record<ItemKind, { name: string; icon: string; uses: number;
   bomb: { name: 'Party bomb', icon: '💣', uses: 1, blurb: 'Goes for the leader' },
   gold: { name: 'Gold plating', icon: '👑', uses: 1, blurb: 'Faster, and nothing touches you' },
   bass: { name: 'Bass drop', icon: '🔊', uses: 1, blurb: 'Shrinks everyone ahead of you' },
-  shield: { name: 'Bodyguard', icon: '🛡️', uses: 1, blurb: 'Blocks the next hit' },
+  shield: { name: 'Bodyguard', icon: '🛡️', uses: 1, blurb: 'On as soon as you get it; blocks the next hit' },
 };
 
 // Who gets what: the leader gets defence and small stuff, the back of the pack the big guns.

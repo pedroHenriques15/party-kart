@@ -487,6 +487,18 @@ button.small {
   animation: wobble 0.14s infinite alternate;
 }
 
+/* The bodyguard, while it's on: a badge on the item slot, which stays free for the next box. */
+.item.guarded::after,
+.t-item.guarded::after {
+  content: '🛡️';
+  position: absolute;
+  left: -12px;
+  top: -12px;
+  font-size: 26px;
+  line-height: 1;
+  filter: drop-shadow(0 0 6px rgba(127, 212, 255, 0.95));
+}
+
 @keyframes wobble {
   from {
     transform: rotate(-4deg) scale(1.02);

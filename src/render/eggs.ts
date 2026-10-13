@@ -1,6 +1,7 @@
 // The easter eggs along the Volta dos Amigos, one for each friend whose street it passes: Faísca
 // the dog, who chases your kart down the road barking; a dentist's giant tooth that jumps for
-// joy; and the Contente supermarket, whose trolleys roll out to meet you. They stand a little
+// joy; the Contente supermarket, whose trolleys roll out to meet you; and a café, where your
+// driver picks up a cigarette and a beer for the next stretch. They stand a little
 // way along from the friends' houses, never at the door. Each browser's eggs react to its own
 // kart only, so nothing about them goes over the network.
 import * as THREE from 'three';
@@ -8,7 +9,7 @@ import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
 import { bake, box, mat, type Ground } from './kit.ts';
 import * as tex from './textures.ts';
 
-export type EggKind = 'dog' | 'dentist' | 'supermarket';
+export type EggKind = 'dog' | 'dentist' | 'supermarket' | 'smoke';
 
 // Where an egg stands: beside sample i, on one side, and the ground it needs kept clear.
 export interface EggSpot {
@@ -30,8 +31,8 @@ export interface Eggs {
   update: (t: number, dt: number, focus: { idx: number; speed: number } | null) => EggEvent[];
 }
 
-const SET_BACK = { dog: 3.5, dentist: 6, supermarket: 13 };
-const CLEAR = { dog: 5, dentist: 7, supermarket: 16 };
+const SET_BACK = { dog: 3.5, dentist: 6, supermarket: 13, smoke: 7 };
+const CLEAR = { dog: 5, dentist: 7, supermarket: 16, smoke: 10 };
 
 export function eggSpots(track: Track, eggs: { kind: string; x: number; z: number; side: number }[]): EggSpot[] {
   return eggs
@@ -71,6 +72,7 @@ export function buildEggs(track: Track, ground: Ground, spots: EggSpot[]): Eggs 
     if (spot.kind === 'dog') updates.push(dog(track, ground, place, spot, lateral, group));
     if (spot.kind === 'dentist') updates.push(dentist(place, spot, lateral, N));
     if (spot.kind === 'supermarket') updates.push(supermarket(place, spot, lateral, N));
+    if (spot.kind === 'smoke') updates.push(cafe(place, spot, lateral, N));
   }
   return {
     group,
@@ -313,6 +315,47 @@ function supermarket(place: Place, spot: EggSpot, lateral: number, N: number): U
       tr.position.x = 3 + f * (4 + k * 0.8);
       tr.rotation.y = f * (k % 2 ? 1.2 : -1.2);
     });
+  };
+}
+
+// ---- The café: a terrace on the pavement, and the tobacconist's sign. Pass it, and your driver
+// has a cigarette in the mouth and a beer in the hand for a while (main.ts keeps the time). ----
+function cafe(place: Place, spot: EggSpot, lateral: number, N: number): Update {
+  const g = new THREE.Group();
+  // The café itself, 10 m along the road and 7 deep, glass across the front; +x is the road.
+  g.add(box(7, 4.2, 10, mat('#f3efe6', { roughness: 0.85 }), -3.5, 0, 0));
+  g.add(box(0.4, 0.5, 10.4, mat('#cfc6b6', { roughness: 0.9 }), 0.05, 4.2, 0));
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(8, 2.6), mat('#2a3540', { roughness: 0.15, metalness: 0.3 }));
+  glass.rotation.y = Math.PI / 2;
+  glass.position.set(0.02, 1.4, 0);
+  g.add(glass);
+  // The awning, and the sign above it.
+  const awning = box(1.8, 0.12, 9.6, mat('#7a1f2b', { roughness: 0.8 }), 0.9, 2.9, 0);
+  awning.rotation.z = -0.25;
+  g.add(awning);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(8, 1.1), new THREE.MeshStandardMaterial({ map: tex.sign('CAFÉ · TABACARIA', '', '#1c3b2e', '#f4ead2', 1024, 140), roughness: 0.5 }));
+  sign.rotation.y = Math.PI / 2;
+  sign.position.set(0.04, 3.6, 0);
+  g.add(sign);
+  // The terrace: two tables under parasols, and their chairs.
+  const metal = mat('#3a3d42', { metalness: 0.6, roughness: 0.4 });
+  const cloth = mat('#e9e2d0', { roughness: 0.9 });
+  for (const z of [-2.6, 2.6]) {
+    g.add(box(0.08, 0.72, 0.08, metal, 2.6, 0, z), box(0.8, 0.04, 0.8, mat('#f6f6f2'), 2.6, 0.72, z));
+    for (const dz of [-0.75, 0.75]) g.add(box(0.45, 0.45, 0.45, metal, 2.6, 0, z + dz));
+    g.add(box(0.06, 2.4, 0.06, metal, 2.6, 0, z));
+    const parasol = new THREE.Mesh(new THREE.ConeGeometry(1.6, 0.6, 8), cloth);
+    parasol.position.set(2.6, 2.55, z);
+    g.add(parasol);
+  }
+  place(g, spot.i, lateral);
+
+  let cool = -1e9;
+  return (t, _dt, focus, out) => {
+    if (focus && focus.speed > 5 && t - cool > 20 && within(N, spot.i, focus.idx, -10, 10)) {
+      cool = t;
+      out.push({ kind: 'smoke', at: g.position.clone().add(new THREE.Vector3(0, 3, 0)) });
+    }
   };
 }
 

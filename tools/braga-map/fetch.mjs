@@ -2,7 +2,8 @@
 // elevation tiles (Terrain Tiles, on AWS Open Data). It keeps them in .cache/ for build.mjs.
 //
 // node tools/braga-map/fetch.mjs            everything
-// node tools/braga-map/fetch.mjs trees      only what's named (base, buildings, admin, pois, trees, dem)
+// node tools/braga-map/fetch.mjs trees      only what's named (base, buildings, admin, pois, trees,
+//                                           street, dem, horizon)
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,8 +33,12 @@ const QUERIES = {
   way["amenity"~"^(hospital|university|school|college)$"];
 );
 out geom;`,
+  // Buildings, the big ones mapped in parts (a multipolygon, like the Altice Forum) too.
   buildings: `[out:json][timeout:180][bbox:${BOX}];
-way["building"];
+(
+  way["building"];
+  relation["building"];
+);
 out geom;`,
   // The parishes, and the municipality round them.
   admin: `[out:json][timeout:120];
@@ -46,6 +51,13 @@ out geom;`,
   way["natural"="tree_row"];
 );
 out geom;`,
+  // What's along the streets: crossings, traffic lights, bus stops.
+  street: `[out:json][timeout:120][bbox:${BOX}];
+(
+  node["highway"~"^(crossing|traffic_signals|bus_stop)$"];
+  node["crossing"];
+);
+out;`,
   // Places with a name that might be landmarks. build.mjs picks its list from these by name.
   pois: `[out:json][timeout:120][bbox:${BOX}];
 (
@@ -105,3 +117,19 @@ for (let y = tileY(N); y <= tileY(S) && wanted('dem'); y++) {
   }
 }
 if (n) console.log(`elevation: ${n} tiles`);
+
+// The horizon: coarser tiles (zoom 11, about 60 m a pixel) 16 km round, for the hills seen from the
+// track beyond the map's own box.
+const HZ = 11, lat0 = (S + N) / 2, lon0 = (W + E) / 2, dLat = 16 / 111, dLon = 16 / 83;
+const hx = (lon) => Math.floor(((lon + 180) / 360) * 2 ** HZ);
+const hy = (lat) => { const r = (lat * Math.PI) / 180; return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** HZ); };
+let m = 0;
+for (let y = hy(lat0 + dLat); y <= hy(lat0 - dLat) && wanted('horizon'); y++) {
+  for (let x = hx(lon0 - dLon); x <= hx(lon0 + dLon); x++) {
+    const res = await fetch(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${HZ}/${x}/${y}.png`, { headers: { 'user-agent': UA } });
+    if (!res.ok) throw new Error(`Elevation tile ${x}/${y}: ${res.status}`);
+    fs.writeFileSync(path.join(cache, 'dem', `${HZ}_${x}_${y}.png`), Buffer.from(await res.arrayBuffer()));
+    m++;
+  }
+}
+if (m) console.log(`horizon: ${m} tiles`);

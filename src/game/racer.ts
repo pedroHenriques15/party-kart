@@ -51,6 +51,12 @@ export type Note =
 const BOX_RESPAWN = 2500;
 const ROLL_TIME = 1.1;
 const CAR_RADIUS = 1.1;
+// The slipstream, GTA-style: it pulls the moment you're in it, more the closer you are, and
+// carries you for a moment after you pull out to pass.
+const SLIP_FAR = 30; // m behind a car where it starts
+const SLIP_VMAX = 0.15; // extra top speed at full strength
+const SLIP_ACC = 1.2; // extra pull at full strength
+const SLIP_FADE = 0.6; // strength lost a second once out of it
 
 export class Racer {
   readonly id: string;
@@ -66,7 +72,7 @@ export class Racer {
   shrink = 0;
   gold = 0;
   shield = false;
-  slip = 0; // s spent in someone's slipstream
+  slip = 0; // how strong the slipstream is now, 0 to 1
   fin: number | null = null;
   taken = new Map<string, number>(); // box key → race ms it's back
   notes: Note[] = [];
@@ -126,6 +132,10 @@ export class Racer {
       mods.acc *= 1.3;
     }
     if (this.shrink > 0) mods.vmax *= 0.72;
+    if (this.slip > 0) {
+      mods.vmax *= 1 + SLIP_VMAX * this.slip;
+      mods.acc *= 1 + SLIP_ACC * this.slip;
+    }
     if (racing && a.rules.mode === 'race' && a.rules.catchUp) {
       // Catch-up: the further behind the leader, the more top speed and pull.
       const gap = Math.max(0, (a.leader()?.P ?? this.P) - this.P);
@@ -160,7 +170,11 @@ export class Racer {
       this.boxes(a);
       if (this.roll > 0) {
         this.roll -= dt;
-        if (this.roll <= 0 && this.rollKind) {
+        if (this.roll <= 0 && this.rollKind === 'shield') {
+          // The bodyguard goes on at once, so the slot is free for the next box.
+          this.shield = true;
+          this.notes.push({ k: 'use', kind: 'shield' });
+        } else if (this.roll <= 0 && this.rollKind) {
           this.item = { kind: this.rollKind, uses: ITEMS[this.rollKind].uses };
           this.notes.push({ k: 'item', kind: this.rollKind });
         }
@@ -185,8 +199,11 @@ export class Racer {
       this.taken.set(b.key, a.t + BOX_RESPAWN);
       this.notes.push({ k: 'box' });
       if (!this.item && this.roll <= 0) {
+        const place = placeFraction(a.rankOf(this.id), a.cars.size);
+        let kind = rollItem(place);
+        while (kind === 'shield' && this.shield) kind = rollItem(place);
         this.roll = ROLL_TIME;
-        this.rollKind = rollItem(placeFraction(a.rankOf(this.id), a.cars.size));
+        this.rollKind = kind;
       }
     }
   }
@@ -318,7 +335,7 @@ export class Racer {
     const fx = Math.cos(c.yaw);
     const fz = Math.sin(c.yaw);
     const speed = speedOf(c);
-    let drafting = false;
+    let pull = 0;
     for (const o of a.cars.values()) {
       if (o.id === this.id) continue;
       const dx = c.p.x - o.x;
@@ -338,20 +355,20 @@ export class Racer {
         }
         if (o.flags & FLAG.gold && this.gold <= 0 && this.spin <= 0) this.hit(a, '', o.name, 'gold');
       }
-      // In the slipstream: 3 to 22 m behind someone, close to their line.
+      // In the slipstream: up to 30 m behind someone going the same way, close to their line. It's
+      // strongest within 8 m.
       const along = -(dx * fx + dz * fz);
       const side = Math.abs(-dx * fz + dz * fx);
-      if (along > 3 && along < 22 && side < 2.4 && speed > 22) drafting = true;
-    }
-    if (drafting && a.started && this.spin <= 0) {
-      this.slip += dt;
-      if (this.slip > 1.1) {
-        c.boost = Math.max(c.boost, 0.9);
-        this.slip = 0;
-        this.notes.push({ k: 'slip' });
+      const theirs = o.vx * fx + o.vz * fz;
+      if (along > 2.5 && along < SLIP_FAR && side < 2.2 + along * 0.03 && theirs > 12 && Math.abs(c.p.y - o.y) < 3) {
+        pull = Math.max(pull, 1 - 0.6 * clamp((along - 8) / (SLIP_FAR - 8), 0, 1));
       }
+    }
+    if (pull > 0 && speed > 15 && this.spin <= 0) {
+      if (this.slip < 0.05) this.notes.push({ k: 'slip' });
+      this.slip = Math.max(pull, this.slip - dt * SLIP_FADE);
     } else {
-      this.slip = Math.max(0, this.slip - dt * 2);
+      this.slip = Math.max(0, this.slip - dt * SLIP_FADE);
     }
   }
 

@@ -28,13 +28,16 @@ node tools/braga-map/course.mjs   # the track and its scenery: src/track/amigos.
 ```
 
 - `fetch.mjs` gets OpenStreetMap through Overpass (streets and land, buildings, parishes,
-  landmarks, trees) and elevation tiles. The public Overpass server is often busy: it waits and
-  tries again. `node fetch.mjs trees` fetches only what's named.
+  landmarks, trees, and the crossings, traffic lights and bus stops) and elevation tiles, plus
+  coarser ones 16 km round for the horizon. The public Overpass server is often busy: it waits and
+  tries again. `node fetch.mjs trees` fetches only what's named (`base`, `buildings`, `admin`,
+  `pois`, `trees`, `street`, `dem`, `horizon`).
 - `build.mjs` and `course.mjs` read the game's own track code, so they need Node 22.18 or later,
   like the tests. `geo.mjs` is what they share: the projection and the relief.
 - `course.mjs` also needs the waypoints, `.cache/places.json`: the houses from the shared map's
-  database, as `{ "places": [{ "id", "egg", "x", "z", "rows"? }] }`. They're private, so they stay
-  in the ignored folder. `egg` is the easter egg by that house (`dog`, `dentist`, `supermarket` or
+  database, as `{ "places": [{ "id", "egg", "x", "z", "rows"? }], "order"?: [ids] }`. They're
+  private, so they stay in the ignored folder. `order`, when it's there, keeps the loop going
+  round the houses in that order. `egg` is the easter egg by that house (`dog`, `dentist`, `supermarket` or
   null), and `rows: true` lines that street with houses on both sides. How it plans the track, and
   what to change, is in "The track" in `docs/making-changes.md`.
 
@@ -47,7 +50,7 @@ node tools/braga-map/course.mjs   # the track and its scenery: src/track/amigos.
   pedestrian streets) come to 102 km, 65% fewer. Keeping only the fast roads, primary and
   secondary cuts 78%, but loses the Avenida Central and the old town.
 - **Relief** every 20 m, from 55 m in the north-west corner to 570 m on the Sameiro.
-- **The Volta dos Amigos** ("Pista nova"), the game's track: 7.3 km round, through four friends'
+- **The Volta dos Amigos** ("Pista nova"), the game's track: 8.1 km round, through five friends'
   neighbourhoods.
 - **The first track** ("Pista antiga"), drawn at its real size with its fountain on the real one
   in the Praça da República. It's 2.5 km round and fits in 851 × 414 m. The real Bom Jesus is
@@ -62,7 +65,8 @@ node tools/braga-map/course.mjs   # the track and its scenery: src/track/amigos.
 Draft 1 was approved on 13 October 2026: every zone and all 32 landmarks stay, with the main
 streets (the 65% cut). `decisions.json` keeps that, by zone and landmark id, and this copy of the
 map shows it. The first track made from the map is the Volta dos Amigos, through the four houses
-added on the shared map; the first, cartoon track is kept in the code for reference.
+added on the shared map, and a fifth added after; the first, cartoon track is kept in the code for
+reference.
 
 ## Credits
 

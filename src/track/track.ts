@@ -11,6 +11,8 @@ export interface Sample {
   walls: boolean;
   boost: boolean;
   surface: Surface;
+  lanes: number; // painted on it, negative when one way (see Point)
+  kerbs: [number, number]; // beyond the left and right edges (see Point)
   d: number; // metres from the start line
 }
 
@@ -48,10 +50,10 @@ export function buildTrack(layout: Point[]): Track {
   const n = pts.length;
 
   // Carry the per-stretch settings forward from point to point.
-  const opts: { w: number; bank: number; walls: boolean; surface: Surface }[] = [];
-  let cur: (typeof opts)[number] = { w: 16, bank: 0, walls: true, surface: 'asphalt' };
+  const opts: { w: number; bank: number; walls: boolean; surface: Surface; lanes: number; kerbs: [number, number] }[] = [];
+  let cur: (typeof opts)[number] = { w: 16, bank: 0, walls: true, surface: 'asphalt', lanes: 0, kerbs: [0, 0] };
   for (const q of layout) {
-    cur = { w: q.w ?? cur.w, bank: q.bank ?? cur.bank, walls: q.walls ?? cur.walls, surface: q.surface ?? cur.surface };
+    cur = { w: q.w ?? cur.w, bank: q.bank ?? cur.bank, walls: q.walls ?? cur.walls, surface: q.surface ?? cur.surface, lanes: q.lanes ?? cur.lanes, kerbs: q.kerbs ?? cur.kerbs };
     opts.push(cur);
   }
 
@@ -94,7 +96,7 @@ export function buildTrack(layout: Point[]): Track {
     const w = o.w + (o2.w - o.w) * s.u;
     const flat = norm(cross(t, UP));
     const r = norm(add(scale(flat, Math.cos(bank)), scale(UP, Math.sin(bank))));
-    return { p: s.p, t, r, n: norm(cross(r, t)), w, walls: o.walls, boost: false, surface: o.surface, d: i };
+    return { p: s.p, t, r, n: norm(cross(r, t)), w, walls: o.walls, boost: false, surface: o.surface, lanes: o.lanes, kerbs: o.kerbs, d: i };
   });
 
   const nearest = (q: V) => {

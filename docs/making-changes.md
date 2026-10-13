@@ -31,29 +31,42 @@ loop again, but the committed track keeps working. What it does, in order:
 1. **The loop.** A graph of the streets, and the cheapest loop through the waypoints. `COST` makes
    bigger roads cheaper and `TURN` prices the turns. The loop never uses a street twice or runs
    within 28 m of itself, and it drives along each waypoint's own street through it. A waypoint's
-   street that's a dead end gets a link from its end to the nearest street ahead.
+   street that's a dead end gets a link from its end to the nearest street ahead. It tries every
+   order of the waypoints, unless `places.json` gives one (`"order": [ids]`): then only the
+   direction through each is chosen. To add a house without reshuffling the loop, put it in the
+   order between the two it falls between.
 2. **The centre line.** Short jogs at junctions are folded into one corner, and corners are rounded
-   to `R_MIN` (18 m) where the streets allow. Widths come from the kind of street (13–15 m), and
-   heights from the relief, smoothed over about 50 m. It prints the corners it had to make
-   tighter, the steepest grade, the sharpest crest, and any place the road comes too close to
-   itself.
-3. **Where things go.** The start on the straightest stretch of a main road at least 250 m from
-   every waypoint, 5 checkpoints evenly spaced, a row of item boxes every 820 m, boost pads 30 m
-   into the longest straights, and the easter eggs 44–50 m past their houses.
-4. **The scenery.** The relief; the ground's areas, streets and railway; every building within
-   300 m that the road doesn't cover, plus infill where the map has none on a built-up street;
-   trees; the river; the street names and landmarks. Packed into `amigos-data.ts`.
+   to `R_MIN` (12 m, a street corner) where the streets allow. Heights come from the relief,
+   smoothed over about 50 m. It prints the corners it had to make tighter, the widths, the
+   steepest grade, the sharpest crest, and any place the road comes too close to itself.
+3. **The street as it is.** The width, kerb to kerb, is the map's `width`, or its `lanes`, or what
+   that kind of street usually is (`carriageway`), never under `W_MIN` (9 m). Lane lines follow
+   `lanes` and `lane_markings`; `surface=sett` and the like make granite setts. Beyond each edge
+   (`kerbs`) is a pavement as wide as the buildings leave room for (none where `sidewalk` says no,
+   or out in the open), a central reservation where a one-way carriageway runs alongside, and a
+   gap wherever a side street joins.
+4. **Where things go.** The start on the Rua do Fujacal (`START_ON`), on the straightest stretch at
+   least 250 m from every waypoint, 5 checkpoints evenly spaced, a row of item boxes every 820 m,
+   boost pads 30 m into the longest straights, and the easter eggs 44–50 m past their houses.
+5. **The scenery.** The relief, near and far, and the hills 15 km round for the horizon; the
+   ground's areas, every street at its width, the railway; every building within 300 m that isn't
+   on the road or its kerb, the big ones mapped in parts too, plus infill where the map has none on
+   a built-up street; trees; the river; zebra crossings, traffic lights and bus stops; the street
+   names and landmarks; and the sights (Bom Jesus, the Sameiro, the cross on the Picoto, the
+   stadium, the Altice Forum, Makro, the Tourigalo's bull), picked out of the map by their
+   OpenStreetMap ids. Packed into `amigos-data.ts`.
 
-The layout is the usual `Point`s (see the first track, below), one every 8 m. `ELEV0` is the
-height above the sea that the game's y = 0 stands for.
+The layout is the usual `Point`s (see the first track, below), one every 8 m, with `lanes` and
+`kerbs` for how it's dressed. `ELEV0` is the height above the sea that the game's y = 0 stands
+for.
 
 Other things to know:
 
-- A sample is a metre of road. The lap is about 7.3 km (N ≈ 7300). Nothing in the new scenery uses
+- A sample is a metre of road. The lap is about 8.1 km (N ≈ 8150). Nothing in the new scenery uses
   a raw sample index: it's all placed by position, so it moves with the track when that's made
   again.
-- **The tests guard the track.** It must be a 6.5–8 km loop with 5 checkpoints, and the autopilot
-  must lap it with no respawns, its second lap taking 170–240 s. Eight bots must all finish a lap,
+- **The tests guard the track.** It must be a 7–9 km loop with 5 checkpoints, and the autopilot
+  must lap it with no respawns, its second lap taking 170–260 s. Eight bots must all finish a lap,
   within 60 s of each other. If the autopilot can't get round, a corner is too tight: raise
   `R_MIN`, or change the costs so the loop goes another way.
 - **A new track needs a new peer id prefix** (`PREFIX` in `src/session.ts`), or old builds join
@@ -61,7 +74,9 @@ Other things to know:
 - **A road can pass over itself.** `locate` only searches ±40 samples around the car's last sample,
   so the two levels need to be more than about 40 m of road apart.
 - To look at one part of the track, open the game with `?autodrive&at=<sample>`: your car starts
-  the race there.
+  the race there. `?view=x,y,z,tx,ty,tz` holds the camera anywhere, to look at the scenery.
+- The map's data comes from `fetch.mjs`: `node tools/braga-map/fetch.mjs street horizon` fetches
+  only the crossings, lights and bus stops, and the horizon's relief.
 
 ### The first track, for reference
 
@@ -179,6 +194,11 @@ boosting, drifting, charging a turbo, or slipstreaming.
 
 ## A new landmark or scenery
 
+A sight that's on the map (a building or a monument the track passes) is easiest in
+`src/render/sights.ts`: find its OpenStreetMap id (`tools/braga-map/.cache/osm/*.json`), add it to
+the `sights` in `course.mjs` with whatever the builder needs (a position, a footprint's
+rectangle, a front), run `course.mjs`, and add a builder for its `kind`. Otherwise:
+
 1. Build it as a function returning a `THREE.Group`, in `src/render/city.ts` or a file of its own,
    from the helpers in `src/render/kit.ts`:
    - `box`, `mesh` and `slab` for the shapes;
@@ -201,4 +221,6 @@ kart (its sample and speed) and returns events: `eggReact` in `main.ts` turns th
 sparkles and a line in the feed. They react to your own kart only, so nothing goes over the
 network. Where they stand comes from the waypoints' `egg` in `.cache/places.json`, through
 `course.mjs`: a new one needs a kind in `SET_BACK` and `CLEAR`, a builder, and its sounds in
-`sfx` (`src/audio.ts`).
+`sfx` (`src/audio.ts`). An egg that does something to your own kart for a while (the café's
+cigarette and beer) keeps its time in `RaceCtx` in `main.ts`, and passes it to the kart model's
+`update`.

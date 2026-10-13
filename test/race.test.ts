@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { newCar, stepCar, TURBO2 } from '../src/car/car.ts';
 import { Arena, type Rules } from '../src/game/arena.ts';
 import { botControls, newBrain, type Brain } from '../src/game/bot.ts';
-import { itemOdds, ITEMS, rollItem, type ItemEv, type ItemKind } from '../src/game/items.ts';
+import { boxRows, itemOdds, ITEMS, rollItem, type ItemEv, type ItemKind } from '../src/game/items.ts';
 import { NO_CONTROLS, Racer, type Controls } from '../src/game/racer.ts';
 import { AMIGOS } from '../src/track/amigos.ts';
 import { LAYOUT } from '../src/track/layout.ts';
@@ -109,6 +109,26 @@ test('a disco ball rolls ahead and spins the car in front; a bodyguard blocks on
   }
 });
 
+test('a bodyguard goes on as soon as you get it, and leaves the slot free for the next box', () => {
+  const box = boxRows(track)[0];
+  const me = at('me', box.i - 50, 20, box.lat);
+  const { a } = arena(RACE, [me]);
+  me.roll = DT / 2;
+  me.rollKind = 'shield';
+  tick(a, [me], cruise);
+  assert.ok(me.shield, 'on at once');
+  assert.equal(me.item, null, 'the slot is free');
+  assert.ok(me.notes.some((n) => n.k === 'use' && n.kind === 'shield'));
+  const held = () => me.item; // read afresh: the assertions above narrowed me.item to null
+  for (let i = 0; i < 6 / DT && !held(); i++) tick(a, [me], cruise);
+  const got = held();
+  assert.ok(got, 'picked up another item');
+  assert.notEqual(got.kind, 'shield', 'and not a second bodyguard');
+  tick(a, [me], (r) => ({ ...cruise(r), use: true }));
+  assert.ok(me.notes.some((n) => n.k === 'use' && n.kind !== 'shield'), 'and used it');
+  assert.ok(me.shield, 'with the bodyguard still on');
+});
+
 test('gold plating smashes what it meets', () => {
   const me = at('me', 150, 0);
   const { a, events } = arena(RACE, [me]);
@@ -168,17 +188,30 @@ test('a long drift, let go, earns a mini-turbo', () => {
   assert.ok(c.boost > 0);
 });
 
-test('following close behind someone gives a slipstream boost', () => {
-  const lead = at('lead', 120, 35);
-  const me = at('me', 110, 35);
+test('the slipstream pulls at once behind someone, and carries you past when you pull out', () => {
+  const lead = at('lead', 120, 33);
+  const me = at('me', 106, 33);
+  const solo = at('solo', 106, 33, 4); // the same car with nobody to follow, on its own track
   const { a } = arena({ ...RACE, items: false, catchUp: false }, [lead, me]);
-  let slipped = false;
-  for (let i = 0; i < 2 / DT; i++) {
+  const { a: alone } = arena({ ...RACE, items: false, catchUp: false }, [solo]);
+  const speed = (r: Racer) => Math.hypot(r.car.v.x, r.car.v.z);
+  const both = () => {
     tick(a, [lead, me], cruise);
-    if (me.notes.some((n) => n.k === 'slip')) slipped = true;
-    me.notes = [];
-  }
-  assert.ok(slipped);
+    alone.t = a.t;
+    tick(alone, [solo], cruise);
+  };
+  both();
+  assert.ok(me.slip > 0.8, `in the slipstream from the first step: ${me.slip}`);
+  assert.ok(me.notes.some((n) => n.k === 'slip'), 'with a whoosh');
+  assert.equal(solo.slip, 0);
+  for (let i = 0; i < 0.5 / DT; i++) both();
+  assert.ok(speed(me) > speed(solo) + 1.5, `pulling within half a second: ${speed(me).toFixed(1)} vs ${speed(solo).toFixed(1)} m/s`);
+  // Pull out to pass: the pull fades over a second or two instead of stopping dead.
+  me.car.p = surfacePoint(track.samples[me.car.idx], 4, 0.01);
+  for (let i = 0; i < 0.6 / DT; i++) both();
+  assert.ok(me.slip > 0.3 && speed(me) > speed(solo) + 3, `still carried after pulling out: slip ${me.slip.toFixed(2)}`);
+  for (let i = 0; i < 2 / DT; i++) both();
+  assert.equal(me.slip, 0, 'and then it wears off');
 });
 
 test('catch-up: far behind the leader, a car goes faster', () => {

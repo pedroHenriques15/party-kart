@@ -18,7 +18,7 @@ export const LIGHT = {
   sun: knob('sun', 5.2),
   hemi: knob('hemi', 1.2),
   env: knob('env', 0.9),
-  fog: knob('fog', 0.00075),
+  fog: knob('fog', 0.00022),
 };
 
 export class Look {

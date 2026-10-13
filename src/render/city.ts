@@ -1,16 +1,18 @@
 // The Volta dos Amigos's world: Braga as it is, from OpenStreetMap and the relief (amigos-data.ts,
 // made by tools/braga-map/course.mjs). The land shaped by the real heights, and what's on it
 // painted onto the ground; every building round the track, with its floors and its roof; trees;
-// the Rio Este and its bridges; the street names; the party at the start; and the friends' easter
-// eggs (eggs.ts). The road itself is road.ts.
+// the Rio Este and its bridges; zebra crossings, traffic lights and bus stops; the street names;
+// the party at the start; the sights (sights.ts); and the friends' easter eggs (eggs.ts). The road
+// itself is road.ts.
 import * as THREE from 'three';
 import { distanceToRoad, surfacePoint, type Sample, type Track } from '../track/track.ts';
 import { CITY_DATA } from './amigos-data.ts';
 import { buildDriverFigure, DRIVERS } from './drivers.ts';
 import { buildEggs, eggSpots, type Eggs } from './eggs.ts';
+import { buildSights, horizon, type Sight } from './sights.ts';
 import { bake, box, mat } from './kit.ts';
 import type { Quality } from './look.ts';
-import { bridge, buildRoad, lamps, runs, stringLights } from './road.ts';
+import { bridge, buildRoad, lamps, ribbon, runs, stringLights } from './road.ts';
 import * as tex from './textures.ts';
 import { plantTrees, type Tree } from './trees.ts';
 import type { World } from './world.ts';
@@ -36,9 +38,13 @@ interface Meta {
   eggs: { kind: string; x: number; z: number; side: number }[];
   streets: { name: string; x: number; z: number }[];
   landmarks: { name: string; x: number; z: number }[];
+  crossings: [number, number][];
+  signals: [number, number][];
+  stops: { x: number; z: number; shelter: number }[];
+  sights: Sight[];
 }
 interface Data {
-  head: { terrain: Grid; far: Grid; areas: { at: number; n: number; kinds: string[] }; lines: { at: number; n: number }; buildings: { at: number; n: number }; trees: { at: number; n: number }; rivers: { at: number; n: number; halfWidth: number }; meta: Meta };
+  head: { terrain: Grid; far: Grid; horizon: Grid; cover: { at: number; n: number }; areas: { at: number; n: number; kinds: string[] }; lines: { at: number; n: number }; buildings: { at: number; n: number }; trees: { at: number; n: number }; rivers: { at: number; n: number; halfWidth: number }; meta: Meta };
   nums: Int16Array;
 }
 
@@ -95,10 +101,11 @@ const LAND: Record<string, string> = {
   school: '#a7a196',
   sport: '#4f8c3c',
   water: '#3e6f7c',
-  plaza: '#d2cdc2',
+  plaza: '#b8b2a6',
 };
-// Street classes as course.mjs numbered them: width in metres and whether they have pavements.
-const STREET: [number, boolean][] = [[16, true], [8, false], [12, true], [10, true], [9, true], [7, true], [6, false], [4, false], [3, false], [3, false]];
+// Street classes as course.mjs numbered them: whether they have pavements. (Each street comes
+// with its own width.)
+const PAVED = [true, false, true, true, true, true, false, false, false, false];
 // Facade colours, which tint the near-white wall textures.
 const FACADES = ['#f2ede3', '#ecd7a2', '#e0b874', '#e0ad9c', '#b9cfdb', '#d8c5ab', '#efe0bf', '#bfd3bb'];
 const SHOPS = ['#eeeeea', '#dcdcd6', '#e6e0d4', '#cfd4d6'];
@@ -171,8 +178,16 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
 
   // The ground's height: the real one, but level with the road beside it (a pavement's width),
   // blending back to the real one over 30 m; and the river's bed cut through it.
+  // The stadium's ground is level, its pitch and stands in a bowl cut into the slope.
+  const pads = meta.sights.flatMap((s) => (s.kind === 'stadium' ? [{ x: s.x, z: s.z, c: Math.cos(s.angle), s: Math.sin(s.angle), rx: s.L + s.W + 30, rz: s.W + 36, y: nat(s.x, s.z) }] : []));
   const ground = (x: number, z: number): number => {
     let h = nat(x, z);
+    for (const p of pads) {
+      const dx = x - p.x;
+      const dz = z - p.z;
+      const e = Math.hypot((dx * p.c + dz * p.s) / p.rx, (-dx * p.s + dz * p.c) / p.rz);
+      if (e < 1.3) h = p.y + (h - p.y) * smooth(0.9, 1.3, e);
+    }
     const { d, i } = distanceToRoad(track, x, z);
     if (i >= 0) {
       const s = track.samples[i];
@@ -229,9 +244,10 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
     const pos: number[] = [];
     const col: number[] = [];
     const c = new THREE.Color();
-    const green = new THREE.Color('#5d7140');
-    const wood = new THREE.Color('#465d33');
+    const green = new THREE.Color('#62763f');
+    const wood = new THREE.Color('#344a2a');
     const town = new THREE.Color('#9b968a');
+    const cover = (i: number, j: number) => nums[head.cover.at + j * g.nx + i];
     for (let j = 0; j < g.nz; j++) {
       for (let i = 0; i < g.nx; i++) {
         const x = g.x0 + i * g.step;
@@ -239,10 +255,10 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
         let y = far(x, z);
         if (inner(x, z, 0)) y -= 4; // tucked under the near land
         pos.push(x, y, z);
-        // The city fills the valley; woods on the hills.
+        // Woods, town and fields, as the map has them, mottled.
         const n = Math.sin(x * 0.011 + Math.sin(z * 0.007) * 2) * Math.cos(z * 0.013 + Math.sin(x * 0.009) * 2);
-        c.copy(green).lerp(wood, smooth(30, 160, y) * 0.8 + n * 0.15);
-        c.lerp(town, (1 - smooth(1800, 3200, Math.hypot(x + 300, z - 200))) * (0.6 + n * 0.3) * (1 - smooth(40, 120, y)));
+        const k = cover(i, j);
+        c.copy(k === 1 ? wood : k === 2 ? town : green).lerp(wood, k ? n * 0.12 : smooth(60, 300, y) * 0.5 + n * 0.15);
         col.push(c.r, c.g, c.b);
       }
     }
@@ -265,6 +281,9 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
     hills.receiveShadow = true;
     group.add(hills);
   }
+
+  // ---- The horizon: the hills 15 km round, under the far ones where they meet. ----
+  group.add(horizon(nums, head.horizon, head.far));
 
   // ---- The Rio Este: water down its course, rippling. ----
   {
@@ -354,6 +373,17 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
     group.add(plantTrees(trees, 800, true));
   }
 
+  // ---- Along the road: zebra crossings, traffic lights, bus stops. ----
+  const furniture = streetFurniture(track, ground, meta);
+  statics.add(furniture.group);
+  updates.push(furniture.update);
+
+  // ---- The sights: Bom Jesus and the Sameiro on the hills, the cross on the Picoto, the stadium,
+  // the Altice Forum, Makro and the Tourigalo's bull. ----
+  const sights = buildSights(meta.sights, track, ground, far);
+  group.add(sights.group);
+  updates.push(sights.update);
+
   // ---- Names: a plate as the road enters each street, brown signs to the landmarks. ----
   statics.add(streetPlates(track, ground, meta.streets));
   for (const l of meta.landmarks) statics.add(landmarkSign(track, ground, l));
@@ -408,12 +438,13 @@ function paintGround(head: Data['head'], nums: Int16Array, track: Track, quality
 
   // Every other street: pavement first, then asphalt; the small ones, then the big ones.
   const L = head.lines;
-  const lines: { k: number; pts: [number, number][] }[] = [];
+  const lines: { k: number; w: number; pts: [number, number][] }[] = [];
   for (let i = L.at; i < L.at + L.n; ) {
     const k = nums[i];
-    const n = nums[i + 1];
-    lines.push({ k, pts: points(nums, i + 2, n) });
-    i += 2 + n * 2;
+    const w = nums[i + 1] / 10;
+    const n = nums[i + 2];
+    lines.push({ k, w, pts: points(nums, i + 3, n) });
+    i += 3 + n * 2;
   }
   g.lineCap = 'round';
   g.lineJoin = 'round';
@@ -424,32 +455,29 @@ function paintGround(head: Data['head'], nums: Int16Array, track: Track, quality
     pts.forEach(([x, z], k) => (k ? g.lineTo(x, z) : g.moveTo(x, z)));
     g.stroke();
   };
-  for (const { k, pts } of lines) if (k < 9 && STREET[k][1]) stroke(pts, STREET[k][0] + 4, '#b1aa9c');
-  for (const { k, pts } of lines) {
-    if (k === 9) {
-      stroke(pts, 4, '#5d5249');
-      continue;
-    }
-    stroke(pts, STREET[k][0], k === 6 ? '#d6d1c6' : k >= 7 ? '#77746c' : '#4b4d52');
-  }
+  for (const { k, w, pts } of lines) if (k < 9 && PAVED[k]) stroke(pts, w + 5, '#948f86');
+  for (const { k, w, pts } of lines) stroke(pts, w, k === 9 ? '#5d5249' : k === 6 ? '#d6d1c6' : k >= 7 ? '#77746c' : '#47494d');
   // A dashed centre line on the big roads.
-  g.setLineDash([3, 6]);
-  for (const { k, pts } of lines) if (k <= 3) stroke(pts, 0.25, 'rgba(240,240,232,0.8)');
+  g.setLineDash([3, 4]);
+  for (const { k, pts } of lines) if (k <= 3) stroke(pts, 0.15, 'rgba(240,240,232,0.8)');
   g.setLineDash([]);
 
-  // The pavements along the track, out to the buildings.
+  // Under the track and its pavements, as wide as each is.
   const s = track.samples;
-  const widest = Math.max(...s.map((p) => p.w));
-  for (const [w, color] of [[widest + 8.5, '#b5ae9f'], [widest, '#4b4d52']] as const) {
-    g.strokeStyle = color;
-    g.lineWidth = w;
-    g.beginPath();
-    for (let i = 0; i <= s.length; i += 2) {
-      const p = s[i % s.length];
-      if (i) g.lineTo(p.p.x, p.p.z);
-      else g.moveTo(p.p.x, p.p.z);
+  for (const pass of [0, 1]) {
+    for (let i = 0; i < s.length; i += 2) {
+      const a = s[i];
+      const b = s[(i + 2) % s.length];
+      const out = Math.max(0, a.kerbs[0], a.kerbs[1]);
+      stroke(
+        [
+          [a.p.x, a.p.z],
+          [b.p.x, b.p.z],
+        ],
+        pass ? a.w : a.w + 2 * out + (out ? 1 : 0),
+        pass ? '#47494d' : '#948f86',
+      );
     }
-    g.stroke();
   }
 
   const t = new THREE.CanvasTexture(c);
@@ -787,8 +815,8 @@ function streetPlates(track: Track, ground: (x: number, z: number) => number, st
     const i = distanceToRoad(track, st.x, st.z).i;
     if (i < 0) return;
     const s = track.samples[i];
-    const p = surfacePoint(s, s.w / 2 + 1.4, 0);
-    const y = ground(p.x, p.z);
+    const p = surfacePoint(s, s.w / 2 + (s.kerbs[1] > 1.2 ? s.kerbs[1] - 0.5 : 1.4), 0);
+    const y = s.kerbs[1] > 0 ? p.y + 0.15 : ground(p.x, p.z);
     posts.push(new THREE.Matrix4().makeTranslation(p.x, y + 1.3, p.z));
     // The plate spans across the road's direction, its face towards the karts coming.
     const hw = 1.1;
@@ -814,6 +842,93 @@ function streetPlates(track: Track, ground: (x: number, z: number) => number, st
   post.computeBoundingSphere();
   g.add(post);
   return g;
+}
+
+// ---- Along the road ----
+
+// Zebra crossings across the road where the map has them, traffic lights at the kerb before the
+// junctions, and the bus stops, a shelter or a pole, on the pavement.
+function streetFurniture(track: Track, ground: (x: number, z: number) => number, meta: Meta): { group: THREE.Group; update: (t: number) => void } {
+  const g = new THREE.Group();
+  const N = track.samples.length;
+  const zebra = new THREE.MeshStandardMaterial({ map: tex.zebra(), transparent: true, alphaTest: 0.4, roughness: 0.6 });
+  for (const [x, z] of meta.crossings) {
+    const { d, i } = distanceToRoad(track, x, z);
+    if (i < 0 || d > 2) continue;
+    g.add(new THREE.Mesh(ribbon(track, (i - 2 + N) % N, (i + 2) % N, (s) => [-s.w / 2 + 0.4, s.w / 2 - 0.4], 0.035, 4, 1), zebra));
+  }
+
+  // Traffic lights: a pole at the right-hand kerb 10 m before, its lamps towards the karts coming.
+  const metal = mat('#3d4146', { metalness: 0.5, roughness: 0.5 });
+  const black = mat('#141516', { roughness: 0.5 });
+  const lit = ['#ff3b2f', '#ffb000', '#2fdc6a'].map((c) => new THREE.MeshBasicMaterial({ color: c, toneMapped: false }));
+  const off = mat('#2a2b2d', { roughness: 0.4 });
+  const lights: THREE.Mesh[] = [];
+  for (const [x, z] of meta.signals) {
+    const { d, i: at } = distanceToRoad(track, x, z);
+    if (at < 0 || d > 6) continue;
+    const i = (at - 10 + N) % N;
+    const s = track.samples[i];
+    const p = surfacePoint(s, s.w / 2 + 0.5, 0);
+    const y = s.kerbs[1] !== 0 ? p.y + 0.15 : ground(p.x, p.z);
+    const pole = new THREE.Group();
+    pole.add(box(0.14, 3.2, 0.14, metal, 0, 0, 0));
+    pole.add(box(0.3, 1.0, 0.36, black, 0.18, 2.3, 0));
+    for (let k = 0; k < 3; k++) {
+      const m = new THREE.Mesh(new THREE.CircleGeometry(0.11, 12), off);
+      m.position.set(0.335, 3.1 - k * 0.3, 0);
+      m.rotation.y = Math.PI / 2;
+      pole.add(m);
+    }
+    // The one that's lit, moved to its place in front of the others.
+    const on = new THREE.Mesh(new THREE.CircleGeometry(0.11, 12), lit[2]);
+    on.rotation.y = Math.PI / 2;
+    on.userData.moves = true;
+    pole.add(on);
+    // Its +x faces the karts coming: back along the road.
+    pole.position.set(p.x, y, p.z);
+    pole.rotation.y = -Math.atan2(-s.t.z, -s.t.x);
+    g.add(pole);
+    lights.push(on);
+  }
+  // Each light keeps its own time: green, amber, red.
+  const update = (t: number) =>
+    lights.forEach((m, k) => {
+      const u = (t + k * 7.3) % 20;
+      const j = u < 11 ? 2 : u < 13 ? 1 : 0;
+      m.material = lit[j];
+      m.position.set(0.34, 3.1 - (2 - j) * 0.3, 0);
+    });
+
+  // Bus stops: a shelter of glass under a flat roof, or just the pole, beside the road.
+  const glass = mat('#9fb7c4', { roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.35 });
+  const sign = new THREE.MeshStandardMaterial({ map: tex.sign('BUS', '', '#ffffff', '#1b3f8b', 256, 128, ''), roughness: 0.5 });
+  for (const st of meta.stops) {
+    const { i } = distanceToRoad(track, st.x, st.z);
+    if (i < 0) continue;
+    const s = track.samples[i];
+    const side = Math.sign((st.x - s.p.x) * s.r.x + (st.z - s.p.z) * s.r.z) || 1;
+    const k = side < 0 ? 0 : 1;
+    const pave = s.kerbs[k] > 0 ? s.kerbs[k] : 0;
+    const p = surfacePoint(s, side * (s.w / 2 + (pave > 2.4 ? pave - 1.1 : pave + 1.2)), 0);
+    const y = pave > 2.4 ? p.y + 0.15 : ground(p.x, p.z);
+    const stop = new THREE.Group();
+    if (st.shelter) {
+      stop.add(box(1.5, 0.1, 3.6, metal, 0, 2.4, 0), box(0.04, 2.3, 3.4, glass, -0.7, 0.1, 0));
+      for (const zz of [-1.7, 1.7]) stop.add(box(0.08, 2.4, 0.08, metal, -0.7, 0, zz), box(1.3, 2.3, 0.04, glass, 0, 0.1, zz));
+      stop.add(box(0.4, 0.45, 2.4, metal, -0.45, 0, 0));
+    }
+    stop.add(box(0.08, 2.8, 0.08, metal, 0.6, 0, st.shelter ? 2.2 : 0));
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.3), sign);
+    plate.position.set(0.6, 2.6, st.shelter ? 2.2 : 0);
+    plate.rotation.y = Math.PI / 2;
+    stop.add(plate);
+    // Its +x faces the road.
+    stop.position.set(p.x, y, p.z);
+    stop.rotation.y = -Math.atan2(s.t.z, s.t.x) + (side < 0 ? -Math.PI / 2 : Math.PI / 2);
+    g.add(stop);
+  }
+  return { group: g, update };
 }
 
 // A brown sign on two posts by the road, pointing out a landmark on that side.

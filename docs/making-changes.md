@@ -52,7 +52,8 @@ Other things to know:
 - **A road can pass over itself.** `locate` only searches ±40 samples around the car's last sample,
   so the two levels need to be more than about 40 m of road apart.
 - To look at one part of the track, open the game with `?autodrive&at=<sample>`: your car starts
-  the race there. `?view=x,y,z,tx,ty,tz` holds the camera anywhere, to look at the scenery.
+  the race there. `?view=x,y,z,tx,ty,tz` holds the camera anywhere, to look at the scenery, and
+  `?scenery&view=…` shows the city alone from there, without starting a race.
 - The city keeps only what's near the track (`nearBuildings` and the trees in `buildCity`): the
   map has the whole of Braga in it, for the other games.
 
@@ -192,6 +193,8 @@ footprint's rectangle, a front), make the world again (see "The track"), and add
 5. Watch the cost. With `?autodrive`, `window.__kart.calls` and `.tris` give the draw calls and
    triangles. The game steps itself down a level when a race runs under 35 fps, and phones start on
    Medium, so check on Low and Medium too (the picker is on the first screen).
+   `node scripts/shots.mjs <label>` shoots braga-map's viewpoints at High and Low, with each one's
+   draw calls, triangles and frame time, beside the real photos and the round before.
 
 ## An easter egg
 

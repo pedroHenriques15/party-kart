@@ -50,8 +50,19 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   server, so this needs internet access.
 - `?exp= ?sun= ?hemi= ?env= ?fog=` override the lighting (`src/render/look.ts`), for tuning.
 - `?view=x,y,z,tx,ty,tz` holds the race's camera at (x, y, z), looking at (tx, ty, tz), to look at
-  the scenery from anywhere (the sights on the hills, say). Take positions from braga-map's map
+  the scenery from anywhere (the sights on the hills, say). A seventh number sets its vertical
+  field of view in degrees (the race's own widens with speed). Take positions from braga-map's map
   page (`npm run map` there); heights are metres above the map's `elev0` (154 m above the sea).
+- `?scenery` shows the city alone from `?view=`, with no menus, room, karts or network: built as a
+  race builds it, still, and the same every time (its textures' noise is seeded). The graphics are
+  whatever `localStorage['pk-quality']` says. `window.__kart` has the build time, draw calls,
+  triangles, textures and geometries, and `__kart.timeFrames(60)` the milliseconds a frame takes.
+- `node scripts/shots.mjs <label>` shoots braga-map's viewpoints (`../braga-map/refs/viewpoints.json`)
+  with `?scenery`, at High and Low, into `shots/<date>-<label>/` (ignored by git): a PNG each, the
+  shape of its photo and 720 pixels high, `stats.json` with each one's cost, and `index.html` setting
+  each beside its real photo (`../braga-map/.cache/refs/`) and the round before's. Name viewpoints
+  after the label to shoot only those. It starts its own dev server, as one started before braga-map
+  was last installed still serves the old map; restart yours after `npm install` too. About 2 minutes.
 - The touch controls show on a touch screen: Chrome's device toolbar, or Playwright with
   `hasTouch` and `isMobile`. Drive them with real touches (CDP's `Input.dispatchTouchEvent`), not
   synthetic events.

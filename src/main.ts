@@ -26,9 +26,18 @@ const DT = 1 / 120;
 // as well, your car starts the race there, to look at one part of the track.
 const AUTODRIVE = new URLSearchParams(location.search).has('autodrive');
 // ?view=x,y,z,tx,ty,tz holds the race's camera at (x, y, z) looking at (tx, ty, tz), for looking
-// at the scenery.
+// at the scenery. A seventh number sets its vertical field of view, in degrees.
 const VIEW = new URLSearchParams(location.search).get('view')?.split(',').map(Number) ?? null;
 const START_AT = AUTODRIVE ? Number(new URLSearchParams(location.search).get('at')) || 0 : 0;
+// ?scenery: the city alone, built as a race builds it and seen from ?view=, with no menus, room or
+// karts, for shooting the viewpoints (scripts/shots.mjs). The textures' noise comes out the same
+// every time and nothing moves, so two shots of the same city match. What a frame costs is in
+// window.__kart.
+const SCENERY = new URLSearchParams(location.search).has('scenery');
+if (SCENERY) {
+  let seed = 1;
+  Math.random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+}
 const track = buildTrack(amigos.points);
 const N = track.samples.length;
 // A race ends at the latest after this long a lap (and a minute), at 60 km/h on average.
@@ -48,7 +57,9 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(68, 1, 0.3, 30000);
 const look = new Look(renderer, scene, camera);
 let quality = stored('pk-quality', PHONE ? 'medium' : 'high') as Quality;
+const building = performance.now();
 const world = await buildCity(track, amigos, quality);
+const buildMs = performance.now() - building;
 scene.add(world.group);
 const fx = new Particles(0.55);
 const glow = new Particles(0.32, true);
@@ -1067,10 +1078,19 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
 
 const camPos = new THREE.Vector3(0, 30, 40);
 const camLook = new THREE.Vector3();
+// The camera where ?view= holds it.
+function holdView(v: number[]): void {
+  camera.position.set(v[0], v[1], v[2]);
+  camera.lookAt(v[3], v[4], v[5]);
+  if (v[6] > 0 && camera.fov !== v[6]) {
+    camera.fov = v[6];
+    camera.updateProjectionMatrix();
+  }
+}
+
 function chase(r: RaceCtx, dt: number): void {
-  if (VIEW?.length === 6) {
-    camera.position.set(VIEW[0], VIEW[1], VIEW[2]);
-    camera.lookAt(VIEW[3], VIEW[4], VIEW[5]);
+  if (VIEW && VIEW.length >= 6) {
+    holdView(VIEW);
     return;
   }
   const c = r.me.car;
@@ -1177,7 +1197,43 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
-if (AUTODRIVE) (window as unknown as { __scene: THREE.Scene }).__scene = scene;
+// ---- The scenery alone (?scenery) ----
+
+// Without ?view=, the start line from behind the grid.
+const line = track.samples[0];
+const held = VIEW && VIEW.length >= 6 ? VIEW : [line.p.x - line.t.x * 14, line.p.y + 5, line.p.z - line.t.z * 14, line.p.x, line.p.y + 1, line.p.z];
+// The sun's shadows fall round where a kart would be in a race: 8 m in front of the camera.
+const kartAt = new THREE.Vector3(held[3] - held[0], 0, held[5] - held[2]).normalize().multiplyScalar(8).add(new THREE.Vector3(held[0], 0, held[2]));
+kartAt.y = world.ground(kartAt.x, kartAt.z);
+// Waits for the graphics card to finish what it's been given: reading a pixel back has to.
+const pixel = new Uint8Array(4);
+const finish = () => {
+  const gl = renderer.getContext();
+  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+};
+// What a frame costs: n of them drawn one after another, and the milliseconds each took. That's
+// the time the graphics card or the browser, whichever is slower, takes over a frame, so 60 frames
+// a second wants it under 16.7 ms.
+function timeFrames(n: number): number {
+  finish();
+  const t0 = performance.now();
+  for (let k = 0; k < n; k++) look.render();
+  finish();
+  return (performance.now() - t0) / n;
+}
+let drawn = 0;
+// The city as it is at 0 s.
+function sceneryFrame(): void {
+  world.update(0);
+  holdView(held);
+  look.follow(kartAt);
+  look.render();
+  const { render: r, memory: m } = renderer.info;
+  (window as unknown as { __kart: object }).__kart = { frames: ++drawn, buildMs: Math.round(buildMs), calls: r.calls, tris: r.triangles, textures: m.textures, geometries: m.geometries, timeFrames };
+  requestAnimationFrame(sceneryFrame);
+}
+
+if (AUTODRIVE || SCENERY) (window as unknown as { __scene: THREE.Scene }).__scene = scene;
 
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyM' && !(e.target instanceof HTMLInputElement)) toggleMute();
@@ -1186,11 +1242,12 @@ addEventListener('keydown', (e) => {
 addEventListener('pointerdown', unlockAudio);
 addEventListener('touchend', unlockAudio);
 
-render();
-// Prepare every driver's materials now, rather than freezing when a race starts.
-{
+if (SCENERY) requestAnimationFrame(sceneryFrame);
+else {
+  render();
+  // Prepare every driver's materials now, rather than freezing when a race starts.
   const warm = DRIVERS.map((d) => showKart(d.id, d.name));
   renderer.compile(scene, camera);
   warm.forEach(hide);
+  requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);

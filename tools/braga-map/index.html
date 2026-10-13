@@ -237,7 +237,7 @@ section { display: flex; flex-direction: column; gap: 10px; }
 
     <section aria-labelledby="hTrack" id="trackBox" hidden>
       <div class="head"><h2 id="hTrack">Volta dos Amigos</h2><span class="note" id="trackLen"></span></div>
-      <p class="note">A pista do jogo: as ruas reais, a passar pelas quatro casas. Partida na Rua do Fujacal, sobe ao Picoto, segue o Rio Este até Lamaçães e volta pelo Estádio 1.º de Maio. No jogo, os easter eggs (🐕 🦷 🛒) ficam um pouco à frente de cada casa, nunca à porta.</p>
+      <p class="note">A pista do jogo: as ruas reais, à largura que têm, a passar pelas cinco casas. Partida na Rua do Fujacal, sobe ao Picoto, vai pela Avenida 31 de Janeiro e pela Avenida João XXI até Lamaçães e volta pelo Estádio 1.º de Maio. No jogo, os easter eggs (🐕 🦷 🛒 🚬) ficam um pouco à frente de cada casa, nunca à porta.</p>
       <div class="btns"><button class="btn ghost" type="button" id="showTrack">Ver a pista no mapa</button></div>
     </section>
 
@@ -692,7 +692,7 @@ section { display: flex; flex-direction: column; gap: 10px; }
     const line = COURSE.line || COURSE.raw;
     const mark = ([x, z], fill, r) => { const [sx, sy] = toScreen(x, z); ctx.fillStyle = fill; ctx.strokeStyle = '#15161a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); };
     for (const c of COURSE.checkpoints || []) mark(c, '#ffe14d', 5);
-    const EGG = { dog: '🐕', dentist: '🦷', supermarket: '🛒' };
+    const EGG = { dog: '🐕', dentist: '🦷', supermarket: '🛒', smoke: '🚬' };
     ctx.font = '18px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const e of COURSE.eggs || []) { const [sx, sy] = toScreen(e.x, e.z); mark([e.x, e.z], '#fbfaf7', 13); ctx.fillText(EGG[e.kind] || '★', sx, sy + 1); }
     if (COURSE.start) {

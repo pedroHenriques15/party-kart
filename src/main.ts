@@ -109,6 +109,19 @@ function hide(s: Shown | null | undefined): void {
   if (s) scene.remove(s.model.group);
 }
 
+// Name tags keep to a readable size: never bigger on screen than they are 18 m away, and gone when
+// a kart is right by the camera, so a kart close behind never covers the screen with its name.
+const tagAt = new THREE.Vector3();
+function fitTags(karts: Iterable<Shown>): void {
+  for (const k of karts) {
+    if (!k.tag) continue;
+    const d = camera.position.distanceTo(k.tag.getWorldPosition(tagAt));
+    const f = Math.min(1, d / 18);
+    k.tag.scale.set(3 * f, 0.75 * f, 1);
+    k.tag.material.opacity = Math.max(0, Math.min(1, (d - 3) / 4));
+  }
+}
+
 const tmpM = new THREE.Matrix4();
 function pose(obj: THREE.Object3D, x: number, y: number, z: number, yaw: number, up: { x: number; y: number; z: number }): void {
   const u = new THREE.Vector3(up.x, up.y, up.z).normalize();
@@ -349,7 +362,7 @@ function howTo(): HTMLElement {
       h('li', { class: 'touch-only' }, h('b', {}, 'Steer'), ' with your left thumb, dragging left and right anywhere on that half of the screen. The kart goes by itself; ', h('b', {}, 'Brake'), ' slows it down, and reverses once it stops. Best with the phone sideways.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Drift'), ' hold it through a corner; when the sparks turn blue, then orange, let go for a mini-turbo.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Items'), ' drive through the ? boxes, then tap the item button (swipe it down to throw backwards). The further behind you are, the better what you get.'),
-      h('li', {}, h('b', {}, 'Slipstream'), ' get right behind a car and it pulls you along, the closer the harder; pull out to pass and it carries you for a moment.'),
+      h('li', {}, h('b', {}, 'Slipstream'), ' get right behind a car and it builds up and pulls you along, the closer the harder; pull out to pass and the extra speed wears off over a few seconds.'),
       h('li', { class: 'keys-only' }, h('b', {}, 'Enter'), ' back to your last checkpoint. ', h('b', {}, 'H'), ' horn · ', h('b', {}, 'C'), ' camera · ', h('b', {}, 'M'), ' sound.'),
       h('li', { class: 'touch-only' }, h('b', {}, '↺'), ' back to your last checkpoint. The horn, the camera and the sound are at the top.'),
       h(
@@ -971,10 +984,10 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
     const vice = x === me && now < r.vice;
     k.model.update(speedOf(c) * Math.sign(fwd || 1), x === me ? r.steer : (r.bots.find((b) => b.racer === x)?.steer ?? 0), dt, c.grounded, info.flags, vice);
     kartEffects(x.id, k, c.p.x, c.p.y, c.p.z, c.yaw, speedOf(c), info.flags, c.grounded, dt);
-    // A wisp from the cigarette now and then: small puffs, left hanging behind as the kart goes.
-    if (vice && Math.random() < dt * 8) {
+    // Smoke from the cigarette, going along with the kart as it rises away above the driver.
+    if (vice && Math.random() < dt * 5) {
       const tip = k.model.ember.getWorldPosition(new THREE.Vector3());
-      fx.add(tip.x, tip.y + 0.05, tip.z, (Math.random() - 0.5) * 0.3, 1.2, (Math.random() - 0.5) * 0.3, 0.9, '#d9d9d6', 0.8);
+      fx.add(tip.x, tip.y + 0.1, tip.z, c.v.x * 0.97 + (Math.random() - 0.5) * 0.3, 1.6, c.v.z * 0.97 + (Math.random() - 0.5) * 0.3, 0.7, '#ececea', 1.2);
     }
   }
   r.items.update(a, me.taken, now / 1000, dt);
@@ -1117,6 +1130,7 @@ function frame(now: number): void {
     const me = race.me;
     eggReact(race, world.eggs.update(t, dt, race.arena.started && !race.timeUp && me.fin === null ? { idx: me.car.idx, speed: speedOf(me.car) } : null));
     chase(race, dt);
+    fitTags(race.karts.values());
     look.follow(race.me.car.p);
     if (AUTODRIVE) (window as unknown as { __kart: object }).__kart = { idx: race.me.car.idx, lap: race.me.run.laps, fin: race.me.fin, item: race.me.item?.kind ?? null, place: race.arena.rankOf(race.me.id), cars: race.arena.cars.size, calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
   } else {

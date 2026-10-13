@@ -51,12 +51,14 @@ export type Note =
 const BOX_RESPAWN = 2500;
 const ROLL_TIME = 1.1;
 const CAR_RADIUS = 1.1;
-// The slipstream, GTA-style: it pulls the moment you're in it, more the closer you are, and
-// carries you for a moment after you pull out to pass.
+// The slipstream, GTA-style: behind a car the pull builds up over a second or so, more the closer
+// you are, and when you pull out to pass it wears off over a few seconds, so the speed bleeds away
+// instead of stopping dead.
 const SLIP_FAR = 30; // m behind a car where it starts
 const SLIP_VMAX = 0.15; // extra top speed at full strength
-const SLIP_ACC = 1.2; // extra pull at full strength
-const SLIP_FADE = 0.6; // strength lost a second once out of it
+const SLIP_ACC = 0.9; // extra pull at full strength
+const SLIP_CHARGE = 0.7; // strength gained a second in it
+const SLIP_FADE = 0.3; // strength lost a second out of it
 
 export class Racer {
   readonly id: string;
@@ -365,8 +367,9 @@ export class Racer {
       }
     }
     if (pull > 0 && speed > 15 && this.spin <= 0) {
-      if (this.slip < 0.05) this.notes.push({ k: 'slip' });
-      this.slip = Math.max(pull, this.slip - dt * SLIP_FADE);
+      if (this.slip === 0) this.notes.push({ k: 'slip' });
+      // Up towards how strong it is here, or slowly down to it when you drop back.
+      this.slip = this.slip < pull ? Math.min(pull, this.slip + dt * SLIP_CHARGE) : Math.max(pull, this.slip - dt * SLIP_FADE);
     } else {
       this.slip = Math.max(0, this.slip - dt * SLIP_FADE);
     }

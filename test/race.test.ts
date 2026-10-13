@@ -188,7 +188,7 @@ test('a long drift, let go, earns a mini-turbo', () => {
   assert.ok(c.boost > 0);
 });
 
-test('the slipstream pulls at once behind someone, and carries you past when you pull out', () => {
+test('the slipstream builds up behind someone, and wears off slowly when you pull out to pass', () => {
   const lead = at('lead', 120, 33);
   const me = at('me', 106, 33);
   const solo = at('solo', 106, 33, 4); // the same car with nobody to follow, on its own track
@@ -201,16 +201,25 @@ test('the slipstream pulls at once behind someone, and carries you past when you
     tick(alone, [solo], cruise);
   };
   both();
-  assert.ok(me.slip > 0.8, `in the slipstream from the first step: ${me.slip}`);
+  assert.ok(me.slip > 0 && me.slip < 0.05, `it starts gently: ${me.slip}`);
   assert.ok(me.notes.some((n) => n.k === 'slip'), 'with a whoosh');
   assert.equal(solo.slip, 0);
   for (let i = 0; i < 0.5 / DT; i++) both();
-  assert.ok(speed(me) > speed(solo) + 1.5, `pulling within half a second: ${speed(me).toFixed(1)} vs ${speed(solo).toFixed(1)} m/s`);
-  // Pull out to pass: the pull fades over a second or two instead of stopping dead.
+  const half = me.slip;
+  for (let i = 0; i < 1 / DT; i++) both();
+  assert.ok(half < 0.5 && me.slip > 0.85, `and builds up over a second or so: ${half.toFixed(2)}, then ${me.slip.toFixed(2)}`);
+  assert.ok(speed(me) > speed(solo) + 1.5, `pulling: ${speed(me).toFixed(1)} vs ${speed(solo).toFixed(1)} m/s`);
+  // Pull out to pass: the pull fades over a few seconds, and the speed bleeds away gently.
   me.car.p = surfacePoint(track.samples[me.car.idx], 4, 0.01);
-  for (let i = 0; i < 0.6 / DT; i++) both();
-  assert.ok(me.slip > 0.3 && speed(me) > speed(solo) + 3, `still carried after pulling out: slip ${me.slip.toFixed(2)}`);
-  for (let i = 0; i < 2 / DT; i++) both();
+  let worst = 0;
+  for (let i = 0; i < 1 / DT; i++) {
+    const v = speed(me);
+    both();
+    worst = Math.max(worst, (v - speed(me)) / DT);
+  }
+  assert.ok(me.slip > 0.5 && speed(me) > speed(solo) + 2, `still carried a second after pulling out: slip ${me.slip.toFixed(2)}`);
+  assert.ok(worst < 3, `slowing down by at most 3 m/s², not braking: ${worst.toFixed(1)}`);
+  for (let i = 0; i < 3.5 / DT; i++) both();
   assert.equal(me.slip, 0, 'and then it wears off');
 });
 

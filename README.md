@@ -49,8 +49,9 @@ The power-ups, from the **?** boxes. The further behind you are, the better what
 | 🔊 Bass drop | Shrinks everyone ahead of you |
 | 🛡️ Bodyguard | On as soon as you get it, and blocks the next hit. Your item slot stays free for the next box |
 
-Also: get right behind a car and its **slipstream** pulls you along at once, harder the closer you
-are, and carries you on for a moment when you pull out to pass; karts **bump**; and with
+Also: get right behind a car and its **slipstream** builds up over a second or so and pulls you
+along, harder the closer you are, and when you pull out to pass the extra speed wears off over a
+few seconds; karts **bump**; and with
 **catch-up** on, the further behind the leader, the more top speed. All of it can be switched off
 in the lobby.
 

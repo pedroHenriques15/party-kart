@@ -502,31 +502,41 @@ export function buildKart(d: Driver): KartModel {
 
   const head = fig.getObjectByName('head')!;
 
-  // The café's easter egg: a cigarette in the corner of the mouth, and a beer swigged now and then.
+  // The café's easter egg: a long cigarette out of the left corner of the mouth, poking out past
+  // the head, and a beer mug raised on the right and swigged now and then. Cartoon-big, and one on
+  // each side, so both show from the chase camera behind the driver and the smoke hides neither.
   const cig = new THREE.Group();
-  cig.add(new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.24, 6), std('#f4f1ea', { roughness: 0.6 })));
-  const ember = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.03, 6), new THREE.MeshBasicMaterial({ color: '#ff5a1a', toneMapped: false }));
-  ember.position.y = 0.13;
+  const cigDir = new THREE.Vector3(0.25, 0.05, -0.97).normalize();
+  cig.add(new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.72, 8), std('#f4f1ea', { roughness: 0.6 })));
+  const filter = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.14, 8), std('#d98a3a', { roughness: 0.7 }));
+  filter.position.y = -0.3;
+  cig.add(filter);
+  const ember = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.06, 8), new THREE.MeshBasicMaterial({ color: '#ff5a1a', toneMapped: false }));
+  ember.position.y = 0.38;
   cig.add(ember);
-  cig.rotation.z = -Math.PI / 2 - 0.2;
-  cig.position.set(0.6, -0.19, 0.12);
+  cig.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), cigDir);
+  cig.position.set(0.5, -0.18, -0.15).addScaledVector(cigDir, 0.36);
+  cig.name = 'cigarette';
   cig.visible = false;
   head.add(cig);
+  const mesh3 = (g: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number) => {
+    const o = new THREE.Mesh(g, m);
+    o.position.set(x, y, z);
+    return o;
+  };
   const beer = new THREE.Group();
-  const bottle = std('#4a6e22', { roughness: 0.15, metalness: 0.1 });
-  beer.add(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.24, 10), bottle));
-  beer.add(new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.072, 0.09, 10), std('#f2e6c4')));
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.06, 0.13, 8), bottle);
-  neck.position.y = 0.18;
-  beer.add(neck);
-  beer.children.forEach((m) => (m.position.y += 0.12));
-  beer.scale.setScalar(1.6);
+  beer.add(mesh3(new THREE.CylinderGeometry(0.16, 0.15, 0.34, 16), std('#efa51c', { roughness: 0.15, emissive: '#5a3300', emissiveIntensity: 0.4 }), 0, 0.17, 0));
+  beer.add(mesh3(new THREE.CylinderGeometry(0.17, 0.17, 0.06, 16), std('#fbf8ee', { roughness: 0.9 }), 0, 0.36, 0));
+  beer.add(mesh3(new THREE.SphereGeometry(0.15, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), std('#fbf8ee', { roughness: 0.9 }), 0, 0.38, 0));
+  const handle = mesh3(new THREE.TorusGeometry(0.09, 0.028, 8, 16), std('#f3d58a', { roughness: 0.2 }), 0, 0.18, 0.17);
+  handle.rotation.y = Math.PI / 2;
+  beer.add(handle);
+  beer.name = 'beer';
   beer.visible = false;
   fig.add(beer);
-  // Held out to the right, and tipped up to the corner of the mouth: big, so it shows from the
-  // chase camera behind the head.
-  const hold = { x: 0.35, y: 0.85, z: 0.8, a: 0.25 };
-  const swig = { x: 0.7, y: 1.62, z: 0.62, a: 2.25 };
+  // Raised beside the head on the right, and tipped towards the mouth for a swig.
+  const hold = { x: 0.25, y: 1.12, z: 0.85, a: -0.15 };
+  const swig = { x: 0.5, y: 1.3, z: 0.55, a: -1.1 };
 
   const baseColor = shell.color.clone();
   const baseMetal = shell.metalness;
@@ -577,8 +587,10 @@ export function buildKart(d: Driver): KartModel {
         const p = (t % 3.4) / 3.4;
         const w = p < 0.32 ? Math.sin((p / 0.32) * Math.PI) : 0;
         beer.position.set(hold.x + (swig.x - hold.x) * w, hold.y + (swig.y - hold.y) * w, hold.z + (swig.z - hold.z) * w);
-        beer.rotation.z = hold.a + (swig.a - hold.a) * w;
+        beer.rotation.x = hold.a + (swig.a - hold.a) * w;
         ember.scale.setScalar(0.8 + Math.random() * 0.5);
+        // And a tipsy sway of the head.
+        head.rotation.x += Math.sin(t * 2.6) * 0.18;
       }
       wind += ((flags & SLIP ? 1 : 0) - wind) * Math.min(1, dt * 5);
       for (const w of winds) {

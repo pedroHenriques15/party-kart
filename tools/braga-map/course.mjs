@@ -648,7 +648,7 @@ ${pointsOut.map(fmtPoint).join('\n')}
 // For the map page: the line every 6 m, and where things are.
 const pick = (k) => line[at(k)].map(Math.round);
 fs.writeFileSync(path.join(here, 'course.json'), JSON.stringify({
-  length, w: 14, elev0: ELEV0,
+  length, w: Math.round(widths.reduce((a, b) => a + b, 0) / n2), elev0: ELEV0,
   line: line.filter((_, i) => i % 3 === 0).map((p) => p.map(Math.round)),
   start: pick(0), checkpoints: checkpoints.map(pick), items: items.map(pick), boosts: boosts.map(pick),
   eggs, joins, rows,

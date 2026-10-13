@@ -76,10 +76,17 @@ slowly, the game steps down to Medium by itself.
   (`landmarks.ts`, `braga.ts`), trees, karts and drivers, items, particles, skid marks.
 - `src/session.ts`: rooms. `src/hud.ts`: the race's screen. `src/main.ts`: the screens and the loop.
 
+How it fits together, the network messages included, is in [docs/architecture.md](docs/architecture.md).
+How to change the track, add an item or a driver, and what to watch out for is in
+[docs/making-changes.md](docs/making-changes.md).
+
+The tests run the TypeScript straight in Node, which needs Node 22.18 or later.
+
 ```sh
 npm install
 npm run dev      # http://localhost:5173; ?autodrive lets the autopilot drive, for testing
 npm test         # the track and the jumps; items, catch-up, slipstreams; a race of eight bots
+npm run check    # the type check (Node runs the tests without one)
 npm run build
 npm run deploy   # publish to GitHub Pages (the gh-pages branch)
 ```

@@ -7,14 +7,22 @@ import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
 import { LAKE, riverDistance } from './world.ts';
 
 type Ground = (x: number, z: number) => number;
-type Kind = 'round' | 'pine' | 'cypress';
+export type TreeKind = 'round' | 'pine' | 'cypress';
+type Kind = TreeKind;
 
 function merge(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   return mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)))!;
 }
 
-// Each kind: a crown and a trunk, about 1 unit to 8 tall.
-function shapes(kind: Kind): { crown: THREE.BufferGeometry; trunk: THREE.BufferGeometry } {
+// Each kind: a crown and a trunk, about 1 unit to 8 tall. Plain ones have fewer faces, for
+// places with thousands of trees.
+function shapes(kind: Kind, plain = false): { crown: THREE.BufferGeometry; trunk: THREE.BufferGeometry } {
+  if (plain && kind !== 'cypress') {
+    // About 50 faces a tree, trunk and all.
+    const trunk = new THREE.CylinderGeometry(0.26, 0.4, kind === 'pine' ? 3 : 4, 5, 1, true).translate(0, kind === 'pine' ? 1.5 : 2, 0);
+    if (kind === 'pine') return { crown: merge([new THREE.ConeGeometry(2.5, 4.2, 6).translate(0, 4, 0), new THREE.ConeGeometry(1.7, 3.2, 6).translate(0, 6.2, 0)]), trunk };
+    return { crown: merge([new THREE.IcosahedronGeometry(2.5, 0).translate(0, 5, 0), new THREE.IcosahedronGeometry(1.8, 0).translate(1.3, 4.5, 0.6)]), trunk };
+  }
   if (kind === 'pine') {
     return {
       crown: merge([new THREE.ConeGeometry(2.6, 3.6, 8).translate(0, 3.6, 0), new THREE.ConeGeometry(2.1, 3.2, 8).translate(0, 5.2, 0), new THREE.ConeGeometry(1.4, 2.6, 8).translate(0, 6.8, 0)]),
@@ -29,15 +37,15 @@ function shapes(kind: Kind): { crown: THREE.BufferGeometry; trunk: THREE.BufferG
   }
   return {
     crown: merge([
-      new THREE.IcosahedronGeometry(2.4, 1).translate(0, 5, 0),
+      new THREE.IcosahedronGeometry(2.4, plain ? 0 : 1).translate(0, 5, 0),
       new THREE.IcosahedronGeometry(1.7, 0).translate(1.5, 4.4, 0.5),
       new THREE.IcosahedronGeometry(1.6, 0).translate(-1.3, 4.6, -0.7),
     ]),
-    trunk: new THREE.CylinderGeometry(0.28, 0.42, 4, 7).translate(0, 2, 0),
+    trunk: new THREE.CylinderGeometry(0.28, 0.42, 4, plain ? 5 : 7).translate(0, 2, 0),
   };
 }
 
-interface Tree {
+export interface Tree {
   kind: Kind;
   x: number;
   y: number;
@@ -96,11 +104,14 @@ export function buildTrees(track: Track, ground: Ground): THREE.Group {
     }
   }
 
-  // In tiles of 300 m, each its own instanced meshes, so whole tiles out of view are skipped.
+  return plantTrees(trees);
+}
+
+// Trees in tiles, each its own instanced meshes, so whole tiles out of view are skipped.
+export function plantTrees(trees: Tree[], TILE = 300, plain = false): THREE.Group {
   const group = new THREE.Group();
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
-  const TILE = 300;
   const tiles = new Map<string, Tree[]>();
   for (const t of trees) {
     const key = `${t.kind}:${Math.floor(t.x / TILE)}:${Math.floor(t.z / TILE)}`;
@@ -108,7 +119,7 @@ export function buildTrees(track: Track, ground: Ground): THREE.Group {
     list.push(t);
     tiles.set(key, list);
   }
-  const geos = { round: shapes('round'), pine: shapes('pine'), cypress: shapes('cypress') };
+  const geos = { round: shapes('round', plain), pine: shapes('pine', plain), cypress: shapes('cypress', plain) };
   const crownMat = new THREE.MeshStandardMaterial({ roughness: 0.9, flatShading: true });
   const trunkMat = new THREE.MeshStandardMaterial({ color: '#5e4630', roughness: 1 });
   for (const [key, list] of tiles) {

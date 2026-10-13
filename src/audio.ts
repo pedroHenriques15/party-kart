@@ -162,4 +162,42 @@ export const sfx = {
   },
   bump: (s: number) => tone(90 + Math.random() * 30, now(), 0.12, 'square', Math.min(0.2, s * 0.02)),
   finish: (place: number) => (place <= 3 ? [523, 659, 784, 1047, 1319, 1568] : [392, 523, 659]).forEach((f, i) => tone(f, now() + i * 0.11, 0.35, 'triangle', 0.22)),
+  // Faísca's bark: a short rough yelp that drops.
+  bark: () => {
+    if (!ctx || !master) return;
+    const o = ctx.createOscillator();
+    const f = ctx.createBiquadFilter();
+    const g = ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(560 + Math.random() * 120, now());
+    o.frequency.exponentialRampToValueAtTime(240, now() + 0.13);
+    f.type = 'bandpass';
+    f.frequency.value = 950;
+    f.Q.value = 1.4;
+    g.gain.setValueAtTime(0.0001, now());
+    g.gain.exponentialRampToValueAtTime(0.4, now() + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, now() + 0.17);
+    o.connect(f).connect(g).connect(master);
+    o.start();
+    o.stop(now() + 0.2);
+    noise(now(), 0.07, 0.18, 1800, 500, 'bandpass');
+  },
+  // The dentist's drill: a thin whine, wobbling up.
+  drill: () => {
+    if (!ctx || !master) return;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(1900, now());
+    o.frequency.linearRampToValueAtTime(3100, now() + 0.7);
+    g.gain.setValueAtTime(0.0001, now());
+    g.gain.exponentialRampToValueAtTime(0.035, now() + 0.05);
+    g.gain.setValueAtTime(0.035, now() + 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, now() + 0.8);
+    o.connect(g).connect(master);
+    o.start();
+    o.stop(now() + 0.85);
+  },
+  // The supermarket's announcement chime: ding-dong.
+  chime: () => [880, 698].forEach((f, i) => tone(f, now() + i * 0.34, 0.7, 'sine', 0.22)),
 };

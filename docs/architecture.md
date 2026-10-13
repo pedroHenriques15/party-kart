@@ -9,7 +9,8 @@ change things, read [making-changes.md](making-changes.md).
 | | | |
 |---|---|---|
 | `src/math.ts` | sim | A small vector type `V` and its maths, without three.js |
-| `src/track/layout.ts` | sim | `LAYOUT`, the hand-placed points of the Braga track with widths, banking, walls, surfaces and tags; the river |
+| `src/track/amigos.ts` | sim | `AMIGOS`, the Volta dos Amigos: Braga's real streets, made from OpenStreetMap by `tools/braga-map/course.mjs` |
+| `src/track/layout.ts` | sim | The `Point` type; and `LAYOUT`, the first track (the cartoon Braga Grand Prix), kept for reference and for the tests |
 | `src/track/track.ts` | sim | `buildTrack`: the road sampled every metre. `locate`: where a point is relative to the road |
 | `src/car/car.ts` | sim | `stepCar`: the handling (grip, drift, mini-turbo, boost pads, flying, landing, walls, falling off) |
 | `src/car/autopilot.ts` | sim | Drives the track by itself: for the bots, the menu screens, `?autodrive` and the tests |
@@ -23,7 +24,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/hud.ts` | browser | The race screen: place, lap, item slot, clock, minimap, order, feed |
 | `src/audio.ts` | browser | Every sound, synthesized with Web Audio |
 | `src/input.ts` | browser | The keyboard and the touch screen: held controls, plus actions counted once per press |
-| `src/render/` | browser | three.js: the look, the world, Braga, trees, karts and drivers, items, particles, skid marks |
+| `src/render/` | browser | three.js: the look, the city round the track (`city.ts`), the road (`road.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
 
 The **sim** files never import three.js or touch the DOM, so `node --test` can load them. The
 tests in `test/` drive real cars round the real track with them.
@@ -54,7 +55,7 @@ The chase camera comes next, then particles, then `look.render()`.
 
 ## The simulation
 
-**The track.** `buildTrack` runs a centripetal Catmull-Rom spline through `LAYOUT`, so sharp corners
+**The track.** `buildTrack` runs a centripetal Catmull-Rom spline through the layout (`AMIGOS`), so sharp corners
 don't loop. It then resamples it every metre, starting at the point tagged `start`. Each `Sample`
 holds the centre `p`, forward `t`, right `r` (tilted by the banking), surface normal `n`, width,
 walls, surface and whether it's a boost pad. Per-stretch settings (`w`, `bank`, `walls`, `surface`)
@@ -106,7 +107,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk26-` plus a five-character room code, and the invite link is `?room=<code>`.
+`partykart-pk27-` plus a five-character room code, and the invite link is `?room=<code>`.
 
 ### Messages
 
@@ -182,7 +183,7 @@ sequenceDiagram
 | The bots: driving, items, laps | The host's browser |
 | The lobby: members, drivers, settings, bots | The host |
 | The leaderboard and results | The host, from the laps and finishes it's told |
-| When the race ends | The host: when everyone's finished, 30 s after the first finisher, or at the time limit (`laps × 150 + 60` s for a race; the chosen minutes for time attack) |
+| When the race ends | The host: when everyone's finished, 30 s after the first finisher, or at the time limit (for a race, the laps times the lap limit, plus 60 s; the lap limit is the track's length at 60 km/h, set by `setLapLimit`. For time attack, the chosen minutes) |
 
 This is a game for friends, not a competitive one. A client can lie about its own laps. What the
 host does guard against is malformed or hostile input that could break other people's game.
@@ -211,16 +212,33 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   hemisphere light, a sun whose shadow box follows the camera, ACES tone mapping and fog. There are
   three quality levels. High has pixel ratio up to 2 and 2048 shadows. Medium has 1.25 and 1024
   shadows. Low has 1 and no shadows. Changing quality marks every material for recompiling.
-- **The world** (`render/world.ts`): terrain from `groundHeight`. Near the road that's the road's own
-  height, blending further out into the natural hills (Bom Jesus, the Sameiro, Tibães). The river
-  bed is cut through it. Then come the road ribbon, kerbs, walls, bridges, boost pads, checkpoint
-  gates and lights. `landmarks.ts` and `braga.ts` add the buildings, and `trees.ts` the instanced
-  trees.
+- **The city** (`render/city.ts`), from `amigos-data.ts`: a JSON header, then 16-bit numbers,
+  in base64, made by `tools/braga-map/course.mjs`.
+  - The land is the real relief on a 10 m grid (20 m on Low), level with the road beside it and
+    blending back within 30 m, with the river's bed cut through it. Further off, the whole map's
+    hills every 50 m, tucked under it.
+  - What's on the land is painted onto one canvas over the land: the parks, woods and fields,
+    water, squares, every other street with its pavements, the railway. It's 1 m a pixel on High,
+    1.4 on Medium, 2 on Low. A fine grain, tiled by world position (`onBeforeCompile`), keeps it
+    from looking smeared up close.
+  - Buildings are their footprints from the map, raised to their floors: walls textured a floor
+    and two windows at a time and tinted by vertex colour, a ground floor of doors and shops on
+    flats, and hipped or gabled roofs over each footprint's rectangle where it nearly fills it
+    (flat otherwise). Churches get a tower. They're seven meshes in all, one per material.
+  - Then the trees (`plantTrees`, plain crowns in 800 m tiles), the Rio Este and its bridges,
+    lamps, a blue-and-white plate for each street, brown signs to landmarks, the party at the start
+    (where the lobby shows your car), and the easter eggs (`eggs.ts`).
+- **The road** (`render/road.ts`), the same for any track: the ribbon, kerbs where it bends, the
+  skirts under its edges, the party banners, boost pads, the start line and gates, bridges, string
+  lights and lamps.
+- **The first track's world** (`render/world.ts`, with `landmarks.ts`, `braga.ts` and
+  `buildTrees`) is kept for reference, and nothing builds it.
 - **Few draw calls**: `mat()` shares one material per colour and settings, and `bake()` merges each
-  landmark's static meshes into one mesh per material. Trees and item boxes are instanced. Particles
+  group's static meshes into one mesh per material. Trees, lamps and item boxes are instanced. Particles
   are three pools of one `Points` each: normal, glowing and smoke.
 - **No assets**: every texture is drawn on a canvas in `textures.ts`, and every sound is an
-  oscillator or filtered noise in `audio.ts`.
+  oscillator or filtered noise in `audio.ts`. The city's map is numbers in a module, drawn into
+  textures and meshes as the game loads.
 - **Karts** (`render/drivers.ts`): each `Driver` is a body (`kart`, `limo`, `stroller`, `vintage`,
   `van`), colours, extras (hats, props), a trail and a horn. `buildKart` builds the model. Its
   `update(speed, steer, dt, grounded, flags)` animates wheels, steering, tilt, spinning out, the

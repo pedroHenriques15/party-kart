@@ -380,3 +380,209 @@ function ripplesRaw(): THREE.CanvasTexture {
 
 // For landmarks that draw their own façades.
 export const drawTexture = canvas;
+
+// ---- The Volta dos Amigos: Braga's buildings, roofs and streets. ----
+// The walls are painted near white so each building's own colour (its vertex colours) tints
+// them. One tile is 6 m wide and one floor (3 m) tall.
+
+// A floor of flats: two windows in granite frames, shutters, an iron balcony rail.
+export const flatsFloor = () =>
+  canvas(256, 128, (g) => {
+    g.fillStyle = '#f3f1ec';
+    g.fillRect(0, 0, 256, 128);
+    noise(g, 256, 128, 900, 0.04);
+    for (const x of [40, 158]) {
+      g.fillStyle = '#c7c1b4';
+      g.fillRect(x - 7, 18, 72, 92);
+      g.fillStyle = '#26303d';
+      g.fillRect(x, 24, 58, 76);
+      g.fillStyle = 'rgba(190,215,240,0.28)';
+      g.fillRect(x + 4, 28, 22, 34);
+      g.fillStyle = '#e9e6df';
+      g.fillRect(x + 27, 24, 4, 76);
+      g.fillStyle = '#3f5a48';
+      g.fillRect(x - 16, 24, 9, 76);
+      g.fillRect(x + 65, 24, 9, 76);
+      g.fillStyle = '#2b2b2b';
+      g.fillRect(x - 10, 88, 78, 4);
+      for (let k = 0; k < 9; k++) g.fillRect(x - 8 + k * 9, 92, 2, 16);
+      g.fillRect(x - 10, 106, 78, 3);
+    }
+  });
+
+// A ground floor: a door and a shop window under a stone band.
+export const groundFloor = () =>
+  canvas(256, 128, (g) => {
+    g.fillStyle = '#e3ddd1';
+    g.fillRect(0, 0, 256, 128);
+    noise(g, 256, 128, 900, 0.05);
+    g.fillStyle = '#b4ad9f';
+    g.fillRect(0, 0, 256, 12);
+    g.fillRect(0, 118, 256, 10);
+    g.fillStyle = '#4a3324';
+    g.fillRect(30, 34, 44, 86);
+    g.fillStyle = '#6b4b33';
+    g.fillRect(34, 38, 36, 78);
+    g.fillStyle = '#1f2a36';
+    g.fillRect(104, 30, 128, 80);
+    g.fillStyle = 'rgba(255,236,190,0.35)';
+    g.fillRect(110, 36, 52, 68);
+    g.fillStyle = '#b4ad9f';
+    g.fillRect(100, 26, 136, 6);
+  });
+
+// A house's walls: a window in a granite frame, with shutters, and plaster round it.
+export const houseWall = () =>
+  canvas(256, 128, (g) => {
+    g.fillStyle = '#f5f3ee';
+    g.fillRect(0, 0, 256, 128);
+    noise(g, 256, 128, 1100, 0.05);
+    g.fillStyle = '#bcb5a7';
+    g.fillRect(94, 26, 68, 78);
+    g.fillStyle = '#2a333f';
+    g.fillRect(102, 32, 52, 64);
+    g.fillStyle = 'rgba(190,215,240,0.25)';
+    g.fillRect(106, 36, 20, 28);
+    g.fillStyle = '#7a3b2b';
+    g.fillRect(80, 32, 12, 64);
+    g.fillRect(164, 32, 12, 64);
+    g.fillStyle = '#bcb5a7';
+    g.fillRect(0, 122, 256, 6);
+  });
+
+// A shop, a warehouse or a school: render panels and a long band of windows.
+export const shopWall = () =>
+  canvas(256, 128, (g) => {
+    g.fillStyle = '#ecebe6';
+    g.fillRect(0, 0, 256, 128);
+    noise(g, 256, 128, 800, 0.05);
+    g.fillStyle = 'rgba(0,0,0,0.08)';
+    for (let x = 0; x < 256; x += 64) g.fillRect(x, 0, 2, 128);
+    g.fillStyle = '#2b3846';
+    g.fillRect(0, 44, 256, 40);
+    g.fillStyle = 'rgba(200,225,245,0.3)';
+    for (let x = 6; x < 256; x += 32) g.fillRect(x, 48, 12, 32);
+    g.fillStyle = '#9ea3a6';
+    for (let x = 0; x < 256; x += 32) g.fillRect(x, 44, 3, 40);
+  });
+
+// Church walls: white plaster with granite bands and tall windows.
+export const churchWall = () =>
+  canvas(256, 128, (g) => {
+    g.fillStyle = '#f6f4ef';
+    g.fillRect(0, 0, 256, 128);
+    noise(g, 256, 128, 700, 0.04);
+    g.fillStyle = '#b8b0a0';
+    g.fillRect(0, 0, 256, 6);
+    g.fillRect(0, 0, 10, 128);
+    g.fillStyle = '#3a4250';
+    g.beginPath();
+    g.roundRect(112, 20, 32, 96, [16, 16, 0, 0]);
+    g.fill();
+  });
+
+// Roof tiles, Minho terracotta, in rows; tinted per building.
+export const roofTiles = () =>
+  canvas(256, 256, (g) => {
+    g.fillStyle = '#e7e2dc';
+    g.fillRect(0, 0, 256, 256);
+    for (let y = 0; y < 256; y += 16) {
+      g.fillStyle = 'rgba(70,40,30,0.35)';
+      g.fillRect(0, y + 13, 256, 3);
+      for (let x = (y / 16) % 2 ? 8 : 0; x < 256; x += 16) {
+        const l = 225 + Math.random() * 30;
+        g.fillStyle = `rgb(${l},${l - 6},${l - 12})`;
+        g.beginPath();
+        g.roundRect(x + 1, y, 14, 13, [0, 0, 7, 7]);
+        g.fill();
+      }
+    }
+    noise(g, 256, 256, 3000, 0.06);
+  });
+
+// A flat roof: gravel, a few patches and vents.
+export const flatRoof = () =>
+  canvas(256, 256, (g) => {
+    g.fillStyle = '#8f8c86';
+    g.fillRect(0, 0, 256, 256);
+    noise(g, 256, 256, 16000, 0.16);
+    for (let i = 0; i < 6; i++) {
+      g.fillStyle = `rgba(${60 + Math.random() * 40},${60 + Math.random() * 40},${60 + Math.random() * 40},0.25)`;
+      g.fillRect(Math.random() * 220, Math.random() * 220, 20 + Math.random() * 40, 20 + Math.random() * 40);
+    }
+  });
+
+// Grain for the ground: multiplied into its colours, tiled every few metres, so the big map
+// painted under everything doesn't look smeared up close. Linear, not a colour.
+export function grain(): THREE.CanvasTexture {
+  const t = canvas(256, 256, (g) => {
+    g.fillStyle = '#808080';
+    g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 26000; i++) {
+      const v = 70 + Math.random() * 120;
+      g.fillStyle = `rgba(${v},${v},${v},0.35)`;
+      g.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 3, 1 + Math.random() * 3);
+    }
+  });
+  t.colorSpace = THREE.NoColorSpace;
+  return t;
+}
+
+// Every street name on its own blue-and-white azulejo plate, stacked in one texture: plate k
+// spans v from 1 - (k + 1) / n to 1 - k / n.
+export function streetPlates(names: string[]): THREE.CanvasTexture {
+  const W = 512, H = 112;
+  return canvas(
+    W,
+    H * Math.max(1, names.length),
+    (g) => {
+      names.forEach((name, k) => {
+        const y = k * H;
+        g.fillStyle = '#f7f8fb';
+        g.fillRect(0, y, W, H);
+        g.strokeStyle = '#2f5aa8';
+        g.lineWidth = 8;
+        g.strokeRect(10, y + 10, W - 20, H - 20);
+        g.strokeStyle = '#7da1db';
+        g.lineWidth = 2;
+        for (let x = 0; x <= W; x += 64) {
+          g.beginPath();
+          g.moveTo(x, y);
+          g.lineTo(x, y + H);
+          g.stroke();
+        }
+        g.fillStyle = '#1f3f86';
+        let size = 40;
+        g.font = `700 ${size}px Georgia, serif`;
+        while (g.measureText(name).width > W - 60 && size > 18) g.font = `700 ${(size -= 2)}px Georgia, serif`;
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText(name, W / 2, y + H / 2 + 2);
+      });
+    },
+    false,
+  );
+}
+
+// A brown tourist sign, as for monuments in Portugal.
+export function brownSign(text: string): THREE.CanvasTexture {
+  return canvas(
+    512,
+    128,
+    (g) => {
+      g.fillStyle = '#6e4a2c';
+      g.fillRect(0, 0, 512, 128);
+      g.strokeStyle = '#f4efe6';
+      g.lineWidth = 6;
+      g.strokeRect(8, 8, 496, 112);
+      g.fillStyle = '#f4efe6';
+      let size = 46;
+      g.font = `700 ${size}px system-ui, sans-serif`;
+      while (g.measureText(text).width > 460 && size > 20) g.font = `700 ${(size -= 2)}px system-ui, sans-serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(text, 256, 66);
+    },
+    false,
+  );
+}

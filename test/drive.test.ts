@@ -3,10 +3,13 @@ import { test } from 'node:test';
 import { autopilot } from '../src/car/autopilot.ts';
 import { newCar, speedOf, stepCar, stopInput, type Car, type Input } from '../src/car/car.ts';
 import { advance, newRun, noteSpeed, respawn, startGrid, type RunEvent } from '../src/race.ts';
+import { AMIGOS } from '../src/track/amigos.ts';
 import { LAYOUT } from '../src/track/layout.ts';
-import { buildTrack, locate } from '../src/track/track.ts';
+import { buildTrack, locate, type Track } from '../src/track/track.ts';
 
-const track = buildTrack(LAYOUT);
+// The game's track; and the first one, kept for reference, for its jump.
+const track = buildTrack(AMIGOS);
+const gp = buildTrack(LAYOUT);
 const DT = 1 / 120;
 
 interface Drive {
@@ -18,7 +21,8 @@ interface Drive {
   wallHits: number;
 }
 
-function drive(seconds: number, pilot: (c: Car) => Input = (c) => autopilot(c, track)): Drive {
+function drive(seconds: number, pilot: (c: Car) => Input = (c) => autopilot(c, track), on: Track = track): Drive {
+  const track = on;
   let car = newCar(track, startGrid(track));
   const run = newRun(0);
   const out: Drive = { laps: [], respawns: 0, events: [], maxAir: 0, topSpeed: 0, wallHits: 0 };
@@ -45,9 +49,9 @@ function drive(seconds: number, pilot: (c: Car) => Input = (c) => autopilot(c, t
   return out;
 }
 
-test('the track is a closed loop of about 2 km, with its checkpoints in order', () => {
+test('the track is a closed loop of about 7 km, with its checkpoints in order', () => {
   const s = track.samples;
-  assert.ok(track.length > 1800 && track.length < 2800, `length ${track.length.toFixed(0)} m`);
+  assert.ok(track.length > 6500 && track.length < 8000, `length ${track.length.toFixed(0)} m`);
   for (let i = 0; i < s.length; i++) {
     const gap = Math.hypot(s[(i + 1) % s.length].p.x - s[i].p.x, s[(i + 1) % s.length].p.y - s[i].p.y, s[(i + 1) % s.length].p.z - s[i].p.z);
     assert.ok(gap > 0.5 && gap < 1.5, `sample ${i} to the next is ${gap.toFixed(2)} m`);
@@ -66,26 +70,25 @@ test('locate: on the centre line, beside it, and above it', () => {
   assert.equal(at(s.w, 0).onRoad, false);
 });
 
-test('the autopilot laps the track cleanly, flying the jumps', () => {
-  const d = drive(200);
+test('the autopilot laps the track cleanly', () => {
+  const d = drive(460);
   console.log(
     `laps ${d.laps.map((ms) => (ms / 1000).toFixed(1)).join(', ')} s; respawns ${d.respawns}; longest air ${d.maxAir.toFixed(2)} s; top ${(d.topSpeed * 3.6).toFixed(0)} km/h; wall hits ${d.wallHits}`,
   );
   assert.equal(d.respawns, 0);
   assert.ok(d.laps.length >= 2, `only ${d.laps.length} laps`);
-  assert.ok(d.laps[1] > 45000 && d.laps[1] < 100000, `lap ${d.laps[1]} ms`);
-  assert.ok(d.maxAir > 1, 'the big jump should fly');
+  assert.ok(d.laps[1] > 170000 && d.laps[1] < 240000, `lap ${d.laps[1]} ms`);
 });
 
-test('the jump lands on the road at any speed up to flat out', () => {
-  const lip = track.tags.find((t) => t.tag === 'lip')!.i;
+test("the first track's jump lands on the road at any speed up to flat out", () => {
+  const lip = gp.tags.find((t) => t.tag === 'lip')!.i;
   for (const kmh of [60, 100, 130, 158]) {
-    const car = newCar(track, lip - 30, kmh / 3.6);
+    const car = newCar(gp, lip - 30, kmh / 3.6);
     let flew = 0;
     let fell = false;
     for (let i = 0; i < 8 / DT && !fell; i++) {
-      const inp = autopilot(car, track);
-      fell = stepCar(car, { ...inp, throttle: 1, brake: 0 }, track, DT);
+      const inp = autopilot(car, gp);
+      fell = stepCar(car, { ...inp, throttle: 1, brake: 0 }, gp, DT);
       if (!car.grounded) flew += DT;
     }
     assert.equal(fell, false, `fell off at ${kmh} km/h`);
@@ -93,14 +96,18 @@ test('the jump lands on the road at any speed up to flat out', () => {
   }
 });
 
-test('falling off the jump respawns at the last checkpoint, at its speed', () => {
-  const lip = track.tags.find((t) => t.tag === 'lip')!.i;
+test("falling off the first track's jump respawns at the last checkpoint, at its speed", () => {
+  const lip = gp.tags.find((t) => t.tag === 'lip')!.i;
   // Steer hard left at the lip, off the side where there are no walls.
-  const d = drive(150, (c) => {
-    const i = autopilot(c, track);
-    const near = c.idx > lip - 5 && c.idx < lip + 40;
-    return near ? { ...i, steer: -1 } : i;
-  });
+  const d = drive(
+    150,
+    (c) => {
+      const i = autopilot(c, gp);
+      const near = c.idx > lip - 5 && c.idx < lip + 40;
+      return near ? { ...i, steer: -1 } : i;
+    },
+    gp,
+  );
   assert.ok(d.respawns >= 1);
 });
 
@@ -120,7 +127,7 @@ test('stopping brakes to a standstill and stays there, without reversing', () =>
 });
 
 test('a lap is timed from the line, and splits compare with the best lap', () => {
-  const d = drive(200);
+  const d = drive(300);
   const cps = d.events.filter((e) => e.k === 'cp');
   assert.equal(cps[0].diff, null, 'no best lap yet');
   const second = cps.find((e) => e.k === 'cp' && e.diff !== null);

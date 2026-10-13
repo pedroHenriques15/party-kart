@@ -4,9 +4,9 @@
 //
 // node tools/braga-map/build.mjs
 import fs from 'node:fs';
-import zlib from 'node:zlib';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { KX, KZ, LAT0, LON0, P, relief } from './geo.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dir = path.join(here, '.cache'), repo = path.resolve(here, '../..'), outFile = path.join(here, 'braga.json');
@@ -14,11 +14,6 @@ if (!fs.existsSync(path.join(dir, 'osm', 'base.json'))) throw new Error('No data
 const read = (f) => JSON.parse(fs.readFileSync(path.join(dir, 'osm', f), 'utf8'));
 const base = read('base.json'), bld = read('buildings.json'), admin = read('admin.json'), pois = read('pois.json');
 
-// Metres per degree at Braga's latitude.
-const LAT0 = 41.5512, LON0 = -8.4220;
-const KX = 83432, KZ = 111065;
-const P = (g) => [(g.lon - LON0) * KX, -(g.lat - LAT0) * KZ];
-const unP = (x, z) => [LAT0 - z / KZ, LON0 + x / KX];
 
 // The whole map, and the area Vale asked for inside it.
 const EXT = { x0: -1600, x1: 4900, z0: -2450, z1: 2150 };
@@ -258,48 +253,7 @@ for (const [zone, tier, id, name, osm, blurb] of LANDMARKS) {
 }
 
 // ---- Elevation ----
-function decodePNG(buf) {
-  let off = 8, w, h, ct;
-  const idat = [];
-  while (off < buf.length) {
-    const len = buf.readUInt32BE(off), type = buf.toString('ascii', off + 4, off + 8), data = buf.subarray(off + 8, off + 8 + len);
-    if (type === 'IHDR') { w = data.readUInt32BE(0); h = data.readUInt32BE(4); ct = data[9]; }
-    else if (type === 'IDAT') idat.push(data);
-    else if (type === 'IEND') break;
-    off += 12 + len;
-  }
-  const bpp = ct === 6 ? 4 : 3, stride = w * bpp, raw = zlib.inflateSync(Buffer.concat(idat)), out = Buffer.alloc(h * stride);
-  for (let y = 0; y < h; y++) {
-    const f = raw[y * (stride + 1)], src = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
-    const cur = out.subarray(y * stride, (y + 1) * stride), prev = y ? out.subarray((y - 1) * stride, y * stride) : null;
-    for (let i = 0; i < stride; i++) {
-      const a = i >= bpp ? cur[i - bpp] : 0, b = prev ? prev[i] : 0, c = prev && i >= bpp ? prev[i - bpp] : 0;
-      let v = src[i];
-      if (f === 1) v += a;
-      else if (f === 2) v += b;
-      else if (f === 3) v += (a + b) >> 1;
-      else if (f === 4) { const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c); v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c; }
-      cur[i] = v & 255;
-    }
-  }
-  return { w, h, bpp, data: out };
-}
-const Z = 14, tiles = new Map();
-const tile = (tx, ty) => {
-  const k = tx + '_' + ty;
-  if (!tiles.has(k)) tiles.set(k, decodePNG(fs.readFileSync(path.join(dir, 'dem', `${Z}_${k}.png`))));
-  return tiles.get(k);
-};
-const px = (gx, gy) => {
-  const t = tile(Math.floor(gx / 256), Math.floor(gy / 256)), i = ((gy % 256) * 256 + (gx % 256)) * t.bpp;
-  return t.data[i] * 256 + t.data[i + 1] + t.data[i + 2] / 256 - 32768;
-};
-const elev = (x, z) => {
-  const [lat, lon] = unP(x, z), n = 2 ** Z * 256, r = lat * Math.PI / 180;
-  const X = (lon + 180) / 360 * n - 0.5, Y = (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n - 0.5;
-  const x0 = Math.floor(X), y0 = Math.floor(Y), fx = X - x0, fy = Y - y0;
-  return (px(x0, y0) * (1 - fx) + px(x0 + 1, y0) * fx) * (1 - fy) + (px(x0, y0 + 1) * (1 - fx) + px(x0 + 1, y0 + 1) * fx) * fy;
-};
+const elev = relief(path.join(dir, 'dem'));
 const STEP = 20, nx = (EXT.x1 - EXT.x0) / STEP + 1, nz = (EXT.z1 - EXT.z0) / STEP + 1;
 const H = new Uint16Array(nx * nz);
 let hmin = Infinity, hmax = -Infinity;

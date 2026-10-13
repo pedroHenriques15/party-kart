@@ -15,16 +15,21 @@ import { ItemsView } from './render/items3d.ts';
 import { Look, type Quality } from './render/look.ts';
 import { Skids } from './render/skids.ts';
 import { nameTag } from './render/textures.ts';
-import { buildWorld } from './render/world.ts';
-import { ClientRoom, cleanName, HostRoom, MAX_RACERS, type Entry, type Room, type Snap } from './session.ts';
-import { LAYOUT } from './track/layout.ts';
+import { buildCity } from './render/city.ts';
+import type { EggEvent } from './render/eggs.ts';
+import { ClientRoom, cleanName, HostRoom, MAX_RACERS, setLapLimit, type Entry, type Room, type Snap } from './session.ts';
+import { AMIGOS } from './track/amigos.ts';
 import { buildTrack } from './track/track.ts';
 
 const DT = 1 / 120;
-// ?autodrive: the autopilot drives your car (for testing the game in a browser).
+// ?autodrive: the autopilot drives your car (for testing the game in a browser). With &at=<sample>
+// as well, your car starts the race there, to look at one part of the track.
 const AUTODRIVE = new URLSearchParams(location.search).has('autodrive');
-const track = buildTrack(LAYOUT);
+const START_AT = AUTODRIVE ? Number(new URLSearchParams(location.search).get('at')) || 0 : 0;
+const track = buildTrack(AMIGOS);
 const N = track.samples.length;
+// A race ends at the latest after this long a lap (and a minute), at 60 km/h on average.
+setLapLimit(Math.ceil(track.length / 16.7));
 const keys = new Keyboard();
 const pad = new TouchPad();
 // A phone or a tablet: its finger is its pointer.
@@ -39,7 +44,8 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(68, 1, 0.3, 30000);
 const look = new Look(renderer, scene, camera);
-const world = buildWorld(track);
+let quality = stored('pk-quality', PHONE ? 'medium' : 'high') as Quality;
+const world = buildCity(track, quality);
 scene.add(world.group);
 const fx = new Particles(0.55);
 const glow = new Particles(0.32, true);
@@ -63,7 +69,6 @@ function remember(k: string, v: string): void {
   }
 }
 
-let quality = stored('pk-quality', PHONE ? 'medium' : 'high') as Quality;
 look.setQuality(quality);
 
 // ---- Karts on screen ----
@@ -170,7 +175,7 @@ const attract: { car: Car; shown: Shown; caution: number }[] = [];
 function startAttract(): void {
   if (attract.length) return;
   const picks = [...DRIVERS].sort(() => Math.random() - 0.5).slice(0, 5);
-  picks.forEach((d, k) => attract.push({ car: newCar(track, (k * 37 + 2300) % N), shown: showKart(d.id, null), caution: 1 + k * 0.06 }));
+  picks.forEach((d, k) => attract.push({ car: newCar(track, (world.stageAt - 160 + k * 37 + N) % N), shown: showKart(d.id, null), caution: 1 + k * 0.06 }));
 }
 function stopAttract(): void {
   for (const a of attract) hide(a.shown);
@@ -313,7 +318,7 @@ function homeScreen(): HTMLElement {
     'div',
     { class: 'panel home' },
     h('h1', {}, 'Party Kart', h('span', {}, '.')),
-    h('p', { class: 'tag' }, "P. Kiddy's White Party · the Braga Grand Prix. Race your friends, throw things at them."),
+    h('p', { class: 'tag' }, "P. Kiddy's White Party · the Volta dos Amigos, round Braga's real streets. Race your friends, throw things at them."),
     h('label', {}, 'Your name', name),
     h('label', {}, 'Your driver'),
     grid,
@@ -352,6 +357,7 @@ function howTo(): HTMLElement {
           .map((i) => `${i.icon} ${i.name}`)
           .join(' · '),
       ),
+      h('li', {}, h('b', {}, 'The track'), " is 7 km of Braga as it is: the streets, the buildings and the hills. Watch out for a dog. Map data © OpenStreetMap contributors."),
     ),
   );
 }
@@ -403,8 +409,8 @@ function lobbyScreen(r: Room): HTMLElement {
     { class: 'settings' },
     h('label', { class: 'inline' }, 'Mode ', select(L.mode, [['race', 'Race'], ['time', 'Time attack']], (mode) => host?.configure({ mode }))),
     L.mode === 'race'
-      ? h('label', { class: 'inline' }, 'Laps ', select(L.laps, [[1, '1'], [2, '2'], [3, '3'], [5, '5']], (laps) => host?.configure({ laps })))
-      : h('label', { class: 'inline' }, 'Round ', select(L.minutes, [2, 3, 4, 5, 8].map((n) => [n, `${n} min`] as [number, string]), (minutes) => host?.configure({ minutes }))),
+      ? h('label', { class: 'inline' }, 'Laps ', select(L.laps, [[1, '1'], [2, '2'], [3, '3']], (laps) => host?.configure({ laps })))
+      : h('label', { class: 'inline' }, 'Round ', select(L.minutes, [5, 8, 10, 15].map((n) => [n, `${n} min`] as [number, string]), (minutes) => host?.configure({ minutes }))),
     L.mode === 'race' && h('label', { class: 'inline' }, check(L.items, (items) => host?.configure({ items })), ' Power-ups'),
     L.mode === 'race' && h('label', { class: 'inline' }, check(L.catchUp, (catchUp) => host?.configure({ catchUp })), ' Catch-up'),
     h(
@@ -590,6 +596,10 @@ function startRace(goIn: number, endIn: number, grid: Record<string, number>): v
   const arena = new Arena(track, rules);
   const meMember = L.members.find((m) => m.id === r.you)!;
   const me = new Racer(track, r.you, meMember.name, false, grid[r.you] ?? 0);
+  if (START_AT) {
+    me.car = newCar(track, START_AT % N);
+    me.run.nextCp = track.checkpoints.filter((c) => c < START_AT % N).length;
+  }
   const bots = r.isHost
     ? L.members.filter((m) => m.bot).map((m) => ({ racer: new Racer(track, m.id, m.name, true, grid[m.id] ?? 0), brain: newBrain(), steer: 0 }))
     : [];
@@ -687,6 +697,27 @@ const howName = (how: string) => ({ disco: 'disco ball 🪩', drone: 'paparazzi 
 function flashSplit(r: RaceCtx, text: string, cls: string, ms = 2000): void {
   r.split = { text, cls, until: performance.now() + ms };
 }
+// The easter eggs along the track, when your kart passes them: the sounds, the sparkle, the word.
+function eggReact(r: RaceCtx | null, events: EggEvent[]): void {
+  for (const e of events) {
+    if (e.kind === 'bark') sfx.bark();
+    if (e.kind === 'dog') {
+      if (r) horn(r.karts.get(r.me.id)!.model.driver.horn);
+      sfx.bark();
+      r?.hud.feed('🐕 Faísca is chasing you!', 'big');
+    }
+    if (e.kind === 'dentist') {
+      sfx.drill();
+      for (let k = 0; k < 50; k++) glow.add(e.at.x + (Math.random() - 0.5) * 4, e.at.y + Math.random() * 3, e.at.z + (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 6, 2 + Math.random() * 5, (Math.random() - 0.5) * 6, 0.9, k % 2 ? '#ffffff' : '#9fe3ff', -6);
+      r?.hud.feed('🦷 The dentist says: open wide!', 'big');
+    }
+    if (e.kind === 'supermarket') {
+      sfx.chime();
+      r?.hud.feed('🛒 Contente card: +1 point', 'big');
+    }
+  }
+}
+
 function flashCenter(r: RaceCtx, text: string, cls: string, ms = 1500): void {
   r.center = { text, cls, until: performance.now() + ms };
 }
@@ -1059,11 +1090,14 @@ function frame(now: number): void {
   if (race) {
     watchSpeed(dt);
     stepRace(race, now, dt);
+    const me = race.me;
+    eggReact(race, world.eggs.update(t, dt, race.arena.started && !race.timeUp && me.fin === null ? { idx: me.car.idx, speed: speedOf(me.car) } : null));
     chase(race, dt);
     look.follow(race.me.car.p);
     if (AUTODRIVE) (window as unknown as { __kart: object }).__kart = { idx: race.me.car.idx, lap: race.me.run.laps, fin: race.me.fin, item: race.me.item?.kind ?? null, place: race.arena.rankOf(race.me.id), cars: race.arena.cars.size, calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
   } else {
     // The menus: bots lapping, the camera on one of them; in the lobby, your car on the stage.
+    world.eggs.update(t, dt, null);
     attractAcc += dt;
     while (attractAcc >= DT) {
       attractAcc -= DT;
@@ -1076,7 +1110,7 @@ function frame(now: number): void {
     }
     if (showroomCar && room) {
       const p = world.stage;
-      const s = track.samples[40];
+      const s = track.samples[world.stageAt];
       showroomCar.model.group.position.copy(p);
       showroomCar.model.group.rotation.set(0, t * 0.6, 0);
       showroomCar.model.update(0, Math.sin(t) * 0.5, dt, true, 0);

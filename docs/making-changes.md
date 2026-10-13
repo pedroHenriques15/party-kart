@@ -13,50 +13,79 @@ Then play it with `npm run dev`. Add `?autodrive` and the autopilot drives for y
 
 ## The track
 
-The track is `LAYOUT` in `src/track/layout.ts`. Each point is `[x, y, z]` in metres, with x east,
-z south and y up. Its options apply to the stretch from it to the next point:
+The game races the Volta dos Amigos. Its layout, `AMIGOS` in `src/track/amigos.ts`, and the
+scenery round it, `src/render/amigos-data.ts`, are made by `tools/braga-map/course.mjs` from
+OpenStreetMap and the relief. **Don't edit those two files by hand**: change the tool and run it
+again.
+
+```sh
+node tools/braga-map/fetch.mjs     # once: the map's data, into tools/braga-map/.cache/
+node tools/braga-map/build.mjs     # the map page's data (braga.json)
+node tools/braga-map/course.mjs    # the track and its scenery
+```
+
+`course.mjs` also needs its waypoints, `tools/braga-map/.cache/places.json`: the friends' houses,
+from the shared map. They're private, and git ignores them. Without them the tool can't plan the
+loop again, but the committed track keeps working. What it does, in order:
+
+1. **The loop.** A graph of the streets, and the cheapest loop through the waypoints. `COST` makes
+   bigger roads cheaper and `TURN` prices the turns. The loop never uses a street twice or runs
+   within 28 m of itself, and it drives along each waypoint's own street through it. A waypoint's
+   street that's a dead end gets a link from its end to the nearest street ahead.
+2. **The centre line.** Short jogs at junctions are folded into one corner, and corners are rounded
+   to `R_MIN` (18 m) where the streets allow. Widths come from the kind of street (13–15 m), and
+   heights from the relief, smoothed over about 50 m. It prints the corners it had to make
+   tighter, the steepest grade, the sharpest crest, and any place the road comes too close to
+   itself.
+3. **Where things go.** The start on the straightest stretch of a main road at least 250 m from
+   every waypoint, 5 checkpoints evenly spaced, a row of item boxes every 820 m, boost pads 30 m
+   into the longest straights, and the easter eggs 44–50 m past their houses.
+4. **The scenery.** The relief; the ground's areas, streets and railway; every building within
+   300 m that the road doesn't cover, plus infill where the map has none on a built-up street;
+   trees; the river; the street names and landmarks. Packed into `amigos-data.ts`.
+
+The layout is the usual `Point`s (see the first track, below), one every 8 m. `ELEV0` is the
+height above the sea that the game's y = 0 stands for.
+
+Other things to know:
+
+- A sample is a metre of road. The lap is about 7.3 km (N ≈ 7300). Nothing in the new scenery uses
+  a raw sample index: it's all placed by position, so it moves with the track when that's made
+  again.
+- **The tests guard the track.** It must be a 6.5–8 km loop with 5 checkpoints, and the autopilot
+  must lap it with no respawns, its second lap taking 170–240 s. Eight bots must all finish a lap,
+  within 60 s of each other. If the autopilot can't get round, a corner is too tight: raise
+  `R_MIN`, or change the costs so the loop goes another way.
+- **A new track needs a new peer id prefix** (`PREFIX` in `src/session.ts`), or old builds join
+  rooms that race a different road.
+- **A road can pass over itself.** `locate` only searches ±40 samples around the car's last sample,
+  so the two levels need to be more than about 40 m of road apart.
+- To look at one part of the track, open the game with `?autodrive&at=<sample>`: your car starts
+  the race there.
+
+### The first track, for reference
+
+`LAYOUT` in `src/track/layout.ts` is the first track, the cartoon Braga Grand Prix, placed by
+hand. Its world (`src/render/world.ts`, `landmarks.ts`, `braga.ts` and `buildTrees` in
+`trees.ts`) still compiles, but the game doesn't use it. The tests do use the track: its jump, for
+the handling, and its Avenida, where the item tests put their cars.
+
+Each point is `[x, y, z]` in metres, with x east, z south and y up. Its options apply to the
+stretch from it to the next point:
 
 - `w` (width), `walls` and `surface` carry on until a later point changes them. `bank` (radians;
   positive lifts the right edge) blends towards the next point's value.
 - `tag` marks a place:
   - `start` is the line, and there must be exactly one.
-  - `cp` is a checkpoint. The tests expect **5**, and they are passed in order.
+  - `cp` is a checkpoint, passed in order.
   - `items` is a row of five item boxes across the road.
   - `boost` is a 14 m boost pad.
-  - `fountain`, `se`, `arch`, `church`, `lip`, `stadium-in` and `stadium-out` are where the
-    landmarks and trees go. The code looks each one up and **crashes if it's missing**.
-  - `kicker` only names a point. Nothing looks it up.
+  - `fountain`, `se`, `arch`, `church`, `lip`, `stadium-in` and `stadium-out` are where the first
+    track's landmarks and trees go. Its world looks each one up and crashes if it's missing.
 - `walls: false` lets cars drive (or fall) off the edge. The jump at `lip` has none.
 
-The road is a spline through the points, resampled every metre from `start`. So **adding, moving
-or removing a point shifts the index of every sample after it.** Tags move with the track by
-themselves, but these places in the scenery use raw sample indices:
-
-| Where | What |
-|---|---|
-| `src/render/braga.ts` | `SPOTS` (the Câmara, the Coimbras chapel, Santa Bárbara, the Palácio do Raio, the Theatro Circo), the Roman ruins at `1700` and their sign at `1690`, the Torre de Menagem at `N - 45`, the BRAGA letters at `N - 22` |
-| `src/render/landmarks.ts` | The rows of houses: old town `290–475`, the Avenida `2330–2500` |
-| `src/main.ts` | Where the menu cars start (`k * 37 + 2300`), the showroom camera's angle (`samples[40]`) |
-
-`SPOTS` also keeps the old town's houses off those landmarks, so check both together. To see where
-everything landed, print the tags' sample indices:
-
-```sh
-node -e "import('./src/track/track.ts').then(async (t) => { const { LAYOUT } = await import('./src/track/layout.ts'); const tr = t.buildTrack(LAYOUT); console.log('N', tr.samples.length, 'checkpoints', tr.checkpoints.join(',')); console.log(tr.tags.map((x) => x.tag + '@' + x.i).join(' ')); })"
-```
-
-Other things to know:
-
-- **The terrain** (`natural()` in `src/render/world.ts`) puts hills at fixed places. Bom Jesus is
-  centred on (545, −360). Near the road the ground follows the road's own height and blends into
-  the hills within 26 m. If you move the switchbacks far, move the hill too.
-- **The river** is `RIVER` in `layout.ts`. A bridge appears wherever the road crosses it.
-- **A road can pass over itself.** `locate` only searches ±40 samples around the car's last sample,
-  so the two levels need to be more than about 40 m of road apart.
-- **The tests guard the track.** It must be a 1.8–2.8 km loop, and the autopilot must lap it with
-  no respawns, with a second lap of 45–100 s. The jump must fly for over a second and land at 60,
-  100, 130 and 158 km/h. Eight bots must all finish. If the autopilot can't get round, a corner is
-  probably too tight for its speed, or a crest throws the car off.
+Its scenery places things at raw sample indices of `LAYOUT` (`SPOTS` and others in `braga.ts`,
+the rows of houses in `landmarks.ts`), so moving a point there moves those out of place.
 
 ## The handling
 
@@ -150,20 +179,26 @@ boosting, drifting, charging a turbo, or slipstreaming.
 
 ## A new landmark or scenery
 
-1. Build it as a function returning a `THREE.Group`, in `src/render/braga.ts` or `landmarks.ts`,
+1. Build it as a function returning a `THREE.Group`, in `src/render/city.ts` or a file of its own,
    from the helpers in `src/render/kit.ts`:
    - `box`, `mesh` and `slab` for the shapes;
    - `mat(color, opts)` for shared materials;
    - textures drawn in `src/render/textures.ts`, since there are no image files.
-2. Place it:
-   - `beside(track, ground, obj, i, lateral)` stands it on the ground beside sample `i`, facing the
-     road.
-   - `at(track, i, lateral, up)` gives a frame on the track.
-   - Prefer a `tag`-relative index over a raw one where you can.
-3. Run the group through `bake()`, which merges its static meshes by material. **Anything that moves
-   needs `userData.moves = true`**, and its animation goes in an `update(t)` that's called every
-   frame.
-4. If it stands in the old town, reserve its spot in `SPOTS` so no house is put on top of it.
+2. Place it by position, the way the map has it: `distanceToRoad(track, x, z).i` is the nearest
+   sample, and `surfacePoint(sample, lateral, up)` a point beside it. Stand it on `ground(x, z)`.
+3. Keep the buildings off it: add its spot to `keepOut` in `buildCity` (a centre and a radius).
+4. Add it to `statics` in `buildCity`, which is run through `bake()` to merge its static meshes by
+   material. **Anything that moves needs `userData.moves = true`**, and its animation goes in an
+   `update(t)` that's called every frame.
 5. Watch the cost. With `?autodrive`, `window.__kart.calls` and `.tris` give the draw calls and
    triangles. The game steps itself down a level when a race runs under 35 fps, and phones start on
    Medium, so check on Low and Medium too (the picker is on the first screen).
+
+## An easter egg
+
+The eggs are in `src/render/eggs.ts`. Each is a model by the road and an update that watches your
+kart (its sample and speed) and returns events: `eggReact` in `main.ts` turns those into sounds,
+sparkles and a line in the feed. They react to your own kart only, so nothing goes over the
+network. Where they stand comes from the waypoints' `egg` in `.cache/places.json`, through
+`course.mjs`: a new one needs a kind in `SET_BACK` and `CLEAR`, a builder, and its sounds in
+`sfx` (`src/audio.ts`).

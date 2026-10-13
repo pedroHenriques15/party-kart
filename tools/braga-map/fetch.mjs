@@ -1,7 +1,8 @@
 // Downloads what the map of Braga is made of: OpenStreetMap data through the Overpass API, and
 // elevation tiles (Terrain Tiles, on AWS Open Data). It keeps them in .cache/ for build.mjs.
 //
-// node tools/braga-map/fetch.mjs
+// node tools/braga-map/fetch.mjs            everything
+// node tools/braga-map/fetch.mjs trees      only what's named (base, buildings, admin, pois, trees, dem)
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +38,13 @@ out geom;`,
   // The parishes, and the municipality round them.
   admin: `[out:json][timeout:120];
 relation["boundary"="administrative"]["admin_level"~"^(7|8)$"](${BOX});
+out geom;`,
+  // Single trees and rows of them, for the scenery round the track.
+  trees: `[out:json][timeout:120][bbox:${BOX}];
+(
+  node["natural"="tree"];
+  way["natural"="tree_row"];
+);
 out geom;`,
   // Places with a name that might be landmarks. build.mjs picks its list from these by name.
   pois: `[out:json][timeout:120][bbox:${BOX}];
@@ -75,7 +83,10 @@ async function overpass(name, query) {
   throw new Error(`Overpass didn't answer for ${name}. Try again later.`);
 }
 
+const only = process.argv.slice(2);
+const wanted = (name) => !only.length || only.includes(name);
 for (const [name, query] of Object.entries(QUERIES)) {
+  if (!wanted(name)) continue;
   await overpass(name, query);
   await sleep(3000);
 }
@@ -85,7 +96,7 @@ const Z = 14;
 const tileX = (lon) => Math.floor(((lon + 180) / 360) * 2 ** Z);
 const tileY = (lat) => { const r = (lat * Math.PI) / 180; return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** Z); };
 let n = 0;
-for (let y = tileY(N); y <= tileY(S); y++) {
+for (let y = tileY(N); y <= tileY(S) && wanted('dem'); y++) {
   for (let x = tileX(W); x <= tileX(E); x++) {
     const res = await fetch(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${Z}/${x}/${y}.png`, { headers: { 'user-agent': UA } });
     if (!res.ok) throw new Error(`Elevation tile ${x}/${y}: ${res.status}`);
@@ -93,4 +104,4 @@ for (let y = tileY(N); y <= tileY(S); y++) {
     n++;
   }
 }
-console.log(`elevation: ${n} tiles`);
+if (n) console.log(`elevation: ${n} tiles`);

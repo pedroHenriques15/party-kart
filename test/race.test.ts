@@ -5,10 +5,14 @@ import { Arena, type Rules } from '../src/game/arena.ts';
 import { botControls, newBrain, type Brain } from '../src/game/bot.ts';
 import { itemOdds, ITEMS, rollItem, type ItemEv, type ItemKind } from '../src/game/items.ts';
 import { NO_CONTROLS, Racer, type Controls } from '../src/game/racer.ts';
+import { AMIGOS } from '../src/track/amigos.ts';
 import { LAYOUT } from '../src/track/layout.ts';
-import { buildTrack, surfacePoint } from '../src/track/track.ts';
+import { buildTrack, surfacePoint, type Track } from '../src/track/track.ts';
 
+// The items and the handling are tested on the first track, kept for reference: the places these
+// tests put cars (down the Avenida's straight) were picked on it. The bots race the game's track.
 const track = buildTrack(LAYOUT);
+const amigos = buildTrack(AMIGOS);
 const N = track.samples.length;
 const DT = 1 / 120;
 const RACE: Rules = { mode: 'race', laps: 2, items: true, catchUp: true };
@@ -21,8 +25,8 @@ function seeded(seed: number): () => number {
 }
 
 // An arena with the given racers; events made by one are applied (and recorded) as if sent.
-function arena(rules: Rules, racers: Racer[]): { a: Arena; events: ItemEv[] } {
-  const a = new Arena(track, rules);
+function arena(rules: Rules, racers: Racer[], on: Track = track): { a: Arena; events: ItemEv[] } {
+  const a = new Arena(on, rules);
   const events: ItemEv[] = [];
   a.send = (ev) => events.push(ev);
   a.locals = racers;
@@ -193,13 +197,13 @@ test('catch-up: far behind the leader, a car goes faster', () => {
   assert.ok(top(800) > top(0) * 1.03, `${top(800)} vs ${top(0)}`);
 });
 
-test('eight bots race two laps with items: everyone finishes, items fly, places change', () => {
-  const racers = Array.from({ length: 8 }, (_, k) => new Racer(track, `bot${k}`, `Bot ${k}`, true, k));
+test('eight bots race a lap of the Volta dos Amigos with items: everyone finishes, items fly, places change', () => {
+  const racers = Array.from({ length: 8 }, (_, k) => new Racer(amigos, `bot${k}`, `Bot ${k}`, true, k));
   const brains = new Map<string, Brain>(racers.map((r, k) => [r.id, newBrain(seeded(k + 1))]));
-  const { a, events } = arena(RACE, racers);
+  const { a, events } = arena({ ...RACE, laps: 1 }, racers, amigos);
   const leaders = new Set<string>();
   let respawns = 0;
-  for (let i = 0; i < 260 / DT && racers.some((r) => r.fin === null); i++) {
+  for (let i = 0; i < 420 / DT && racers.some((r) => r.fin === null); i++) {
     tick(a, racers, (r) => botControls(r, brains.get(r.id)!, a, DT));
     if (i % 120 === 0) leaders.add(a.leader()!.id);
     for (const r of racers) {
@@ -215,5 +219,5 @@ test('eight bots race two laps with items: everyone finishes, items fly, places 
   assert.ok(hits >= 3, 'items hit people');
   assert.ok(leaders.size >= 2, 'the lead changes');
   const spread = Math.max(...(fins as number[])) - Math.min(...(fins as number[]));
-  assert.ok(spread < 40000, `finishes spread over ${spread} ms: catch-up keeps it close`);
+  assert.ok(spread < 60000, `finishes spread over ${spread} ms: catch-up keeps it close`);
 });

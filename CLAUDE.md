@@ -1,15 +1,19 @@
 # CLAUDE.md
 
-Party Kart is a kart game played in the browser, for racing friends round a cartoon Braga. It is
+Party Kart is a kart game played in the browser, for racing friends round Braga's real streets. It is
 TypeScript, three.js and PeerJS (WebRTC), built with Vite and served from GitHub Pages. There is no
 server and no accounts, and no asset files either: every texture is drawn on a canvas and every
-sound is synthesized. The README promises "nothing to maintain", so treat that as a design
-constraint: don't add a backend, a build step or a dependency without a strong reason.
+sound is synthesized. The track and the city round it are data made from OpenStreetMap by
+`tools/braga-map/course.mjs` and committed as modules. The README promises "nothing to maintain",
+so treat that as a design constraint: don't add a backend, a build step or a dependency without a
+strong reason.
 
 - `README.md`: the game as a player sees it (controls, items, the track).
 - `docs/architecture.md`: how it fits together: the simulation, the frame loop, the network.
 - `docs/making-changes.md`: step-by-step guides for changes that touch several files (the track,
-  an item, a driver, a status flag, a message).
+  an item, a driver, a status flag, a message, scenery, an easter egg).
+- `tools/braga-map/README.md`: the map of Braga the track was planned on, and the scripts that make
+  the track and its scenery from it.
 - `docs/releasing.md`: shipping a change to the live site.
 
 ## Commands
@@ -38,7 +42,8 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
 
 - `?autodrive` lets the autopilot drive your car and use its items. It also exposes
   `window.__kart` (lap, place, item, draw calls, triangles) and `window.__scene`, for checking a
-  change with Playwright.
+  change with Playwright. Add `&at=<sample>` and your car starts the race there, to look at one part
+  of the track without driving a lap to it.
 - To play alone, create a room and start it: the empty places fill with bots. To test with other
   players, open a second tab with the invite link (`?room=<code>`). Rooms go through PeerJS's public
   server, so this needs internet access.
@@ -59,9 +64,9 @@ these files imports `three` or touches `window`/`document`, the tests can no lon
 
 How a race runs:
 
-- `buildTrack(LAYOUT)` turns the hand-placed points in `src/track/layout.ts` into a road sampled
-  every metre from the start line. A sample index is roughly metres from the line, and the lap is
-  about 2.5 km (N ≈ 2503 samples).
+- `buildTrack(AMIGOS)` turns the points in `src/track/amigos.ts` (Braga's real streets, made by
+  `course.mjs`) into a road sampled every metre from the start line. A sample index is roughly
+  metres from the line, and the lap is about 7.3 km (N ≈ 7300 samples).
 - `stepCar` (`src/car/car.ts`) is the handling. It always runs at a fixed `DT = 1/120` s, in the
   game and in the tests alike.
 - An `Arena` is one browser's view of a race: the clock, every car's `CarInfo`, the projectiles and
@@ -103,14 +108,17 @@ How a race runs:
 
 ## Gotchas
 
-- **Sample indices are hard-coded in the scenery.** Editing `LAYOUT` moves every sample, and these
-  depend on them:
-  - `SPOTS`, the Roman ruins and their sign (`1700`, `1690`), and `N - 45`/`N - 22` in
-    `src/render/braga.ts`;
-  - the house rows (`290–475`, `2330–2500`) in `src/render/landmarks.ts`;
-  - the menu cars (`2300`) and the showroom camera (`samples[40]`) in `src/main.ts`.
-
-  Things placed by `tag` follow the track by themselves. See `docs/making-changes.md`.
+- **The track and its scenery are generated.** `src/track/amigos.ts` and
+  `src/render/amigos-data.ts` come from `tools/braga-map/course.mjs`: change the tool and run it
+  again, never the files. It needs the map's data (`fetch.mjs`, into `.cache/`) and the
+  waypoints in `.cache/places.json`. See "The track" in `docs/making-changes.md`.
+- **The friends' houses stay out of the repo, which is public.** The waypoints are only in the
+  ignored `.cache/places.json` and the shared map's database. The easter eggs stand 44–50 m past
+  the houses, never at them, and nothing names whose street is whose. Keep it that way.
+- **The first track is kept for reference.** `LAYOUT` (`src/track/layout.ts`) and its world
+  (`world.ts`, `landmarks.ts`, `braga.ts`, `buildTrees`) compile but aren't used by the game.
+  Its scenery has raw sample indices of `LAYOUT` in it. The tests use the track for the jump and
+  for the items.
 - **Holding the brake reverses once the car has stopped.** That's the down arrow's job when
   driving. To keep a car still (the grid, "Time's up!", a spin-out), use `stopInput(car)` from
   `src/car/car.ts`, never `{ brake: 1 }`, or the car drives backwards.
@@ -121,19 +129,21 @@ How a race runs:
   animate needs `userData.moves = true` on it or a parent, or it gets frozen into the merged mesh.
 - **`mat()` caches materials by colour and settings**, so changing one changes every mesh that
   uses it. A kart's body paint is its own because gold plating recolours it.
-- **The peer id prefix** `partykart-pk26-` in `src/session.ts` decides which builds can see each
+- **The peer id prefix** `partykart-pk27-` in `src/session.ts` decides which builds can see each
   other's rooms. The deployed game and a dev build share rooms while it matches. Change it when the
-  message format changes incompatibly.
+  message format changes incompatibly, or the track changes.
 - **Item rolls and bot patience use `Math.random`.** That's fine because only one browser ever
   simulates a given car. Never have several browsers each re-simulate something that rolls dice.
-- **The eight-bot race test is flaky.** "eight bots race two laps…" asserts that the lead changes
+- **The eight-bot race test is flaky.** "eight bots race a lap…" asserts that the lead changes
   at least once, and fails now and then because its item rolls are random. Rerun it before
   assuming you broke something, and look at the printed summary.
-- **The tests guard the track and the tuning.** They check a loop of 1.8–2.8 km with 5
-  checkpoints, an autopilot lap with no respawns and a second lap of 45–100 s, a jump that flies over
-  1 s and lands at any speed from 60 to 158 km/h, every item turning up at some place in the race,
-  and eight bots all finishing within 40 s of each other. A change to the layout, the physics or
-  the item odds has to keep them passing.
+- **The tests guard the track and the tuning.** They check a loop of 6.5–8 km with 5
+  checkpoints, an autopilot lap with no respawns and a second lap of 170–240 s, the first track's
+  jump flying over 1 s and landing at any speed from 60 to 158 km/h, every item turning up at some
+  place in the race, and eight bots all finishing a lap within 60 s of each other. A change to the
+  track, the physics or the item odds has to keep them passing.
+- **A race's time limit follows the track's length.** `setLapLimit` (`session.ts`), set in
+  `main.ts`, allows a lap at 60 km/h. The lobby offers 1–3 laps, and time attack 5–15 minutes.
 - **Graphics step down a level by themselves**, as far as Low, each time a race runs under 35 fps
   for 6 s (`watchSpeed` in `main.ts`). `?autodrive` turns this off. Phones start on Medium.
 - **On a touch screen the kart accelerates by itself.** `TouchPad` in `src/input.ts` holds the

@@ -4,7 +4,8 @@ import Peer, { type DataConnection } from 'peerjs';
 import type { ItemEv } from './game/items.ts';
 import { DRIVERS } from './render/drivers.ts';
 
-const PREFIX = 'partykart-pk26-';
+// Builds see each other's rooms only while this matches: pk27 is the Volta dos Amigos.
+const PREFIX = 'partykart-pk27-';
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 export const HOST_ID = 'host';
 export const MAX_RACERS = 8;
@@ -12,6 +13,11 @@ const PING_MS = 1000;
 const SILENT_MS = 15000; // generous: a slow computer can freeze for seconds as a round loads
 export const COUNTDOWN_MS = 4000;
 const FINISH_GRACE_MS = 30000; // after the winner, how long the rest have to finish
+// The most a lap may take before the race is called: main.ts sets it from the track's length.
+let lapLimit = 150;
+export const setLapLimit = (seconds: number): void => {
+  lapLimit = seconds;
+};
 
 export interface Settings {
   mode: 'race' | 'time';
@@ -217,8 +223,8 @@ export class HostRoom implements Room {
     this.lobby = {
       code: peer.id.slice(PREFIX.length),
       mode: 'race',
-      laps: 3,
-      minutes: 4,
+      laps: 1,
+      minutes: 10,
       items: true,
       catchUp: true,
       bots: 3,
@@ -428,7 +434,7 @@ export class HostRoom implements Room {
     this.syncBots();
     this.goAt = now + COUNTDOWN_MS;
     const race = this.lobby.mode === 'race';
-    this.endAt = this.goAt + (race ? (this.lobby.laps * 150 + 60) * 1000 : this.lobby.minutes * 60_000);
+    this.endAt = this.goAt + (race ? (this.lobby.laps * lapLimit + 60) * 1000 : this.lobby.minutes * 60_000);
     this.firstFin = 0;
     this.board = [];
     for (const m of this.lobby.members) this.entry(m.id);
@@ -507,7 +513,7 @@ export class HostRoom implements Room {
 export class ClientRoom implements Room {
   readonly isHost = false;
   you = '';
-  lobby: Lobby = { code: '', mode: 'race', laps: 3, minutes: 4, items: true, catchUp: true, bots: 0, members: [], racing: false };
+  lobby: Lobby = { code: '', mode: 'race', laps: 1, minutes: 10, items: true, catchUp: true, bots: 0, members: [], racing: false };
   board: Entry[] = [];
   cars = new Map<string, { at: number; s: Snap }[]>();
   onLobby = () => {};

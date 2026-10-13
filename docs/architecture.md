@@ -9,7 +9,7 @@ change things, read [making-changes.md](making-changes.md).
 | | | |
 |---|---|---|
 | `src/math.ts` | sim | A small vector type `V` and its maths, without three.js |
-| `src/track/amigos.ts` | sim | `AMIGOS`, the Volta dos Amigos: Braga's real streets, made from OpenStreetMap by `tools/braga-map/course.mjs` |
+| `braga-map/tracks/amigos.js` | sim | The Volta dos Amigos: Braga's real streets, from the map the games share (the `braga-map` package) |
 | `src/track/layout.ts` | sim | The `Point` type; and `LAYOUT`, the first track (the cartoon Braga Grand Prix), kept for reference and for the tests |
 | `src/track/track.ts` | sim | `buildTrack`: the road sampled every metre. `locate`: where a point is relative to the road |
 | `src/car/car.ts` | sim | `stepCar`: the handling (grip, drift, mini-turbo, boost pads, flying, landing, walls, falling off) |
@@ -55,7 +55,7 @@ The chase camera comes next, then particles, then `look.render()`.
 
 ## The simulation
 
-**The track.** `buildTrack` runs a centripetal Catmull-Rom spline through the layout (`AMIGOS`), so sharp corners
+**The track.** `buildTrack` runs a centripetal Catmull-Rom spline through the layout (`amigos.points`), so sharp corners
 don't loop. It then resamples it every metre, starting at the point tagged `start`. Each `Sample`
 holds the centre `p`, forward `t`, right `r` (tilted by the banking), surface normal `n`, width,
 walls, surface and whether it's a boost pad. Per-stretch settings (`w`, `bank`, `walls`, `surface`)
@@ -212,8 +212,12 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   hemisphere light, a sun whose shadow box follows the camera, ACES tone mapping and fog. There are
   three quality levels. High has pixel ratio up to 2 and 2048 shadows. Medium has 1.25 and 1024
   shadows. Low has 1 and no shadows. Changing quality marks every material for recompiling.
-- **The city** (`render/city.ts`), from `amigos-data.ts`: a JSON header, then 16-bit numbers,
-  in base64, made by `tools/braga-map/course.mjs`.
+- **The city** (`render/city.ts`), from braga-map: `loadWorld(amigos.box)` loads the map's
+  500 m tiles under the track's box (48 of them, each a chunk the bundle splits off), and the city
+  keeps what's near the road and clears the road itself: buildings within 300 m, none on the road
+  or its kerb (nor, for the houses the map filled in, its pavement); trees off the road, those
+  filled into parks and woods only within 230 m; the river kept 4.5 m under the road where it
+  crosses; and the Tourigalo's bull turned to face the road.
   - The land is the real relief on a 10 m grid (20 m on Low), level with the road beside it and
     blending back within 30 m, with the river's bed cut through it, and level under the stadium.
     Further off, the whole map's hills every 50 m, coloured by the map's woods and towns and tucked

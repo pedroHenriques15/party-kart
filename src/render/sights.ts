@@ -1,19 +1,13 @@
 // The sights a Bracarense steers by. Bom Jesus and the Sameiro on the hills to the east, seen from
 // all over the track, and the hills of the horizon behind them; the cross on top of the Picoto;
 // and along the way the Estádio 1.º de Maio, the Altice Forum, Makro and the Tourigalo's bull.
-// Simple shapes, at their real places and sizes from the map (tools/braga-map/course.mjs). Far
+// Simple shapes, at their real places and sizes from the map (braga-map's tools/world.mjs). Far
 // off, it's their outline against the sky that counts.
+import type { Grid, Sight } from 'braga-map';
 import * as THREE from 'three';
 import { distanceToRoad, type Track } from '../track/track.ts';
 import { bake, box, mat, mesh, type Ground } from './kit.ts';
 import * as tex from './textures.ts';
-
-export type Sight =
-  | { kind: 'bomjesus'; x: number; z: number; y: number; angle: number; L: number; W: number; face: number; foot: [number, number]; footY: number }
-  | { kind: 'sameiro'; x: number; z: number; y: number; angle: number; L: number; W: number; face: number; statue: [number, number]; statueY: number }
-  | { kind: 'cruzeiro' | 'tourigalo'; x: number; z: number; y: number; face?: number }
-  | { kind: 'makro' | 'altice'; x: number; z: number; y: number; face: number; L: number }
-  | { kind: 'stadium'; x: number; z: number; y: number; angle: number; L: number; W: number };
 
 const WHITE = () => mat('#ece7dc', { roughness: 0.75 });
 // The sanctuaries on the hills are drawn twice their size: at three or four kilometres a church
@@ -317,7 +311,7 @@ export function buildSights(list: Sight[], track: Track, ground: Ground, far: Gr
 
 // The horizon: the hills 15 km round, every 250 m, from the coarser relief; where the map's own
 // far hills are, it stays out of the way underneath them.
-export function horizon(nums: Int16Array, h: { at: number; x0: number; z0: number; step: number; nx: number; nz: number }, inner: { x0: number; z0: number; step: number; nx: number; nz: number }): THREE.Mesh {
+export function horizon(h: Grid, inner: Grid): THREE.Mesh {
   const ix1 = inner.x0 + (inner.nx - 1) * inner.step;
   const iz1 = inner.z0 + (inner.nz - 1) * inner.step;
   const inside = (x: number, z: number, m: number) => x > inner.x0 + m && x < ix1 - m && z > inner.z0 + m && z < iz1 - m;
@@ -331,7 +325,7 @@ export function horizon(nums: Int16Array, h: { at: number; x0: number; z0: numbe
     for (let i = 0; i < h.nx; i++) {
       const x = h.x0 + i * h.step;
       const z = h.z0 + j * h.step;
-      let y = nums[h.at + j * h.nx + i] / 10;
+      let y = h.h[j * h.nx + i];
       if (inside(x, z, 0)) y -= 12;
       pos.push(x, y, z);
       const n = Math.sin(x * 0.0013 + Math.sin(z * 0.0009) * 2) * Math.cos(z * 0.0017 + Math.sin(x * 0.0011) * 2);

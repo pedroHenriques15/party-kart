@@ -1,3 +1,4 @@
+import amigos from 'braga-map/tracks/amigos.js';
 import * as THREE from 'three';
 import './style.css';
 import { beep, checkpointSound, engineSound, horn, isMuted, lapSound, sfx, thud, toggleMute, unlockAudio } from './audio.ts';
@@ -18,7 +19,6 @@ import { nameTag } from './render/textures.ts';
 import { buildCity } from './render/city.ts';
 import type { EggEvent } from './render/eggs.ts';
 import { ClientRoom, cleanName, HostRoom, MAX_RACERS, setLapLimit, type Entry, type Room, type Snap } from './session.ts';
-import { AMIGOS } from './track/amigos.ts';
 import { buildTrack } from './track/track.ts';
 
 const DT = 1 / 120;
@@ -29,7 +29,7 @@ const AUTODRIVE = new URLSearchParams(location.search).has('autodrive');
 // at the scenery.
 const VIEW = new URLSearchParams(location.search).get('view')?.split(',').map(Number) ?? null;
 const START_AT = AUTODRIVE ? Number(new URLSearchParams(location.search).get('at')) || 0 : 0;
-const track = buildTrack(AMIGOS);
+const track = buildTrack(amigos.points);
 const N = track.samples.length;
 // A race ends at the latest after this long a lap (and a minute), at 60 km/h on average.
 setLapLimit(Math.ceil(track.length / 16.7));
@@ -48,7 +48,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(68, 1, 0.3, 30000);
 const look = new Look(renderer, scene, camera);
 let quality = stored('pk-quality', PHONE ? 'medium' : 'high') as Quality;
-const world = buildCity(track, quality);
+const world = await buildCity(track, amigos, quality);
 scene.add(world.group);
 const fx = new Particles(0.55);
 const glow = new Particles(0.32, true);
@@ -374,7 +374,7 @@ function howTo(): HTMLElement {
           .map((i) => `${i.icon} ${i.name}`)
           .join(' · '),
       ),
-      h('li', {}, h('b', {}, 'The track'), " is 7 km of Braga as it is: the streets, the buildings and the hills. Watch out for a dog. Map data © OpenStreetMap contributors."),
+      h('li', {}, h('b', {}, 'The track'), " is 7 km of Braga as it is: the streets, the buildings and the hills. Watch out for a dog. Map data © OpenStreetMap contributors. Relief: EU-DEM, produced using Copernicus data and information funded by the European Union."),
     ),
   );
 }

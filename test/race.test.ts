@@ -1,3 +1,4 @@
+import amigosPlan from 'braga-map/tracks/amigos.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { newCar, stepCar, TURBO2 } from '../src/car/car.ts';
@@ -5,14 +6,13 @@ import { Arena, type Rules } from '../src/game/arena.ts';
 import { botControls, newBrain, type Brain } from '../src/game/bot.ts';
 import { boxRows, itemOdds, ITEMS, rollItem, type ItemEv, type ItemKind } from '../src/game/items.ts';
 import { NO_CONTROLS, Racer, type Controls } from '../src/game/racer.ts';
-import { AMIGOS } from '../src/track/amigos.ts';
 import { LAYOUT } from '../src/track/layout.ts';
 import { buildTrack, surfacePoint, type Track } from '../src/track/track.ts';
 
 // The items and the handling are tested on the first track, kept for reference: the places these
 // tests put cars (down the Avenida's straight) were picked on it. The bots race the game's track.
 const track = buildTrack(LAYOUT);
-const amigos = buildTrack(AMIGOS);
+const amigos = buildTrack(amigosPlan.points);
 const N = track.samples.length;
 const DT = 1 / 120;
 const RACE: Rules = { mode: 'race', laps: 2, items: true, catchUp: true };

@@ -1,14 +1,14 @@
+import amigos from 'braga-map/tracks/amigos.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { autopilot } from '../src/car/autopilot.ts';
 import { newCar, speedOf, stepCar, stopInput, type Car, type Input } from '../src/car/car.ts';
 import { advance, newRun, noteSpeed, respawn, startGrid, type RunEvent } from '../src/race.ts';
-import { AMIGOS } from '../src/track/amigos.ts';
 import { LAYOUT } from '../src/track/layout.ts';
 import { buildTrack, locate, type Track } from '../src/track/track.ts';
 
 // The game's track; and the first one, kept for reference, for its jump.
-const track = buildTrack(AMIGOS);
+const track = buildTrack(amigos.points);
 const gp = buildTrack(LAYOUT);
 const DT = 1 / 120;
 

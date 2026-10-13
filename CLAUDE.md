@@ -3,17 +3,18 @@
 Party Kart is a kart game played in the browser, for racing friends round Braga's real streets. It is
 TypeScript, three.js and PeerJS (WebRTC), built with Vite and served from GitHub Pages. There is no
 server and no accounts, and no asset files either: every texture is drawn on a canvas and every
-sound is synthesized. The track and the city round it are data made from OpenStreetMap by
-`tools/braga-map/course.mjs` and committed as modules. The README promises "nothing to maintain",
-so treat that as a design constraint: don't add a backend, a build step or a dependency without a
-strong reason.
+sound is synthesized. The track and the city round it come from the map of Braga the games share:
+the `braga-map` package (https://github.com/pedroHenriques15/braga-map, a sibling repo at
+`../braga-map`), data made from OpenStreetMap, pinned to a version tag in `package.json`. The
+README promises "nothing to maintain", so treat that as a design constraint: don't add a backend,
+a build step or a dependency without a strong reason.
 
 - `README.md`: the game as a player sees it (controls, items, the track).
 - `docs/architecture.md`: how it fits together: the simulation, the frame loop, the network.
 - `docs/making-changes.md`: step-by-step guides for changes that touch several files (the track,
   an item, a driver, a status flag, a message, scenery, an easter egg).
-- `tools/braga-map/README.md`: the map of Braga the track was planned on, and the scripts that make
-  the track and its scenery from it.
+- braga-map's `README.md` (`node_modules/braga-map/README.md`): the map the games share, its
+  sections, its tracks, how a track is planned, and the scripts that make them.
 - `docs/releasing.md`: shipping a change to the live site.
 
 ## Commands
@@ -49,8 +50,8 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   server, so this needs internet access.
 - `?exp= ?sun= ?hemi= ?env= ?fog=` override the lighting (`src/render/look.ts`), for tuning.
 - `?view=x,y,z,tx,ty,tz` holds the race's camera at (x, y, z), looking at (tx, ty, tz), to look at
-  the scenery from anywhere (the sights on the hills, say). Take positions from
-  `tools/braga-map/braga.json` or `course.json`; heights are metres above `ELEV0`.
+  the scenery from anywhere (the sights on the hills, say). Take positions from braga-map's map
+  page (`npm run map` there); heights are metres above the map's `elev0` (154 m above the sea).
 - The touch controls show on a touch screen: Chrome's device toolbar, or Playwright with
   `hasTouch` and `isMobile`. Drive them with real touches (CDP's `Input.dispatchTouchEvent`), not
   synthetic events.
@@ -67,9 +68,9 @@ these files imports `three` or touches `window`/`document`, the tests can no lon
 
 How a race runs:
 
-- `buildTrack(AMIGOS)` turns the points in `src/track/amigos.ts` (Braga's real streets, made by
-  `course.mjs`) into a road sampled every metre from the start line. A sample index is roughly
-  metres from the line, and the lap is about 8.1 km (N ≈ 8150 samples).
+- `buildTrack(amigos.points)` turns the points of `braga-map/tracks/amigos.js` (Braga's real
+  streets, planned by braga-map) into a road sampled every metre from the start line. A sample
+  index is roughly metres from the line, and the lap is about 8.1 km (N ≈ 8150 samples).
 - `stepCar` (`src/car/car.ts`) is the handling. It always runs at a fixed `DT = 1/120` s, in the
   game and in the tests alike.
 - An `Arena` is one browser's view of a race: the clock, every car's `CarInfo`, the projectiles and
@@ -111,15 +112,17 @@ How a race runs:
 
 ## Gotchas
 
-- **The track and its scenery are generated.** `src/track/amigos.ts` and
-  `src/render/amigos-data.ts` come from `tools/braga-map/course.mjs`: change the tool and run it
-  again, never the files. It needs the map's data (`fetch.mjs`, into `.cache/`) and the
-  waypoints in `.cache/places.json`. See "The track" in `docs/making-changes.md`.
+- **The track and the city come from braga-map.** The track is `braga-map/tracks/amigos.js`, and
+  `buildCity` loads the city round it from the map's tiles (`loadWorld(amigos.box)`), then clears
+  its own road of buildings and trees. Other games use the same map, so change it there: run its
+  scripts, tag a new version, then change the tag in `package.json` and `npm install`. To try a
+  change before tagging it, `npm install --install-links ../braga-map` (again after each change
+  there), and put the tag back before committing. See "The track" in `docs/making-changes.md`.
 - **The road's width is kerb to kerb.** A sample's `w` is the carriageway, and the walls stand at
   its edges. The pavements, central reservations and lane lines beyond and on it are only drawn
   (`kerbs` and `lanes`, carried through the layout like `w`), so karts never drive on them.
-- **The friends' houses stay out of the repo, which is public.** The waypoints are only in the
-  ignored `.cache/places.json` and the shared map's database. The easter eggs stand 44–50 m past
+- **The friends' houses stay out of the repos, which are public.** The waypoints are only in
+  braga-map's ignored `.cache/places.json` and the shared map's database. The easter eggs stand 44–50 m past
   the houses, never at them, and nothing names whose street is whose. Keep it that way.
 - **The first track is kept for reference.** `LAYOUT` (`src/track/layout.ts`) and its world
   (`world.ts`, `landmarks.ts`, `braga.ts`, `buildTrees`) compile but aren't used by the game.

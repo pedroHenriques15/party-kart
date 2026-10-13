@@ -95,18 +95,18 @@ a race runs slowly, the game steps down a level by itself, as far as Low.
 
 ## Code
 
-- `src/track/`: the Volta dos Amigos (`amigos.ts`, made from the map by
-  `tools/braga-map/course.mjs`), the first track (`layout.ts`, for reference), and the road
-  built from a layout.
+- `src/track/`: the road built from a layout, and the first track (`layout.ts`, for reference).
+  The Volta dos Amigos itself comes from the map of Braga, below.
 - `src/car/`: the handling (drifts, mini-turbos, jumps), and an autopilot.
 - `src/game/`: a race: the arena (clock, cars, items in flight, order), a racer (laps, boxes,
   items, hits, bumps, slipstreams, catch-up), the items' rules, and the bots.
 - `src/render/`: the look (sky, sun, shadows, quality); the city round the track (`city.ts`,
-  from `amigos-data.ts`), the road (`road.ts`), the easter eggs (`eggs.ts`); trees, karts and
+  from the map), the road (`road.ts`), the easter eggs (`eggs.ts`); trees, karts and
   drivers, items, particles, skid marks; and the first track's world (`world.ts`,
   `landmarks.ts`, `braga.ts`), for reference.
-- `tools/braga-map/`: the map of Braga the track was planned on, and the scripts that turn
-  OpenStreetMap into the track and its scenery. Not part of the game's build.
+- The map of Braga is its own repo, [braga-map](https://github.com/pedroHenriques15/braga-map),
+  shared with the games to come: the city in sections, and the tracks planned on its streets. The
+  game installs it as a package.
 - `src/session.ts`: rooms. `src/hud.ts`: the race's screen. `src/main.ts`: the screens and the loop.
 
 How it fits together, the network messages included, is in [docs/architecture.md](docs/architecture.md).
@@ -126,4 +126,5 @@ npm run deploy   # publish to GitHub Pages (the gh-pages branch)
 ```
 
 Map data © OpenStreetMap contributors, under the Open Database Licence. The relief is from
-Terrain Tiles, on AWS Open Data.
+Terrain Tiles, on AWS Open Data. Europe terrain data produced using Copernicus data and
+information funded by the European Union - EU-DEM layers.

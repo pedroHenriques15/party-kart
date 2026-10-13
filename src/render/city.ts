@@ -1,15 +1,15 @@
-// The Volta dos Amigos's world: Braga as it is, from OpenStreetMap and the relief (amigos-data.ts,
-// made by tools/braga-map/course.mjs). The land shaped by the real heights, and what's on it
-// painted onto the ground; every building round the track, with its floors and its roof; trees;
-// the Rio Este and its bridges; zebra crossings, traffic lights and bus stops; the street names;
-// the party at the start; the sights (sights.ts); and the friends' easter eggs (eggs.ts). The road
-// itself is road.ts.
+// The Volta dos Amigos's world: Braga as it is, from the map the games share (braga-map, made
+// from OpenStreetMap and the relief), loaded tile by tile round the track. The land shaped by the
+// real heights, and what's on it painted onto the ground; every building near the track, with its
+// floors and its roof, and none on the road; trees; the Rio Este and its bridges; zebra crossings,
+// traffic lights and bus stops; the street names; the party at the start; the sights (sights.ts);
+// and the friends' easter eggs (eggs.ts). The road itself is road.ts.
+import { heightOn, loadWorld, type Box, type Building as MapBuilding, type Track as Course, type World as Braga } from 'braga-map';
 import * as THREE from 'three';
 import { distanceToRoad, surfacePoint, type Sample, type Track } from '../track/track.ts';
-import { CITY_DATA } from './amigos-data.ts';
 import { buildDriverFigure, DRIVERS } from './drivers.ts';
 import { buildEggs, eggSpots, type Eggs } from './eggs.ts';
-import { buildSights, horizon, type Sight } from './sights.ts';
+import { buildSights, horizon } from './sights.ts';
 import { bake, box, mat } from './kit.ts';
 import type { Quality } from './look.ts';
 import { bridge, buildRoad, lamps, ribbon, runs, stringLights } from './road.ts';
@@ -22,66 +22,26 @@ const smooth = (a: number, b: number, x: number) => {
   return t * t * (3 - 2 * t);
 };
 
-// ---- Reading the data ----
-
-interface Grid {
-  at: number;
-  x0: number;
-  z0: number;
-  step: number;
-  nx: number;
-  nz: number;
-}
-interface Meta {
-  elev0: number;
-  box: { x0: number; x1: number; z0: number; z1: number };
-  eggs: { kind: string; x: number; z: number; side: number }[];
-  streets: { name: string; x: number; z: number }[];
-  landmarks: { name: string; x: number; z: number }[];
-  crossings: [number, number][];
-  signals: [number, number][];
-  stops: { x: number; z: number; shelter: number }[];
-  sights: Sight[];
-}
-interface Data {
-  head: { terrain: Grid; far: Grid; horizon: Grid; cover: { at: number; n: number }; areas: { at: number; n: number; kinds: string[] }; lines: { at: number; n: number }; buildings: { at: number; n: number }; trees: { at: number; n: number }; rivers: { at: number; n: number; halfWidth: number }; meta: Meta };
-  nums: Int16Array;
-}
-
-function decode(): Data {
-  const bin = atob(CITY_DATA);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  const hl = bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
-  const head = JSON.parse(new TextDecoder().decode(bytes.subarray(4, 4 + hl)));
-  const off = 4 + hl + ((4 - ((hl + 4) % 4)) % 4);
-  return { head, nums: new Int16Array(bytes.buffer, off, (bytes.length - off) >> 1) };
-}
-
-// Delta-coded points in half metres, from nums[i]: n of them.
-function points(nums: Int16Array, i: number, n: number): [number, number][] {
-  const out: [number, number][] = [];
-  let x = 0;
-  let z = 0;
-  for (let k = 0; k < n; k++) {
-    x += nums[i + k * 2];
-    z += nums[i + k * 2 + 1];
-    out.push([x / 2, z / 2]);
+// How far a point is from the road, roughly (to within 40 m), from a grid of 50 m squares over the
+// box: for keeping only what's near the track. Infinity outside the box.
+function reach(track: Track, B: Box): (x: number, z: number) => number {
+  const C = 50;
+  const nx = Math.ceil((B.x1 - B.x0) / C);
+  const nz = Math.ceil((B.z1 - B.z0) / C);
+  const d = new Float32Array(nx * nz);
+  const pts = track.samples.filter((_, i) => i % 10 === 0).map((s) => s.p);
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) {
+      const x = B.x0 + (i + 0.5) * C;
+      const z = B.z0 + (j + 0.5) * C;
+      let m = Infinity;
+      for (const p of pts) m = Math.min(m, Math.hypot(p.x - x, p.z - z));
+      d[j * nx + i] = m;
+    }
   }
-  return out;
-}
-
-// Heights on a grid, in decimetres; bilinear between the points.
-function sampler(nums: Int16Array, g: Grid): (x: number, z: number) => number {
   return (x, z) => {
-    const fx = Math.max(0, Math.min(g.nx - 1.001, (x - g.x0) / g.step));
-    const fz = Math.max(0, Math.min(g.nz - 1.001, (z - g.z0) / g.step));
-    const i = Math.floor(fx);
-    const j = Math.floor(fz);
-    const u = fx - i;
-    const v = fz - j;
-    const h = (a: number, b: number) => nums[g.at + b * g.nx + a] / 10;
-    return (h(i, j) * (1 - u) + h(i + 1, j) * u) * (1 - v) + (h(i, j + 1) * (1 - u) + h(i + 1, j + 1) * u) * v;
+    if (x < B.x0 || x >= B.x1 || z < B.z0 || z >= B.z1) return Infinity;
+    return d[Math.floor((z - B.z0) / C) * nx + Math.floor((x - B.x0) / C)];
   };
 }
 
@@ -103,7 +63,7 @@ const LAND: Record<string, string> = {
   water: '#3e6f7c',
   plaza: '#b8b2a6',
 };
-// Street classes as course.mjs numbered them: whether they have pavements. (Each street comes
+// Street classes as the map numbers them: whether they have pavements. (Each street comes
 // with its own width.)
 const PAVED = [true, false, true, true, true, true, false, false, false, false];
 // Facade colours, which tint the near-white wall textures.
@@ -130,34 +90,30 @@ function groundMaterial(map: THREE.Texture): THREE.MeshStandardMaterial {
 
 // ---- The world ----
 
-export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs } {
-  const { head, nums } = decode();
-  const meta = head.meta;
-  const B = meta.box;
+export async function buildCity(track: Track, course: Course, quality: Quality): Promise<World & { eggs: Eggs }> {
+  const map = await loadWorld(course.box);
+  const B = course.box;
   const group = new THREE.Group();
   const updates: ((t: number) => void)[] = [];
   const N = track.samples.length;
-  const nat = sampler(nums, head.terrain);
-  const far = sampler(nums, head.far);
+  const nat = map.height;
+  const far = (x: number, z: number) => heightOn(map.far, x, z);
+  const near = reach(track, B);
 
-  // The Rio Este: its line, and its water level along it.
+  // The Rio Este: its line, and its water level along it, well below the road where the road
+  // crosses it.
   const river: { ax: number; az: number; bx: number; bz: number; ya: number; yb: number }[] = [];
-  {
-    const R = head.rivers;
-    for (let i = R.at; i < R.at + R.n; ) {
-      const n = nums[i++];
-      for (let k = 0; k < n; k++) {
-        const x = nums[i + k * 3] / 2;
-        const z = nums[i + k * 3 + 1] / 2;
-        const y = nums[i + k * 3 + 2] / 10;
-        if (k > 0) {
-          river.push({ ax: nums[i + (k - 1) * 3] / 2, az: nums[i + (k - 1) * 3 + 1] / 2, bx: x, bz: z, ya: nums[i + (k - 1) * 3 + 2] / 10, yb: y });
-        }
-      }
-      i += n * 3;
-    }
+  for (const r of map.rivers) {
+    const pts = r.pts
+      .filter(([x, z]) => x > B.x0 - 100 && x < B.x1 + 100 && z > B.z0 - 100 && z < B.z1 + 100)
+      .map(([x, z, y]) => {
+        const { d, i } = distanceToRoad(track, x, z);
+        const s = track.samples[i];
+        return [x, z, i >= 0 && d + s.w / 2 < 30 ? Math.min(y, s.p.y - 4.5) : y];
+      });
+    for (let k = 1; k < pts.length; k++) river.push({ ax: pts[k - 1][0], az: pts[k - 1][1], bx: pts[k][0], bz: pts[k][1], ya: pts[k - 1][2], yb: pts[k][2] });
   }
-  const HW = head.rivers.halfWidth;
+  const HW = map.riverHalfWidth;
   // Metres to the river's middle, and the water's height there.
   const riverAt = (x: number, z: number) => {
     let best = Infinity;
@@ -179,7 +135,7 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
   // The ground's height: the real one, but level with the road beside it (a pavement's width),
   // blending back to the real one over 30 m; and the river's bed cut through it.
   // The stadium's ground is level, its pitch and stands in a bowl cut into the slope.
-  const pads = meta.sights.flatMap((s) => (s.kind === 'stadium' ? [{ x: s.x, z: s.z, c: Math.cos(s.angle), s: Math.sin(s.angle), rx: s.L + s.W + 30, rz: s.W + 36, y: nat(s.x, s.z) }] : []));
+  const pads = map.sights.flatMap((s) => (s.kind === 'stadium' ? [{ x: s.x, z: s.z, c: Math.cos(s.angle), s: Math.sin(s.angle), rx: s.L + s.W + 30, rz: s.W + 36, y: nat(s.x, s.z) }] : []));
   const ground = (x: number, z: number): number => {
     let h = nat(x, z);
     for (const p of pads) {
@@ -232,14 +188,14 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.setIndex(idx);
     geo.computeVertexNormals();
-    const land = new THREE.Mesh(geo, groundMaterial(paintGround(head, nums, track, quality)));
+    const land = new THREE.Mesh(geo, groundMaterial(paintGround(map, B, track, quality)));
     land.receiveShadow = true;
     group.add(land);
   }
 
   // ---- The hills further off: the whole map every 50 m, under the near land where they meet. ----
   {
-    const g = head.far;
+    const g = map.far;
     const inner = (x: number, z: number, m: number) => x > B.x0 + m && x < B.x1 - m && z > B.z0 + m && z < B.z1 - m;
     const pos: number[] = [];
     const col: number[] = [];
@@ -247,7 +203,7 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
     const green = new THREE.Color('#62763f');
     const wood = new THREE.Color('#344a2a');
     const town = new THREE.Color('#9b968a');
-    const cover = (i: number, j: number) => nums[head.cover.at + j * g.nx + i];
+    const cover = (i: number, j: number) => map.cover[j * g.nx + i];
     for (let j = 0; j < g.nz; j++) {
       for (let i = 0; i < g.nx; i++) {
         const x = g.x0 + i * g.step;
@@ -283,7 +239,7 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
   }
 
   // ---- The horizon: the hills 15 km round, under the far ones where they meet. ----
-  group.add(horizon(nums, head.horizon, head.far));
+  group.add(horizon(map.horizon, map.far));
 
   // ---- The Rio Este: water down its course, rippling. ----
   {
@@ -329,7 +285,7 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
   group.add(stringLights(track, [[N - 140, N + 150]]));
 
   // ---- The party at the start, where the lobby shows your car; and the eggs. ----
-  const all = readBuildings(head, nums);
+  const all = nearBuildings(map, track, near);
   const buildingsNear = (x: number, z: number, r: number) => {
     let n = 0;
     for (const b of all) if (Math.abs(b.cx - x) < r + 30 && Math.abs(b.cz - z) < r + 30 && b.pts.some(([px, pz]) => Math.hypot(px - x, pz - z) < r)) n++;
@@ -338,7 +294,7 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
   const party = partyStage(track, ground, buildingsNear);
   statics.add(party.group);
   updates.push(party.update);
-  const spots = eggSpots(track, meta.eggs);
+  const spots = eggSpots(track, course.eggs);
   const eggs = buildEggs(track, ground, spots);
   group.add(bake(eggs.group));
 
@@ -347,18 +303,22 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
   const list = all.filter((b) => !keepOut.some((k) => b.pts.some(([x, z]) => Math.hypot(x - k.x, z - k.z) < k.r) || Math.hypot(b.cx - k.x, b.cz - k.z) < k.r));
   group.add(buildBuildings(list, ground));
 
-  // ---- Trees, from the map and filling its parks and woods. ----
+  // ---- Trees, from the map and filling its parks and woods: the map's own anywhere in the box,
+  // those filled in within 230 m of the road, and none within 11 m of it. ----
   {
-    const T = head.trees;
     const trees: Tree[] = [];
     let seed = 3;
     const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const every = quality === 'low' ? 3 : quality === 'medium' ? 2 : 1;
-    for (let i = T.at, k = 0; i < T.at + T.n; i += 3, k++) {
-      if (k % every) continue;
-      const x = nums[i] / 2;
-      const z = nums[i + 1] / 2;
-      const pine = nums[i + 2] === 1;
+    let k = 0;
+    for (const { x, z, pine, filled } of map.trees) {
+      const r = near(x, z);
+      if (r === Infinity || (filled && r > 230)) continue;
+      if (r < 80) {
+        const { d, i } = distanceToRoad(track, x, z);
+        if (i >= 0 && d + track.samples[i].w / 2 < 11) continue;
+      }
+      if (k++ % every) continue;
       if (riverAt(x, z).d < HW + 3) continue;
       trees.push({
         kind: pine ? 'pine' : 'round',
@@ -374,19 +334,25 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
   }
 
   // ---- Along the road: zebra crossings, traffic lights, bus stops. ----
-  const furniture = streetFurniture(track, ground, meta);
+  const furniture = streetFurniture(track, ground, course);
   statics.add(furniture.group);
   updates.push(furniture.update);
 
   // ---- The sights: Bom Jesus and the Sameiro on the hills, the cross on the Picoto, the stadium,
   // the Altice Forum, Makro and the Tourigalo's bull. ----
-  const sights = buildSights(meta.sights, track, ground, far);
+  // The bull looks at the karts going by.
+  const sights = buildSights(
+    map.sights.map((s) => (s.kind === 'tourigalo' ? { ...s, face: faceRoad(track, s.x, s.z) } : s)),
+    track,
+    ground,
+    far,
+  );
   group.add(sights.group);
   updates.push(sights.update);
 
   // ---- Names: a plate as the road enters each street, brown signs to the landmarks. ----
-  statics.add(streetPlates(track, ground, meta.streets));
-  for (const l of meta.landmarks) statics.add(landmarkSign(track, ground, l));
+  statics.add(streetPlates(track, ground, course.streets));
+  for (const l of course.landmarks) statics.add(landmarkSign(track, ground, l));
   group.add(bake(statics));
 
   return {
@@ -404,8 +370,7 @@ export function buildCity(track: Track, quality: Quality): World & { eggs: Eggs 
 // Paints what the ground is onto one big canvas over the scenery's box: the land, the parks and
 // woods, water, squares, every other street with its pavements, the railway, and pavements along
 // the track.
-function paintGround(head: Data['head'], nums: Int16Array, track: Track, quality: Quality): THREE.CanvasTexture {
-  const B = head.meta.box;
+function paintGround(map: Braga, B: Box, track: Track, quality: Quality): THREE.CanvasTexture {
   const res = quality === 'high' ? 1 : quality === 'medium' ? 1.4 : 2; // metres a pixel
   const W = Math.min(4096, Math.round((B.x1 - B.x0) / res));
   const H = Math.min(4096, Math.round((B.z1 - B.z0) / res));
@@ -417,12 +382,7 @@ function paintGround(head: Data['head'], nums: Int16Array, track: Track, quality
   g.fillStyle = '#76844f';
   g.fillRect(B.x0, B.z0, B.x1 - B.x0, B.z1 - B.z0);
 
-  const A = head.areas;
-  for (let i = A.at; i < A.at + A.n; ) {
-    const kind = A.kinds[nums[i]];
-    const n = nums[i + 1];
-    const pts = points(nums, i + 2, n);
-    i += 2 + n * 2;
+  for (const { kind, pts } of map.areas) {
     g.fillStyle = LAND[kind] ?? LAND.urban;
     g.beginPath();
     pts.forEach(([x, z], k) => (k ? g.lineTo(x, z) : g.moveTo(x, z)));
@@ -437,15 +397,7 @@ function paintGround(head: Data['head'], nums: Int16Array, track: Track, quality
   }
 
   // Every other street: pavement first, then asphalt; the small ones, then the big ones.
-  const L = head.lines;
-  const lines: { k: number; w: number; pts: [number, number][] }[] = [];
-  for (let i = L.at; i < L.at + L.n; ) {
-    const k = nums[i];
-    const w = nums[i + 1] / 10;
-    const n = nums[i + 2];
-    lines.push({ k, w, pts: points(nums, i + 3, n) });
-    i += 3 + n * 2;
-  }
+  const lines = map.lines.map(({ kind, w, pts }) => ({ k: kind, w, pts }));
   g.lineCap = 'round';
   g.lineJoin = 'round';
   const stroke = (pts: [number, number][], width: number, color: string) => {
@@ -498,24 +450,42 @@ interface Building {
   cz: number;
 }
 
-function readBuildings(head: Data['head'], nums: Int16Array): Building[] {
+// The map's buildings in the box within 300 m of the road, but none on the road or its kerb: the
+// road is wider than the streets were. Nor, for the houses the map filled in, on its pavement.
+function nearBuildings(map: Braga, track: Track, near: (x: number, z: number) => number): Building[] {
+  const onRoad = (b: MapBuilding, x: number, z: number) => {
+    const { d, i } = distanceToRoad(track, x, z);
+    if (i < 0) return false;
+    if (d < 1) return true;
+    const s = track.samples[i];
+    return b.filled && d < s.kerbs[(x - s.p.x) * s.r.x + (z - s.p.z) * s.r.z > 0 ? 1 : 0];
+  };
   const out: Building[] = [];
-  const S = head.buildings;
-  for (let i = S.at; i < S.at + S.n; ) {
-    const n = nums[i];
-    const pts = points(nums, i + 5, n);
-    out.push({
-      pts,
-      kind: nums[i + 1],
-      roof: nums[i + 2],
-      color: nums[i + 3],
-      h: nums[i + 4] / 10,
-      cx: pts.reduce((a, p) => a + p[0], 0) / n,
-      cz: pts.reduce((a, p) => a + p[1], 0) / n,
-    });
-    i += 5 + n * 2;
+  for (const b of map.buildings) {
+    const n = b.pts.length;
+    const cx = b.pts.reduce((a, p) => a + p[0], 0) / n;
+    const cz = b.pts.reduce((a, p) => a + p[1], 0) / n;
+    const r = near(cx, cz);
+    if (r > 300) continue;
+    const size = Math.max(...b.pts.map(([x, z]) => Math.hypot(x - cx, z - cz)));
+    if (r - size < 80) {
+      const edges = b.pts.some(([ax, az], k) => {
+        const [bx, bz] = b.pts[(k + 1) % n];
+        for (let f = 0; f <= 1; f += 0.25) if (onRoad(b, ax + (bx - ax) * f, az + (bz - az) * f)) return true;
+        return false;
+      });
+      if (edges || onRoad(b, cx, cz)) continue;
+    }
+    out.push({ pts: b.pts, kind: b.kind, roof: b.roof, color: b.color, h: b.h, cx, cz });
   }
   return out;
+}
+
+// Which way, from (x, z), the nearest point of the road is.
+function faceRoad(track: Track, x: number, z: number): number {
+  let best = track.samples[0];
+  for (const s of track.samples) if (Math.hypot(s.p.x - x, s.p.z - z) < Math.hypot(best.p.x - x, best.p.z - z)) best = s;
+  return Math.atan2(best.p.z - z, best.p.x - x);
 }
 
 // Geometry being gathered for one material: positions, normals, uvs and colours.
@@ -848,7 +818,7 @@ function streetPlates(track: Track, ground: (x: number, z: number) => number, st
 
 // Zebra crossings across the road where the map has them, traffic lights at the kerb before the
 // junctions, and the bus stops, a shelter or a pole, on the pavement.
-function streetFurniture(track: Track, ground: (x: number, z: number) => number, meta: Meta): { group: THREE.Group; update: (t: number) => void } {
+function streetFurniture(track: Track, ground: (x: number, z: number) => number, meta: Course): { group: THREE.Group; update: (t: number) => void } {
   const g = new THREE.Group();
   const N = track.samples.length;
   const zebra = new THREE.MeshStandardMaterial({ map: tex.zebra(), transparent: true, alphaTest: 0.4, roughness: 0.6 });

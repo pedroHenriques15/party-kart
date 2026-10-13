@@ -13,52 +13,29 @@ Then play it with `npm run dev`. Add `?autodrive` and the autopilot drives for y
 
 ## The track
 
-The game races the Volta dos Amigos. Its layout, `AMIGOS` in `src/track/amigos.ts`, and the
-scenery round it, `src/render/amigos-data.ts`, are made by `tools/braga-map/course.mjs` from
-OpenStreetMap and the relief. **Don't edit those two files by hand**: change the tool and run it
-again.
+The game races the Volta dos Amigos, `braga-map/tracks/amigos.js`, from the map of Braga the
+games share: the `braga-map` package, its own repo
+([github.com/pedroHenriques15/braga-map](https://github.com/pedroHenriques15/braga-map), next to
+this one at `../braga-map`). It plans the track on the real streets from OpenStreetMap and the
+relief, and makes the city round it. Its README says how a track is planned and what to change.
+**Nothing of the track or the city is edited here.** To change them:
 
-```sh
-node tools/braga-map/fetch.mjs     # once: the map's data, into tools/braga-map/.cache/
-node tools/braga-map/build.mjs     # the map page's data (braga.json)
-node tools/braga-map/course.mjs    # the track and its scenery
-```
-
-`course.mjs` also needs its waypoints, `tools/braga-map/.cache/places.json`: the friends' houses,
-from the shared map. They're private, and git ignores them. Without them the tool can't plan the
-loop again, but the committed track keeps working. What it does, in order:
-
-1. **The loop.** A graph of the streets, and the cheapest loop through the waypoints. `COST` makes
-   bigger roads cheaper and `TURN` prices the turns. The loop never uses a street twice or runs
-   within 28 m of itself, and it drives along each waypoint's own street through it. A waypoint's
-   street that's a dead end gets a link from its end to the nearest street ahead. It tries every
-   order of the waypoints, unless `places.json` gives one (`"order": [ids]`): then only the
-   direction through each is chosen. To add a house without reshuffling the loop, put it in the
-   order between the two it falls between.
-2. **The centre line.** Short jogs at junctions are folded into one corner, and corners are rounded
-   to `R_MIN` (12 m, a street corner) where the streets allow. Heights come from the relief,
-   smoothed over about 50 m. It prints the corners it had to make tighter, the widths, the
-   steepest grade, the sharpest crest, and any place the road comes too close to itself.
-3. **The street as it is.** The width, kerb to kerb, is the map's `width`, or its `lanes`, or what
-   that kind of street usually is (`carriageway`), never under `W_MIN` (9 m). Lane lines follow
-   `lanes` and `lane_markings`; `surface=sett` and the like make granite setts. Beyond each edge
-   (`kerbs`) is a pavement as wide as the buildings leave room for (none where `sidewalk` says no,
-   or out in the open), a central reservation where a one-way carriageway runs alongside, and a
-   gap wherever a side street joins.
-4. **Where things go.** The start on the Rua do Fujacal (`START_ON`), on the straightest stretch at
-   least 250 m from every waypoint, 5 checkpoints evenly spaced, a row of item boxes every 820 m,
-   boost pads 30 m into the longest straights, and the easter eggs 44–50 m past their houses.
-5. **The scenery.** The relief, near and far, and the hills 15 km round for the horizon; the
-   ground's areas, every street at its width, the railway; every building within 300 m that isn't
-   on the road or its kerb, the big ones mapped in parts too, plus infill where the map has none on
-   a built-up street; trees; the river; zebra crossings, traffic lights and bus stops; the street
-   names and landmarks; and the sights (Bom Jesus, the Sameiro, the cross on the Picoto, the
-   stadium, the Altice Forum, Makro, the Tourigalo's bull), picked out of the map by their
-   OpenStreetMap ids. Packed into `amigos-data.ts`.
+1. Change braga-map's scripts (`tools/track.mjs` plans the tracks, `tools/world.mjs` makes the
+   city) and run them, as its README says. Planning the Volta dos Amigos needs its waypoints,
+   braga-map's `.cache/places.json`: the friends' houses, from the shared map. They're private,
+   and git ignores them.
+2. Try it here before tagging it: `npm install --install-links ../braga-map` installs your copy
+   (run it again after each change there). Run `npm test` and `npm run check`, and look at it with
+   `?autodrive`.
+3. Commit it in braga-map, tag a new version, and push it with its tags. Then here, change the tag
+   in `package.json` (`"braga-map": "github:pedroHenriques15/braga-map#v1.1.0"`), `npm install`,
+   and commit `package.json` and `package-lock.json`.
 
 The layout is the usual `Point`s (see the first track, below), one every 8 m, with `lanes` and
-`kerbs` for how it's dressed. `ELEV0` is the height above the sea that the game's y = 0 stands
-for.
+`kerbs` for how it's dressed. The track also brings what's along it: the easter eggs, the street
+names, the landmarks it passes, the zebra crossings, traffic lights and bus stops, and the box
+round it that the game draws. `elev0` is the height above the sea that the game's y = 0 stands
+for, the same all over the map.
 
 Other things to know:
 
@@ -68,15 +45,16 @@ Other things to know:
 - **The tests guard the track.** It must be a 7–9 km loop with 5 checkpoints, and the autopilot
   must lap it with no respawns, its second lap taking 170–260 s. Eight bots must all finish a lap,
   within 60 s of each other. If the autopilot can't get round, a corner is too tight: raise
-  `R_MIN`, or change the costs so the loop goes another way.
+  `R_MIN` in braga-map's `tools/track.mjs`, or change the costs so the loop goes another way.
 - **A new track needs a new peer id prefix** (`PREFIX` in `src/session.ts`), or old builds join
-  rooms that race a different road.
+  rooms that race a different road. So does a new version of braga-map that changes the track's
+  points (a change to the city alone doesn't).
 - **A road can pass over itself.** `locate` only searches ±40 samples around the car's last sample,
   so the two levels need to be more than about 40 m of road apart.
 - To look at one part of the track, open the game with `?autodrive&at=<sample>`: your car starts
   the race there. `?view=x,y,z,tx,ty,tz` holds the camera anywhere, to look at the scenery.
-- The map's data comes from `fetch.mjs`: `node tools/braga-map/fetch.mjs street horizon` fetches
-  only the crossings, lights and bus stops, and the horizon's relief.
+- The city keeps only what's near the track (`nearBuildings` and the trees in `buildCity`): the
+  map has the whole of Braga in it, for the other games.
 
 ### The first track, for reference
 
@@ -195,9 +173,10 @@ boosting, drifting, charging a turbo, or slipstreaming.
 ## A new landmark or scenery
 
 A sight that's on the map (a building or a monument the track passes) is easiest in
-`src/render/sights.ts`: find its OpenStreetMap id (`tools/braga-map/.cache/osm/*.json`), add it to
-the `sights` in `course.mjs` with whatever the builder needs (a position, a footprint's
-rectangle, a front), run `course.mjs`, and add a builder for its `kind`. Otherwise:
+`src/render/sights.ts`: find its OpenStreetMap id (braga-map's `.cache/osm/*.json`), add it to the
+`sights` in braga-map's `tools/world.mjs` with whatever the builder needs (a position, a
+footprint's rectangle, a front), make the world again (see "The track"), and add a builder for its
+`kind`. The other games get it too. Otherwise:
 
 1. Build it as a function returning a `THREE.Group`, in `src/render/city.ts` or a file of its own,
    from the helpers in `src/render/kit.ts`:
@@ -219,8 +198,8 @@ rectangle, a front), run `course.mjs`, and add a builder for its `kind`. Otherwi
 The eggs are in `src/render/eggs.ts`. Each is a model by the road and an update that watches your
 kart (its sample and speed) and returns events: `eggReact` in `main.ts` turns those into sounds,
 sparkles and a line in the feed. They react to your own kart only, so nothing goes over the
-network. Where they stand comes from the waypoints' `egg` in `.cache/places.json`, through
-`course.mjs`: a new one needs a kind in `SET_BACK` and `CLEAR`, a builder, and its sounds in
-`sfx` (`src/audio.ts`). An egg that does something to your own kart for a while (the café's
+network. Where they stand comes from the waypoints' `egg` in braga-map's `.cache/places.json`,
+through its `tools/track.mjs`: a new one needs a kind in `SET_BACK` and `CLEAR`, a builder, and
+its sounds in `sfx` (`src/audio.ts`). An egg that does something to your own kart for a while (the café's
 cigarette and beer) keeps its time in `RaceCtx` in `main.ts`, and passes it to the kart model's
 `update`.

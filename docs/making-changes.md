@@ -39,7 +39,7 @@ for, the same all over the map.
 
 Other things to know:
 
-- A sample is a metre of road. The lap is about 8.1 km (N ≈ 8150). Nothing in the new scenery uses
+- A sample is a metre of road. The lap is about 9.3 km (N ≈ 9260). Nothing in the new scenery uses
   a raw sample index: it's all placed by position, so it moves with the track when that's made
   again.
 - **The tests guard the track.** It must be a 7–10 km loop with 5 checkpoints, and the autopilot

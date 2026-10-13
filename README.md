@@ -10,7 +10,7 @@ nothing to maintain. All names are parodies, and all faces are cartoons.
 2. **Copy invite link** and send it to your friends. They open it, pick a driver, **Join**.
 3. Choose the mode and **Start**. Empty places on the grid are bots (you choose how many).
 
-**Race**: 1 to 3 laps (a lap is about four minutes), a starting grid, positions, power-ups, catch-up. **Time attack**: everyone
+**Race**: 1 to 3 laps (a lap is about four and a half minutes), a starting grid, positions, power-ups, catch-up. **Time attack**: everyone
 drives at once, through each other; your best lap before the clock runs out counts, against
 the ghost of your best.
 
@@ -55,17 +55,18 @@ few seconds; karts **bump**; and with
 **catch-up** on, the further behind the leader, the more top speed. All of it can be switched off
 in the lobby.
 
-**The track, the Volta dos Amigos**: 8.1 km of Braga as it is, through five friends'
-neighbourhoods south and east of the centre. Every street, building, park and tree round it comes
-from OpenStreetMap, and the ground from DGT's 2025 LiDAR: the hills, 68 m from the lowest point to
-the highest and as steep as 19%, the streets that tip sideways, the cuttings and banks beside them.
-From the line on the Rua do Fujacal, down the Avenida da Liberdade and over the Rio Este at São
-João da Ponte; up past the Largo da Devesa to the slopes of the Picoto; up the Avenida 31 de
-Janeiro and the Avenida João XXI and back down the Rua Bernardo Sequeira, then Lamaçães's avenues
-and roundabouts, past Makro and the Tourigalo's bull; back west round the Picoto by the Picoto
-Adventure Park, and down the Avenida Doutor Viriato Amaral Nunes past the Estádio 1.º de Maio and
-the Altice Forum; through a new link into what was the dead end of the Rua Nova do Couteiro, over
-the river again, and home.
+**The track, the Volta dos Amigos**: 9.3 km of Braga as it is, through five friends' neighbourhoods
+south and east of the centre, the way the traffic goes. Every street, building, park and tree round
+it comes from OpenStreetMap, and the ground from DGT's 2025 LiDAR: the hills, 68 m from the lowest
+point to the highest and as steep as 19.5%, the streets that tip sideways, the cuttings and banks
+beside them. From the line on the Rua do Fujacal, west as its traffic goes, round by the Avenida
+Imaculada Conceição, down the Avenida da Liberdade and over the Rio Este at São João da Ponte; up
+past the Largo da Devesa to the slopes of the Picoto; up the Avenida 31 de Janeiro and the Avenida
+João XXI and back down the Rua Bernardo Sequeira, then Lamaçães's avenues and roundabouts, past
+Makro and the Tourigalo's bull; back west round the Picoto by the Picoto Adventure Park, and down
+the Avenida Doutor Viriato Amaral Nunes past the Estádio 1.º de Maio and the Altice Forum; through a
+new link into what was the dead end of the Rua Nova do Couteiro, over the river again, and home
+along the Rua Conselheiro Lobato.
 
 The streets are as wide as they are (never under 9 m, so eight karts fit), with their lanes
 painted white, their zebra crossings, traffic lights and bus stops, calçada pavements behind

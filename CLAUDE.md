@@ -70,7 +70,7 @@ How a race runs:
 
 - `buildTrack(amigos.points)` turns the points of `braga-map/tracks/amigos.js` (Braga's real
   streets, planned by braga-map) into a road sampled every metre from the start line. A sample
-  index is roughly metres from the line, and the lap is about 8.1 km (N ≈ 8150 samples).
+  index is roughly metres from the line, and the lap is about 9.3 km (N ≈ 9260 samples).
 - `stepCar` (`src/car/car.ts`) is the handling. It always runs at a fixed `DT = 1/120` s, in the
   game and in the tests alike.
 - An `Arena` is one browser's view of a race: the clock, every car's `CarInfo`, the projectiles and
@@ -138,7 +138,7 @@ How a race runs:
   animate needs `userData.moves = true` on it or a parent, or it gets frozen into the merged mesh.
 - **`mat()` caches materials by colour and settings**, so changing one changes every mesh that
   uses it. A kart's body paint is its own because gold plating recolours it.
-- **The peer id prefix** `partykart-pk29-` in `src/session.ts` decides which builds can see each
+- **The peer id prefix** `partykart-pk30-` in `src/session.ts` decides which builds can see each
   other's rooms. The deployed game and a dev build share rooms while it matches. Change it when the
   message format changes incompatibly, or the track changes.
 - **Item rolls and bot patience use `Math.random`.** That's fine because only one browser ever

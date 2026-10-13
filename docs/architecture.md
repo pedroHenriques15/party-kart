@@ -107,7 +107,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk29-` plus a five-character room code, and the invite link is `?room=<code>`.
+`partykart-pk30-` plus a five-character room code, and the invite link is `?room=<code>`.
 
 ### Messages
 

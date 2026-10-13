@@ -10,6 +10,7 @@ constraint: don't add a backend, a build step or a dependency without a strong r
 - `docs/architecture.md`: how it fits together: the simulation, the frame loop, the network.
 - `docs/making-changes.md`: step-by-step guides for changes that touch several files (the track,
   an item, a driver, a status flag, a message).
+- `docs/releasing.md`: shipping a change to the live site.
 
 ## Commands
 
@@ -27,6 +28,9 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   does **not** type-check them. Run `npm run check` as well as `npm test`.
 - `npm run deploy` publishes to the public site. Only run it when asked. It needs bash (Git Bash on
   Windows).
+- To ship a change: check it, commit it to `main`, `git push origin main`, `npm run deploy`, then
+  confirm the live page at https://pedrohenriques15.github.io/party-kart/ serves the new build. The
+  deploy publishes the working tree, so commit first. The details are in `docs/releasing.md`.
 - Some tests print a summary line, such as lap times, airtime, finish spread and hits. Read it when
   tuning the handling, the track or the items.
 
@@ -104,6 +108,9 @@ How a race runs:
   - the menu cars (`2300`) and the showroom camera (`samples[40]`) in `src/main.ts`.
 
   Things placed by `tag` follow the track by themselves. See `docs/making-changes.md`.
+- **Holding the brake reverses once the car has stopped.** That's the down arrow's job when
+  driving. To keep a car still (the grid, "Time's up!", a spin-out), use `stopInput(car)` from
+  `src/car/car.ts`, never `{ brake: 1 }`, or the car drives backwards.
 - **The status flags are defined twice.** They are `FLAG` in `src/game/arena.ts`, and again as
   local `GOLD`/`SHIELD`/`SPIN`/`SHRINK`/`BOOST` constants in `src/render/drivers.ts`. Change both
   together. `cleanSnap` clamps flags to 16 bits.

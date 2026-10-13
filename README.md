@@ -78,7 +78,8 @@ slowly, the game steps down to Medium by itself.
 
 How it fits together, the network messages included, is in [docs/architecture.md](docs/architecture.md).
 How to change the track, add an item or a driver, and what to watch out for is in
-[docs/making-changes.md](docs/making-changes.md).
+[docs/making-changes.md](docs/making-changes.md). Putting a change live is in
+[docs/releasing.md](docs/releasing.md).
 
 The tests run the TypeScript straight in Node, which needs Node 22.18 or later.
 

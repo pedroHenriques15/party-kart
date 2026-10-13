@@ -34,6 +34,12 @@ export interface Input {
 
 export const NO_INPUT: Input = { throttle: 0, brake: 0, steer: 0, drift: false };
 
+// Brakes to a standstill and stays there. (Holding the brake alone would reverse once stopped.)
+export function stopInput(c: Car, force = 1): Input {
+  const vF = c.v.x * Math.cos(c.yaw) + c.v.z * Math.sin(c.yaw);
+  return { throttle: vF < -0.5 ? force : 0, brake: vF > 0.5 ? force : 0, steer: 0, drift: false };
+}
+
 // What power-ups and catch-up do to the car: multiply its top speed and its acceleration.
 export interface Mods {
   vmax: number;

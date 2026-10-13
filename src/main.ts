@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import './style.css';
 import { beep, checkpointSound, engineSound, horn, lapSound, sfx, thud, toggleMute, unlockAudio } from './audio.ts';
 import { autopilot } from './car/autopilot.ts';
-import { newCar, speedOf, stepCar, type Car } from './car/car.ts';
+import { newCar, speedOf, stepCar, stopInput, type Car } from './car/car.ts';
 import { Arena, FLAG, type ArenaFx, type CarInfo, type Rules } from './game/arena.ts';
 import { botControls, newBrain, type Brain } from './game/bot.ts';
 import { ITEMS } from './game/items.ts';
@@ -843,7 +843,7 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
       else if (!me.roll) r.use = false;
     }
     if (AUTODRIVE && me.item && me.roll <= 0) ctl = { ...ctl, use: true };
-    if (r.timeUp) ctl = { ...NO_CONTROLS, brake: 1 };
+    if (r.timeUp) ctl = { ...NO_CONTROLS, ...stopInput(me.car) };
     r.steer = ctl.steer;
     r.throttle = ctl.throttle;
     me.step(a, ctl, DT);

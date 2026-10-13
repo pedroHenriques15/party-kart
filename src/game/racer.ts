@@ -1,7 +1,7 @@
 // One car this browser drives, ours or (on the host) a bot: the handling, laps, item boxes, using
 // items, getting hit, bumping into others, slipstreams and catch-up.
 import { autopilot } from '../car/autopilot.ts';
-import { newCar, NO_INPUT, speedOf, stepCar, type Car, type Input, type Mods } from '../car/car.ts';
+import { newCar, NO_INPUT, speedOf, stepCar, stopInput, type Car, type Input, type Mods } from '../car/car.ts';
 import { clamp } from '../math.ts';
 import { advance, newRun, noteSpeed, respawn, restart, type Run, type RunEvent } from '../race.ts';
 import { surfacePoint, type Track } from '../track/track.ts';
@@ -116,9 +116,9 @@ export class Racer {
     this.gold = Math.max(0, this.gold - dt);
 
     let inp: Input = ctl;
-    if (!a.started) inp = { throttle: 0, brake: 1, steer: 0, drift: false };
+    if (!a.started) inp = stopInput(this.car);
     else if (this.fin !== null) inp = autopilot(this.car, this.track, 1.2);
-    if (this.spin > 0) inp = { throttle: 0, brake: 0.3, steer: 0, drift: false };
+    if (this.spin > 0) inp = stopInput(this.car, 0.3);
 
     const mods: Mods = { vmax: 1, acc: 1 };
     if (this.gold > 0) {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { autopilot } from '../src/car/autopilot.ts';
-import { newCar, speedOf, stepCar, type Car, type Input } from '../src/car/car.ts';
+import { newCar, speedOf, stepCar, stopInput, type Car, type Input } from '../src/car/car.ts';
 import { advance, newRun, noteSpeed, respawn, startGrid, type RunEvent } from '../src/race.ts';
 import { LAYOUT } from '../src/track/layout.ts';
 import { buildTrack, locate } from '../src/track/track.ts';
@@ -102,6 +102,21 @@ test('falling off the jump respawns at the last checkpoint, at its speed', () =>
     return near ? { ...i, steer: -1 } : i;
   });
   assert.ok(d.respawns >= 1);
+});
+
+test('stopping brakes to a standstill and stays there, without reversing', () => {
+  for (const speed of [40, 10, -8]) {
+    const car = newCar(track, 150, speed);
+    const forward = () => car.v.x * Math.cos(car.yaw) + car.v.z * Math.sin(car.yaw);
+    let wrongWay = 0;
+    for (let i = 0; i < 6 / DT; i++) {
+      stepCar(car, stopInput(car), track, DT);
+      // Past the moment it stops, it mustn't pick up speed the other way.
+      wrongWay = Math.max(wrongWay, speed > 0 ? -forward() : forward());
+    }
+    assert.ok(speedOf(car) < 0.05, `still at ${speedOf(car).toFixed(2)} m/s from ${speed} m/s`);
+    assert.ok(wrongWay < 0.05, `went ${wrongWay.toFixed(2)} m/s the other way from ${speed} m/s`);
+  }
 });
 
 test('a lap is timed from the line, and splits compare with the best lap', () => {

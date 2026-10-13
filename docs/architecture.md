@@ -79,8 +79,8 @@ checkpoint, or the line once every checkpoint is done. It returns `cp` or `lap` 
 against the best lap. Respawning puts the car back at the last checkpoint, at the speed it went
 through.
 
-**A racer.** `Racer.step` works out the input. On the grid that's brake held. After the finish the
-autopilot drives. While spun out it's nothing. It sets the `Mods`: gold plating, being shrunk, and
+**A racer.** `Racer.step` works out the input. On the grid it's `stopInput`, which holds the car
+still. After the finish the autopilot drives. While spun out it's a gentle `stopInput`. It sets the `Mods`: gold plating, being shrunk, and
 catch-up, which in race mode with it on gives up to +7% top speed and +15% pull the further behind
 the leader you are. It then steps the car, advances the lap, picks up item boxes and runs the
 1.1 s roulette, uses the item, and checks for hits, bumps and slipstream.

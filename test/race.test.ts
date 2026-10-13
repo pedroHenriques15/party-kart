@@ -65,6 +65,18 @@ test('item odds: the leader gets small stuff, the back the big guns', () => {
   assert.deepEqual([...seen].sort(), (Object.keys(ITEMS) as ItemKind[]).sort(), 'every item turns up somewhere');
 });
 
+test('on the grid, waiting for the green light, nobody moves, even with the throttle down', () => {
+  const racers = [0, 1, 2, 3].map((k) => new Racer(track, `r${k}`, `r${k}`, true, k));
+  const { a } = arena(RACE, racers);
+  a.started = false;
+  const before = racers.map((r) => ({ ...r.car.p }));
+  for (let i = 0; i < 4 / DT; i++) tick(a, racers, cruise);
+  racers.forEach((r, k) => {
+    const moved = Math.hypot(r.car.p.x - before[k].x, r.car.p.z - before[k].z);
+    assert.ok(moved < 0.05, `${r.id} moved ${moved.toFixed(2)} m on the grid`);
+  });
+});
+
 test('progress counts laps, and is negative on the grid', () => {
   const r = new Racer(track, 'me', 'me', false, 3);
   assert.ok(r.P < 0 && r.P > -40, `P on the grid ${r.P}`);

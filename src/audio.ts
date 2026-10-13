@@ -12,11 +12,14 @@ export function unlockAudio(): void {
       master.gain.value = 0.5;
       master.connect(ctx.destination);
     }
-    if (ctx.state === 'suspended') void ctx.resume();
+    // Safari also has 'interrupted', after a phone call or the page going to the background.
+    if (ctx.state !== 'running') void ctx.resume();
   } catch {
     ctx = null;
   }
 }
+
+export const isMuted = () => muted;
 
 export function toggleMute(): boolean {
   muted = !muted;

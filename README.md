@@ -1,8 +1,8 @@
 # Party Kart
 
 P. Kiddy's White Party · the Braga Grand Prix. A kart game to race your friends in the browser,
-keyboard only, with power-ups and bots. A throwaway game: no server, no accounts, nothing to
-maintain. All names are parodies, and all faces are cartoons.
+on a keyboard or a phone, with power-ups and bots. A throwaway game: no server, no accounts,
+nothing to maintain. All names are parodies, and all faces are cartoons.
 
 ## Playing
 
@@ -22,6 +22,19 @@ the ghost of your best.
 | Enter | Back to your last checkpoint |
 | Backspace | Restart the lap (time attack) |
 | H · C · M | Horn · camera · sound |
+
+**On a phone or a tablet**, turned sideways, the kart goes by itself:
+
+| Touch | |
+|---|---|
+| Left half of the screen | Steer: put your thumb down anywhere and drag left or right |
+| Drift | Hold it through a corner, as with Space |
+| Brake | Slows you down, and reverses once you've stopped |
+| Item | Tap to use what it shows; swipe it down to throw backwards |
+| ↺ · 📢 · 🎥 · 🔊 (at the top) | Back to your last checkpoint · horn · camera · sound |
+
+On Android the game goes full screen when you create, join or start a race. On an iPhone, add the
+page to the home screen (Share → Add to Home Screen) for the same.
 
 The power-ups, from the **?** boxes. The further behind you are, the better what you get:
 
@@ -52,8 +65,8 @@ and over the river again on the long curve home, Tibães on its hill to the west
 The drivers: P. Kiddy (the host), Donald Trunk, Gucci Pain, Lil Woozy Vert, Trav Scotch,
 22 Average, Lil Babyface, Lil Past and Playboi Farty.
 
-**Graphics**: High, Medium or Low, on the first screen and in the lobby. On High, if a race runs
-slowly, the game steps down to Medium by itself.
+**Graphics**: High, Medium or Low, on the first screen and in the lobby. Phones start on Medium. If
+a race runs slowly, the game steps down a level by itself, as far as Low.
 
 ## How it works
 

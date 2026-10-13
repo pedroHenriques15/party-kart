@@ -7,6 +7,11 @@
   --gold: #d4af37;
   --good: #2fd27a;
   --bad: #ff5a4f;
+  /* The notch, the status bar and the home bar, on phones that have them. */
+  --st: env(safe-area-inset-top, 0px);
+  --sl: env(safe-area-inset-left, 0px);
+  --sr: env(safe-area-inset-right, 0px);
+  --sb: env(safe-area-inset-bottom, 0px);
   color-scheme: light;
 }
 
@@ -14,11 +19,18 @@
   box-sizing: border-box;
 }
 
+html {
+  /* No double-tap zoom on the menus' buttons. */
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
+
 html,
 body {
   margin: 0;
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
   background: var(--bg);
   font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--ink);
@@ -27,17 +39,18 @@ body {
 #view {
   position: fixed;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   display: block;
 }
 
 #ui {
   position: fixed;
   inset: 0;
+  z-index: 2;
   display: grid;
   place-items: center start;
-  padding: 24px 24px 24px max(24px, 4vw);
+  padding: max(24px, var(--st)) max(24px, var(--sr)) max(24px, var(--sb)) max(24px, 4vw, var(--sl));
   pointer-events: none;
   overflow: auto;
 }
@@ -63,6 +76,7 @@ body.racing #ui {
   flex-direction: column;
   gap: 12px;
   max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - max(24px, var(--st)) - max(24px, var(--sb)));
   overflow: auto;
 }
 
@@ -123,6 +137,7 @@ select:focus {
 }
 
 button {
+  -webkit-tap-highlight-color: transparent;
   font: inherit;
   font-weight: 650;
   color: var(--ink);
@@ -133,8 +148,10 @@ button {
   cursor: pointer;
 }
 
-button:hover:not(:disabled) {
-  border-color: var(--gold);
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    border-color: var(--gold);
+  }
 }
 
 button:disabled {
@@ -150,8 +167,10 @@ button.primary {
   padding: 13px;
 }
 
-button.primary:hover:not(:disabled) {
-  background: #2a2b31;
+@media (hover: hover) {
+  button.primary:hover:not(:disabled) {
+    background: #2a2b31;
+  }
 }
 
 button.ghost {
@@ -373,7 +392,7 @@ button.small {
 .tl {
   position: absolute;
   top: 14px;
-  left: 20px;
+  left: calc(20px + var(--sl));
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -571,8 +590,8 @@ button.small {
 
 .speed {
   position: absolute;
-  bottom: 22px;
-  right: 28px;
+  bottom: calc(22px + var(--sb));
+  right: calc(28px + var(--sr));
   font-size: 64px;
   font-weight: 900;
   line-height: 1;
@@ -591,7 +610,7 @@ button.small {
 .board {
   position: absolute;
   top: 64px;
-  right: 18px;
+  right: calc(18px + var(--sr));
   margin: 0;
   padding: 8px;
   list-style: none;
@@ -633,15 +652,16 @@ button.small {
 
 .minimap {
   position: absolute;
-  left: 16px;
-  bottom: 44px;
+  left: calc(16px + var(--sl));
+  bottom: calc(44px + var(--sb));
+  width: 240px;
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
 }
 
 .keys {
   position: absolute;
-  bottom: 14px;
-  left: 20px;
+  bottom: calc(14px + var(--sb));
+  left: calc(20px + var(--sl));
   font-size: 12.5px;
   opacity: 0.8;
 }
@@ -702,7 +722,7 @@ label.inline {
 }
 
 .bar {
-  margin: 12px 16px;
+  margin: calc(12px + var(--st)) calc(16px + var(--sr)) 12px 16px;
   display: flex;
   gap: 10px;
   align-items: center;
@@ -732,5 +752,383 @@ label.inline {
   }
   .keys {
     display: none;
+  }
+}
+
+/* Touch screens: the touch controls, and what the keyboard has that a finger doesn't. */
+body:not(.touch) .touch-only,
+body.touch .keys-only {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  /* Any smaller, and an iPhone zooms in on the field when you type in it. */
+  input,
+  select {
+    font-size: 16px;
+  }
+}
+
+body.racing {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.t-pad {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body.touch.racing .t-pad {
+  display: block;
+}
+
+.t-steer {
+  position: absolute;
+  inset: 0 50% 0 0;
+  pointer-events: auto;
+}
+
+/* The stick rests bottom left, and jumps to wherever the thumb lands. */
+.t-stick {
+  position: absolute;
+  left: calc(90px + var(--sl));
+  top: calc(100% - 90px - var(--sb));
+  width: 116px;
+  height: 116px;
+  margin: -58px 0 0 -58px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  background: rgba(10, 12, 18, 0.3);
+  display: grid;
+  place-items: center;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+.t-stick::before,
+.t-stick::after {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+}
+
+.t-stick::before {
+  content: '◀';
+  left: 9px;
+}
+
+.t-stick::after {
+  content: '▶';
+  right: 9px;
+}
+
+.t-stick.live {
+  opacity: 1;
+  transition: none;
+}
+
+.t-knob {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
+}
+
+.t-btn {
+  position: absolute;
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(10, 12, 18, 0.42);
+  border: 3px solid rgba(255, 255, 255, 0.5);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.t-btn.down {
+  background: rgba(255, 255, 255, 0.32);
+  transform: scale(0.94);
+}
+
+.t-drift {
+  right: calc(20px + var(--sr));
+  bottom: calc(20px + var(--sb));
+  width: 100px;
+  height: 100px;
+  border-color: rgba(255, 211, 77, 0.9);
+}
+
+.t-brake {
+  right: calc(140px + var(--sr));
+  bottom: calc(14px + var(--sb));
+  width: 66px;
+  height: 66px;
+  font-size: 12px;
+  border-color: rgba(255, 90, 79, 0.85);
+}
+
+.t-item {
+  right: calc(112px + var(--sr));
+  bottom: calc(112px + var(--sb));
+  width: 78px;
+  height: 78px;
+  font-size: 40px;
+  letter-spacing: 0;
+  text-shadow: none;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.t-item:empty::before {
+  content: 'Item';
+  font-size: 12px;
+  letter-spacing: 1px;
+  opacity: 0.6;
+}
+
+.t-pad[data-mode='time'] .t-item {
+  display: none;
+}
+
+.t-item.full {
+  border-color: #ffd34d;
+  box-shadow: 0 0 22px rgba(255, 211, 77, 0.55);
+}
+
+.t-item.rolling {
+  border-color: #ff4fd8;
+  font-size: 30px;
+  font-weight: 900;
+  animation: wobble 0.14s infinite alternate;
+}
+
+.t-item .uses {
+  position: absolute;
+  right: 4px;
+  bottom: 0;
+  font-size: 15px;
+  font-weight: 900;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.t-rotate {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  transform: translateX(-50%);
+  max-width: 80vw;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgba(10, 12, 18, 0.7);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  text-align: center;
+  animation: fadeOut 0.6s 6s forwards;
+}
+
+@media (orientation: portrait) {
+  .t-rotate {
+    display: block;
+  }
+}
+
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+/* With the touch controls, the item lives on its button, the speed moves to the middle, and the
+   minimap up out of the steering thumb's way. */
+body.touch .keys,
+body.touch .item {
+  display: none;
+}
+
+body.touch .speed {
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+body.touch .minimap {
+  bottom: auto;
+  top: 190px;
+}
+
+/* The race bar is wider with its touch buttons, so what's in the middle goes below it. */
+body.touch .tc {
+  top: calc(56px + var(--st));
+}
+
+.bar button.touch-only {
+  font-size: 15px;
+  padding: 3px 8px;
+}
+
+/* Small screens, such as a phone on its side: everything in the race's HUD smaller. */
+@media (max-height: 500px), (max-width: 720px) {
+  .tl {
+    top: 8px;
+    left: calc(12px + var(--sl));
+  }
+  .place b {
+    font-size: 50px;
+  }
+  .place sup {
+    font-size: 20px;
+    top: 6px;
+  }
+  .place small {
+    font-size: 16px;
+  }
+  .lap {
+    font-size: 20px;
+  }
+  .laptime,
+  .clock {
+    font-size: 13px;
+  }
+  .tc {
+    top: 8px;
+    gap: 5px;
+  }
+  .item {
+    width: 60px;
+    height: 60px;
+    border-radius: 14px;
+    border-width: 2px;
+  }
+  .item .icon {
+    font-size: 36px;
+  }
+  .item .uses {
+    font-size: 14px;
+  }
+  .item-name {
+    font-size: 11.5px;
+    max-width: 44vw;
+    text-align: center;
+  }
+  .split {
+    font-size: 16px;
+    padding: 4px 12px;
+  }
+  .split,
+  .feed .line {
+    max-width: 60vw;
+    text-align: center;
+  }
+  .feed .line {
+    font-size: 12px;
+    padding: 2px 10px;
+  }
+  .feed .line.big {
+    font-size: 13px;
+  }
+  .center {
+    font-size: 24px;
+  }
+  .center.big {
+    font-size: 72px;
+  }
+  .center.final {
+    font-size: 50px;
+  }
+  .center.place {
+    font-size: 84px;
+  }
+  .speed {
+    font-size: 36px;
+    bottom: calc(10px + var(--sb));
+    right: calc(16px + var(--sr));
+  }
+  .speed::after {
+    font-size: 13px;
+  }
+  .board {
+    top: 46px;
+    right: calc(8px + var(--sr));
+    min-width: 0;
+    width: 168px;
+    padding: 5px;
+  }
+  .board li {
+    font-size: 11.5px;
+    padding: 1px 6px;
+    margin: 1px 0;
+    gap: 6px;
+  }
+  .minimap {
+    width: 150px;
+    left: calc(10px + var(--sl));
+    bottom: calc(12px + var(--sb));
+  }
+  body.touch .minimap {
+    top: 112px;
+  }
+  body.touch .tc {
+    top: calc(46px + var(--st));
+  }
+  .bar {
+    margin: calc(6px + var(--st)) calc(8px + var(--sr)) 6px 8px;
+    padding: 4px 6px 4px 10px;
+    gap: 6px;
+    font-size: 12px;
+  }
+  .bar .room-code {
+    display: none;
+  }
+  .panel {
+    padding: 18px;
+    border-radius: 16px;
+  }
+  h1 {
+    font-size: 40px;
+  }
+}
+
+/* A phone held upright in a race: the order makes way for what's happening, and the speed goes
+   up top, out from between the buttons. */
+@media (orientation: portrait) and (max-width: 720px) {
+  .board {
+    display: none;
+  }
+  .tl,
+  .tc {
+    top: calc(52px + var(--st));
+  }
+  body.touch .minimap {
+    top: calc(100px + var(--st));
+    left: auto;
+    right: calc(10px + var(--sr));
+  }
+  body.touch .tc {
+    top: calc(196px + var(--st));
+  }
+  body.touch .speed {
+    top: calc(52px + var(--st));
+    bottom: auto;
+    left: auto;
+    right: calc(14px + var(--sr));
+    transform: none;
   }
 }

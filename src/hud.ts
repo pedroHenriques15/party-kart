@@ -72,12 +72,12 @@ export class Hud {
     this.toMap = (x, z) => [12 + (x - x0) * scale, 12 + (z - z0) * scale];
     this.map = h('canvas', 'minimap');
     this.base = document.createElement('canvas');
+    // Drawn at twice the size, for sharp lines; the stylesheet sets its width (W, or less on a
+    // phone), and its height follows.
     for (const c of [this.map, this.base]) {
       c.width = W * 2;
       c.height = H * 2;
     }
-    this.map.style.width = `${W}px`;
-    this.map.style.height = `${H}px`;
     const g = this.base.getContext('2d')!;
     g.scale(2, 2);
     g.lineJoin = g.lineCap = 'round';

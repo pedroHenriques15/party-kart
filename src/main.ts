@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import './style.css';
-import { beep, checkpointSound, engineSound, horn, lapSound, sfx, thud, toggleMute, unlockAudio } from './audio.ts';
+import { beep, checkpointSound, engineSound, horn, isMuted, lapSound, sfx, thud, toggleMute, unlockAudio } from './audio.ts';
 import { autopilot } from './car/autopilot.ts';
-import { newCar, speedOf, stepCar, stopInput, type Car } from './car/car.ts';
+import { clampSteer, newCar, speedOf, stepCar, stopInput, type Car } from './car/car.ts';
 import { Arena, FLAG, type ArenaFx, type CarInfo, type Rules } from './game/arena.ts';
 import { botControls, newBrain, type Brain } from './game/bot.ts';
 import { ITEMS } from './game/items.ts';
 import { NO_CONTROLS, Racer, type Controls, type Note } from './game/racer.ts';
 import { fmt, fmtDiff, Hud, ordinal } from './hud.ts';
-import { Keyboard } from './input.ts';
+import { Keyboard, TouchPad } from './input.ts';
 import { buildKart, driverById, DRIVERS, type KartModel } from './render/drivers.ts';
 import { Particles } from './render/fx.ts';
 import { ItemsView } from './render/items3d.ts';
@@ -26,6 +26,9 @@ const AUTODRIVE = new URLSearchParams(location.search).has('autodrive');
 const track = buildTrack(LAYOUT);
 const N = track.samples.length;
 const keys = new Keyboard();
+const pad = new TouchPad();
+// A phone or a tablet: its finger is its pointer.
+const PHONE = matchMedia('(pointer: coarse)').matches;
 
 // ---- Three.js ----
 
@@ -60,7 +63,7 @@ function remember(k: string, v: string): void {
   }
 }
 
-let quality = stored('pk-quality', 'high') as Quality;
+let quality = stored('pk-quality', PHONE ? 'medium' : 'high') as Quality;
 look.setQuality(quality);
 
 // ---- Karts on screen ----
@@ -147,6 +150,7 @@ interface RaceCtx {
   items: ItemsView;
   hud: Hud;
   use: boolean; // the item key was pressed, not yet used
+  back: boolean; // and it's to be thrown backwards
   steer: number;
   throttle: number;
   rec: number[][]; // time attack: this lap, every 50 ms
@@ -175,6 +179,26 @@ function stopAttract(): void {
 
 const roomFromUrl = () => (new URLSearchParams(location.search).get('room') ?? '').trim().toLowerCase();
 const inviteLink = (code: string) => `${location.origin}${location.pathname}?room=${code}`;
+
+// On a phone, a race wants the whole screen. Browsers only allow that in answer to a tap, so the
+// buttons that lead to a race ask for it. (An iPhone can't; added to the home screen, it opens
+// without the browser round it anyway.)
+function fullScreen(): void {
+  if (!PHONE || !document.fullscreenEnabled || document.fullscreenElement) return;
+  document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+}
+
+// Sideways for a race, where the browser allows it (Android, in full screen).
+function sideways(on: boolean): void {
+  const o = screen.orientation as unknown as { lock?: (to: string) => Promise<void>; unlock?: () => void } | undefined;
+  if (!PHONE || !o) return;
+  try {
+    if (on) o.lock?.('landscape').catch(() => {});
+    else o.unlock?.();
+  } catch {
+    /* not in full screen */
+  }
+}
 
 // ---- A tiny DOM builder: text only, never HTML, since names come from other people. ----
 
@@ -256,6 +280,7 @@ function homeScreen(): HTMLElement {
   };
   const host = async () => {
     unlockAudio();
+    fullScreen();
     busy(true);
     err.textContent = 'Opening a room…';
     try {
@@ -272,6 +297,7 @@ function homeScreen(): HTMLElement {
       return;
     }
     unlockAudio();
+    fullScreen();
     busy(true);
     err.textContent = 'Joining…';
     try {
@@ -309,10 +335,14 @@ function howTo(): HTMLElement {
     h(
       'ul',
       {},
-      h('li', {}, h('b', {}, 'Drive'), ' arrows or WASD. ', h('b', {}, 'Drift'), ' hold Space through a corner; when the sparks turn blue, then orange, let go for a mini-turbo.'),
-      h('li', {}, h('b', {}, 'Items'), ' drive through the ? boxes; ', h('b', {}, 'E'), ' or ', h('b', {}, 'Shift'), ' uses it (hold ↓ to throw backwards). The further behind you are, the better what you get.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Drive'), ' arrows or WASD. ', h('b', {}, 'Drift'), ' hold Space through a corner; when the sparks turn blue, then orange, let go for a mini-turbo.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Items'), ' drive through the ? boxes; ', h('b', {}, 'E'), ' or ', h('b', {}, 'Shift'), ' uses it (hold ↓ to throw backwards). The further behind you are, the better what you get.'),
+      h('li', { class: 'touch-only' }, h('b', {}, 'Steer'), ' with your left thumb, dragging left and right anywhere on that half of the screen. The kart goes by itself; ', h('b', {}, 'Brake'), ' slows it down, and reverses once it stops. Best with the phone sideways.'),
+      h('li', { class: 'touch-only' }, h('b', {}, 'Drift'), ' hold it through a corner; when the sparks turn blue, then orange, let go for a mini-turbo.'),
+      h('li', { class: 'touch-only' }, h('b', {}, 'Items'), ' drive through the ? boxes, then tap the item button (swipe it down to throw backwards). The further behind you are, the better what you get.'),
       h('li', {}, h('b', {}, 'Slipstream'), ' sit close behind a car for a second and you get a boost.'),
-      h('li', {}, h('b', {}, 'Enter'), ' back to your last checkpoint. ', h('b', {}, 'H'), ' horn · ', h('b', {}, 'C'), ' camera · ', h('b', {}, 'M'), ' sound.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Enter'), ' back to your last checkpoint. ', h('b', {}, 'H'), ' horn · ', h('b', {}, 'C'), ' camera · ', h('b', {}, 'M'), ' sound.'),
+      h('li', { class: 'touch-only' }, h('b', {}, '↺'), ' back to your last checkpoint. The horn, the camera and the sound are at the top.'),
       h(
         'li',
         {},
@@ -332,10 +362,19 @@ function lobbyScreen(r: Room): HTMLElement {
   const taken = new Map(L.members.filter((m) => m.id !== r.you && !m.bot).map((m) => [m.driver, m.name] as const));
   if (me) showroom(me.driver);
   const host = r.isHost ? (r as HostRoom) : null;
+  const share = PHONE && 'share' in navigator;
   const copy = h(
     'button',
     {
       onclick: async () => {
+        if (share) {
+          try {
+            await navigator.share({ title: 'Party Kart', text: 'Race me in Party Kart', url: inviteLink(L.code) });
+            return;
+          } catch (e) {
+            if ((e as Error).name === 'AbortError') return;
+          }
+        }
         try {
           await navigator.clipboard.writeText(inviteLink(L.code));
           copy.textContent = 'Copied!';
@@ -344,7 +383,7 @@ function lobbyScreen(r: Room): HTMLElement {
         }
       },
     },
-    'Copy invite link',
+    share ? 'Share invite link' : 'Copy invite link',
   );
   const select = <T extends string | number>(value: T, options: [T, string][], set: (v: T) => void) => {
     const s = h(
@@ -396,7 +435,7 @@ function lobbyScreen(r: Room): HTMLElement {
       r.pick(id);
     }),
     settings,
-    host ? h('button', { class: 'primary', onclick: () => host.start() }, L.mode === 'race' ? 'Start the race' : 'Start the round') : h('p', { class: 'wait' }, 'Waiting for the host to start…'),
+    host ? h('button', { class: 'primary', onclick: () => (fullScreen(), host.start()) }, L.mode === 'race' ? 'Start the race' : 'Start the round') : h('p', { class: 'wait' }, 'Waiting for the host to start…'),
     h('div', { class: 'row foot' }, qualityPicker(), h('button', { class: 'ghost', onclick: leave }, 'Leave the room')),
     howTo(),
   );
@@ -426,7 +465,7 @@ function resultsScreen(r: Room, list: Entry[]): HTMLElement {
       ? h(
           'div',
           { class: 'row' },
-          h('button', { class: 'primary', onclick: () => (r as HostRoom).start() }, 'Race again'),
+          h('button', { class: 'primary', onclick: () => (fullScreen(), (r as HostRoom).start()) }, 'Race again'),
           h(
             'button',
             {
@@ -498,13 +537,22 @@ function wire(r: Room): void {
 
 function render(): void {
   keys.enabled = !!race;
+  pad.show(race ? race.rules.mode : null);
   document.body.classList.toggle('racing', !!race);
   if (race) {
+    // On a touch screen, the keys Enter, Backspace, H, C and M are buttons here.
+    const touchBtn = (label: string, title: string, onclick: () => void) => h('button', { class: 'small ghost touch-only', title, onclick }, label);
+    const sound = touchBtn(isMuted() ? '🔇' : '🔊', 'Sound', () => (sound.textContent = toggleMute() ? '🔇' : '🔊'));
     ui.replaceChildren(
       h(
         'div',
         { class: 'bar' },
-        h('span', {}, 'Room ', h('b', {}, room?.lobby.code ?? '')),
+        h('span', { class: 'room-code' }, 'Room ', h('b', {}, room?.lobby.code ?? '')),
+        touchBtn('↺', 'Back to the last checkpoint', () => pad.press('respawn')),
+        race.rules.mode === 'time' && touchBtn('Restart lap', 'Restart the lap', () => pad.press('restart')),
+        touchBtn('📢', 'Horn', () => pad.press('horn')),
+        touchBtn('🎥', 'Camera', () => pad.press('camera')),
+        sound,
         room?.isHost ? h('button', { class: 'small ghost', onclick: () => (room as HostRoom).endNow() }, 'End race') : null,
         h('button', { class: 'small ghost', onclick: leave }, 'Leave'),
       ),
@@ -565,6 +613,7 @@ function startRace(goIn: number, endIn: number, grid: Record<string, number>): v
     items: new ItemsView(track, arena),
     hud: new Hud(hudRoot, track, rules.mode === 'race'),
     use: false,
+    back: false,
     steer: 0,
     throttle: 0,
     rec: [],
@@ -580,6 +629,7 @@ function startRace(goIn: number, endIn: number, grid: Record<string, number>): v
   arena.fx = (f) => onArenaFx(ctx, f);
   race = ctx;
   (document.activeElement as HTMLElement | null)?.blur();
+  sideways(true);
   render();
 }
 
@@ -591,6 +641,7 @@ function endRace(): void {
   race = null;
   engineSound(0, 0, false);
   hudRoot.replaceChildren();
+  sideways(false);
 }
 
 const near = (r: RaceCtx, p: { x: number; z: number }) => Math.max(0, 1 - Math.hypot(p.x - r.me.car.p.x, p.z - r.me.car.p.z) / 120);
@@ -812,14 +863,17 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
   a.started = raceMs >= 0;
   syncOthers(r, dt);
 
-  for (const act of keys.actions()) {
+  for (const act of [...keys.actions(), ...pad.actions()]) {
     if (act === 'horn' && room) {
       horn(r.karts.get(me.id)!.model.driver.horn);
       room.honk();
     }
     if (act === 'camera') r.cam = (r.cam + 1) % 2;
     if (!a.started || r.timeUp) continue;
-    if (act === 'use') r.use = true;
+    if (act === 'use' || act === 'useBack') {
+      r.use = true;
+      r.back = act === 'useBack';
+    }
     if (act === 'respawn' && me.fin === null) me.respawn(a);
     if (act === 'restart' && r.rules.mode === 'time') {
       me.restart(a);
@@ -836,11 +890,14 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
     r.acc -= DT;
     a.t = now - r.goAt - r.acc * 1000;
     const k = keys.controls();
-    let ctl: Controls = AUTODRIVE ? { ...autopilot(me.car, track), use: false, back: false } : { ...k, use: false, back: k.brake > 0 };
+    const p = pad.controls();
+    const held = { throttle: Math.max(k.throttle, p.throttle), brake: Math.max(k.brake, p.brake), steer: clampSteer(k.steer + p.steer), drift: k.drift || p.drift };
+    let ctl: Controls = AUTODRIVE ? { ...autopilot(me.car, track), use: false, back: false } : { ...held, use: false, back: held.brake > 0 };
     if (r.use) {
-      ctl = { ...ctl, use: true };
+      ctl = { ...ctl, use: true, back: ctl.back || r.back };
       if (me.item && me.roll <= 0) r.use = false;
       else if (!me.roll) r.use = false;
+      if (!r.use) r.back = false;
     }
     if (AUTODRIVE && me.item && me.roll <= 0) ctl = { ...ctl, use: true };
     if (r.timeUp) ctl = { ...NO_CONTROLS, ...stopInput(me.car) };
@@ -921,6 +978,7 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
     center,
     split: r.split && now < r.split.until ? r.split : null,
   });
+  pad.item(me.item ? ITEMS[me.item.kind].icon : '', me.item?.uses ?? 0, me.roll > 0);
   if (me.roll > 0 && Math.floor(now / 70) !== Math.floor((now - dt * 1000) / 70)) sfx.tick();
   if (Math.floor(now / 250) !== Math.floor((now - dt * 1000) / 250)) {
     if (isRace) {
@@ -963,7 +1021,9 @@ function chase(r: RaceCtx, dt: number): void {
     r.shake *= Math.exp(-dt * 6);
   }
   camera.lookAt(camLook);
-  const fov = 66 + Math.min(20, spd * 0.32) + (c.boost > 0 ? 6 : 0);
+  let fov = 66 + Math.min(20, spd * 0.32) + (c.boost > 0 ? 6 : 0);
+  // On a phone held upright, open the view up, or the road is a slot down the middle.
+  if (camera.aspect < 1) fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(fov / 2)) / Math.sqrt(camera.aspect)));
   if (Math.abs(camera.fov - fov) > 0.1) {
     camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
@@ -974,19 +1034,18 @@ function chase(r: RaceCtx, dt: number): void {
 
 let last = performance.now();
 let attractAcc = 0;
-// If a race runs slowly on high, step down to medium once, and say so.
-const slow = { frames: 0, time: 0, done: false };
+// If a race runs slowly, step the graphics down a level (as far as Low), and say so.
+const slow = { frames: 0, time: 0 };
 function watchSpeed(dt: number): void {
-  if (slow.done || !race || quality !== 'high' || AUTODRIVE) return;
+  if (!race || quality === 'low' || AUTODRIVE) return;
   slow.frames++;
   slow.time += dt;
   if (slow.time < 6) return;
   if (slow.frames / slow.time < 35) {
-    quality = 'medium';
+    quality = quality === 'high' ? 'medium' : 'low';
     remember('pk-quality', quality);
     look.setQuality(quality);
-    race.hud.feed('Graphics lowered to Medium to keep it smooth', 'big');
-    slow.done = true;
+    race.hud.feed(`Graphics lowered to ${quality === 'medium' ? 'Medium' : 'Low'} to keep it smooth`, 'big');
   }
   slow.frames = 0;
   slow.time = 0;
@@ -1051,6 +1110,9 @@ if (AUTODRIVE) (window as unknown as { __scene: THREE.Scene }).__scene = scene;
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyM' && !(e.target instanceof HTMLInputElement)) toggleMute();
 });
+// A phone suspends the sound when the page goes to the background; the next touch brings it back.
+addEventListener('pointerdown', unlockAudio);
+addEventListener('touchend', unlockAudio);
 
 render();
 // Prepare every driver's materials now, rather than freezing when a race starts.

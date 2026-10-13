@@ -22,7 +22,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/main.ts` | browser | The screens, the race loop, the cameras, and the glue between all of it |
 | `src/hud.ts` | browser | The race screen: place, lap, item slot, clock, minimap, order, feed |
 | `src/audio.ts` | browser | Every sound, synthesized with Web Audio |
-| `src/input.ts` | browser | The keyboard: held controls, plus actions counted once per press |
+| `src/input.ts` | browser | The keyboard and the touch screen: held controls, plus actions counted once per press |
 | `src/render/` | browser | three.js: the look, the world, Braga, trees, karts and drivers, items, particles, skid marks |
 
 The **sim** files never import three.js or touch the DOM, so `node --test` can load them. The

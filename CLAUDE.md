@@ -43,6 +43,9 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   players, open a second tab with the invite link (`?room=<code>`). Rooms go through PeerJS's public
   server, so this needs internet access.
 - `?exp= ?sun= ?hemi= ?env= ?fog=` override the lighting (`src/render/look.ts`), for tuning.
+- The touch controls show on a touch screen: Chrome's device toolbar, or Playwright with
+  `hasTouch` and `isMobile`. Drive them with real touches (CDP's `Input.dispatchTouchEvent`), not
+  synthetic events.
 
 ## The two halves
 
@@ -131,5 +134,10 @@ How a race runs:
   1 s and lands at any speed from 60 to 158 km/h, every item turning up at some place in the race,
   and eight bots all finishing within 40 s of each other. A change to the layout, the physics or
   the item odds has to keep them passing.
-- **Graphics on High step down to Medium by themselves** if a race runs under 35 fps for 6 s
-  (`watchSpeed` in `main.ts`). `?autodrive` turns this off.
+- **Graphics step down a level by themselves**, as far as Low, each time a race runs under 35 fps
+  for 6 s (`watchSpeed` in `main.ts`). `?autodrive` turns this off. Phones start on Medium.
+- **On a touch screen the kart accelerates by itself.** `TouchPad` in `src/input.ts` holds the
+  throttle down unless Brake is held, and its controls are merged with the keyboard's in
+  `stepRace`. `body.touch` is set while the touch controls are in use (from the first touch until
+  a game key is pressed). Mark keyboard-only and touch-only UI with `.keys-only` and `.touch-only`.
+  Don't re-render the menus when it changes, or the tap that changed it is lost.

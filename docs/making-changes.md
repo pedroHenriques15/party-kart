@@ -165,5 +165,5 @@ boosting, drifting, charging a turbo, or slipstreaming.
    frame.
 4. If it stands in the old town, reserve its spot in `SPOTS` so no house is put on top of it.
 5. Watch the cost. With `?autodrive`, `window.__kart.calls` and `.tris` give the draw calls and
-   triangles. The game drops itself from High to Medium when a race runs under 35 fps, so check on
-   Low and Medium too (the picker is on the first screen).
+   triangles. The game steps itself down a level when a race runs under 35 fps, and phones start on
+   Medium, so check on Low and Medium too (the picker is on the first screen).

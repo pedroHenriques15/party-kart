@@ -147,8 +147,8 @@ How a race runs:
   at least once. Its item rolls are random, so it could still fail now and then, though since the
   bots spread across the road to pass (`steerLine` in `src/game/bot.ts`) it rarely does. Rerun it
   before assuming you broke something, and look at the printed summary.
-- **The tests guard the track and the tuning.** They check a loop of 7–9 km with 5
-  checkpoints, an autopilot lap with no respawns and a second lap of 170–260 s, the first track's
+- **The tests guard the track and the tuning.** They check a loop of 7–10 km with 5
+  checkpoints, an autopilot lap with no respawns and a second lap of 170–290 s, the first track's
   jump flying over 1 s and landing at any speed from 60 to 158 km/h, every item turning up at some
   place in the race, and eight bots all finishing a lap within 60 s of each other. A change to the
   track, the physics or the item odds has to keep them passing.

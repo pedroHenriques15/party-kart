@@ -57,7 +57,8 @@ in the lobby.
 
 **The track, the Volta dos Amigos**: 8.1 km of Braga as it is, through five friends'
 neighbourhoods south and east of the centre. Every street, building, park and tree round it comes
-from OpenStreetMap, and the hills from the real relief, 64 m from the lowest point to the highest.
+from OpenStreetMap, and the ground from DGT's 2025 LiDAR: the hills, 68 m from the lowest point to
+the highest and as steep as 19%, the streets that tip sideways, the cuttings and banks beside them.
 From the line on the Rua do Fujacal, down the Avenida da Liberdade and over the Rio Este at São
 João da Ponte; up past the Largo da Devesa to the slopes of the Picoto; up the Avenida 31 de
 Janeiro and the Avenida João XXI and back down the Rua Bernardo Sequeira, then Lamaçães's avenues
@@ -125,6 +126,7 @@ npm run build
 npm run deploy   # publish to GitHub Pages (the gh-pages branch)
 ```
 
-Map data © OpenStreetMap contributors, under the Open Database Licence. The relief is from
-Terrain Tiles, on AWS Open Data. Europe terrain data produced using Copernicus data and
-information funded by the European Union - EU-DEM layers.
+Map data © OpenStreetMap contributors, under the Open Database Licence. The ground is from DGT's
+LiDAR (CC BY 4.0): informação geográfica cedida pela Direção-Geral do Território. The horizon
+beyond the map is from Terrain Tiles, on AWS Open Data. Europe terrain data produced using
+Copernicus data and information funded by the European Union - EU-DEM layers.

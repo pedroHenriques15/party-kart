@@ -4,9 +4,9 @@ import Peer, { type DataConnection } from 'peerjs';
 import type { ItemEv } from './game/items.ts';
 import { DRIVERS } from './render/drivers.ts';
 
-// Builds see each other's rooms only while this matches: pk28 is the Volta dos Amigos with its
-// fifth house, on streets as wide as they are.
-const PREFIX = 'partykart-pk28-';
+// Builds see each other's rooms only while this matches: pk29 is the Volta dos Amigos on the ground
+// from DGT's LiDAR, its streets tipping sideways as they do.
+const PREFIX = 'partykart-pk29-';
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 export const HOST_ID = 'host';
 export const MAX_RACERS = 8;

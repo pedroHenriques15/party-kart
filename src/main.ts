@@ -374,7 +374,7 @@ function howTo(): HTMLElement {
           .map((i) => `${i.icon} ${i.name}`)
           .join(' · '),
       ),
-      h('li', {}, h('b', {}, 'The track'), " is 7 km of Braga as it is: the streets, the buildings and the hills. Watch out for a dog. Map data © OpenStreetMap contributors. Relief: EU-DEM, produced using Copernicus data and information funded by the European Union."),
+      h('li', {}, h('b', {}, 'The track'), " is 7 km of Braga as it is: the streets, the buildings and the hills. Watch out for a dog. Map data © OpenStreetMap contributors. Ground: informação geográfica cedida pela Direção-Geral do Território. Horizon: EU-DEM, produced using Copernicus data and information funded by the European Union."),
     ),
   );
 }

@@ -107,7 +107,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk28-` plus a five-character room code, and the invite link is `?room=<code>`.
+`partykart-pk29-` plus a five-character room code, and the invite link is `?room=<code>`.
 
 ### Messages
 
@@ -218,19 +218,25 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   or its kerb (nor, for the houses the map filled in, its pavement); trees off the road, those
   filled into parks and woods only within 230 m; the river kept 4.5 m under the road where it
   crosses; and the Tourigalo's bull turned to face the road.
-  - The land is the real relief on a 10 m grid (20 m on Low), level with the road beside it and
-    blending back within 30 m, with the river's bed cut through it, and level under the stadium.
-    Further off, the whole map's hills every 50 m, coloured by the map's woods and towns and tucked
-    under it, and the horizon's hills 15 km round every 250 m (`horizon` in `sights.ts`).
+  - The land is the ground as it is (braga-map's, from DGT's LiDAR, every 2 m near the route),
+    with the river's bed cut through it and level under the stadium. Its mesh is cells of 10 m
+    (20 m on Low), each split into cells of 2 m (4 m on Low) where it needs them: where its two
+    triangles would rise through the road or a verge, or, near the road, miss the ground by more
+    than 0.5 m (0.8 m on Medium). It keeps a little under the road, its pavements and 3 m past
+    them (6 m on Low), so nothing of it shows through, and the verges, strips at the ground's own
+    height 6 m wide (12 m on Low) beside each side of the road, are drawn over it there. Further
+    off, the whole map's hills every 50 m, coloured by the map's woods and towns and tucked under
+    it, and the horizon's hills 15 km round every 250 m (`horizon` in `sights.ts`).
   - What's on the land is painted onto one canvas over the land: the parks, woods and fields,
     water, squares, every other street at its own width with its pavements, the railway. It's 1 m
     a pixel on High,
     1.4 on Medium, 2 on Low. A fine grain, tiled by world position (`onBeforeCompile`), keeps it
     from looking smeared up close.
-  - Buildings are their footprints from the map, raised to their floors: walls textured a floor
-    and two windows at a time and tinted by vertex colour, a ground floor of doors and shops on
-    flats, and hipped or gabled roofs over each footprint's rectangle where it nearly fills it
-    (flat otherwise). Churches get a tower. They're seven meshes in all, one per material.
+  - Buildings are their footprints from the map, standing on the ground at their lowest corner
+    (`y`, from the map), so a row of houses steps down a hill, and raised to their floors: walls
+    textured a floor and two windows at a time and tinted by vertex colour, a ground floor of
+    doors and shops on flats, and hipped or gabled roofs over each footprint's rectangle where it
+    nearly fills it (flat otherwise). Churches get a tower. They're seven meshes in all, one per material.
   - Then the trees (`plantTrees`, plain crowns in 800 m tiles), the Rio Este and its bridges,
     lamps, zebra crossings, traffic lights and bus stops (`streetFurniture`), a blue-and-white
     plate for each street, brown signs to landmarks, the party at the start (where the lobby shows
@@ -241,8 +247,11 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     the Tourigalo's bull.
 - **The road** (`render/road.ts`), the same for any track: the ribbon (asphalt, or granite setts),
   the white lines painted on it as each stretch's `lanes` says, and beyond its edges, as `kerbs`
-  says, granite kerbs with calçada pavements behind them, central reservations, or nothing; the
-  skirts under its edges, parapets on the bridges, the party's banners at the start, boost pads,
+  says, granite kerbs with calçada pavements behind them, central reservations, or nothing. Each
+  side meets the ground as its `edges` (from `city.ts`) say: a pavement slopes from the kerb to
+  meet the ground at its back (12% up at most, 5% down), and past that a granite retaining wall
+  goes up to the ground where it's higher and a skirt down to it where it's lower; a bridge over a
+  road gets a deck. Parapets on the bridges, the party's banners at the start, boost pads,
   the start line and gates, string lights and lamps.
 - **The first track's world** (`render/world.ts`, with `landmarks.ts`, `braga.ts` and
   `buildTrees`) is kept for reference, and nothing builds it.

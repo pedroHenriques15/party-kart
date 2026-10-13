@@ -5,9 +5,9 @@ TypeScript, three.js and PeerJS (WebRTC), built with Vite and served from GitHub
 server and no accounts, and no asset files either: every texture is drawn on a canvas and every
 sound is synthesized. The track and the city round it come from the map of Braga the games share:
 the `braga-map` package (https://github.com/pedroHenriques15/braga-map, a sibling repo at
-`../braga-map`), data made from OpenStreetMap, pinned to a version tag in `package.json`. The
-README promises "nothing to maintain", so treat that as a design constraint: don't add a backend,
-a build step or a dependency without a strong reason.
+`../braga-map`), data made from OpenStreetMap and DGT's LiDAR, pinned to a version tag in
+`package.json`. The README promises "nothing to maintain", so treat that as a design constraint:
+don't add a backend, a build step or a dependency without a strong reason.
 
 - `README.md`: the game as a player sees it (controls, items, the track).
 - `docs/architecture.md`: how it fits together: the simulation, the frame loop, the network.
@@ -138,7 +138,7 @@ How a race runs:
   animate needs `userData.moves = true` on it or a parent, or it gets frozen into the merged mesh.
 - **`mat()` caches materials by colour and settings**, so changing one changes every mesh that
   uses it. A kart's body paint is its own because gold plating recolours it.
-- **The peer id prefix** `partykart-pk28-` in `src/session.ts` decides which builds can see each
+- **The peer id prefix** `partykart-pk29-` in `src/session.ts` decides which builds can see each
   other's rooms. The deployed game and a dev build share rooms while it matches. Change it when the
   message format changes incompatibly, or the track changes.
 - **Item rolls and bot patience use `Math.random`.** That's fine because only one browser ever

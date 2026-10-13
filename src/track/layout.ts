@@ -17,6 +17,9 @@ export interface Point {
   // nothing (0).
   lanes?: number;
   kerbs?: [number, number];
+  // On a bridge, with the ground lower under it: no skirt down to the ground. Carried on until
+  // changed.
+  bridge?: boolean;
   tag?: Tag;
 }
 

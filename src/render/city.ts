@@ -1,9 +1,10 @@
 // The Volta dos Amigos's world: Braga as it is, from the map the games share (braga-map, made
-// from OpenStreetMap and the relief), loaded tile by tile round the track. The land shaped by the
-// real heights, and what's on it painted onto the ground; every building near the track, with its
-// floors and its roof, and none on the road; trees; the Rio Este and its bridges; zebra crossings,
-// traffic lights and bus stops; the street names; the party at the start; the sights (sights.ts);
-// and the friends' easter eggs (eggs.ts). The road itself is road.ts.
+// from OpenStreetMap and DGT's LiDAR), loaded tile by tile round the track. The land as the ground
+// really is, meeting the road as it does, and what's on it painted onto the ground; every building
+// near the track on its own ground, with its floors and its roof, and none on the road; trees; the
+// Rio Este and its bridges; zebra crossings, traffic lights and bus stops; the street names; the
+// party at the start; the sights (sights.ts); and the friends' easter eggs (eggs.ts). The road
+// itself is road.ts.
 import { heightOn, loadWorld, type Box, type Building as MapBuilding, type Track as Course, type World as Braga } from 'braga-map';
 import * as THREE from 'three';
 import { distanceToRoad, surfacePoint, type Sample, type Track } from '../track/track.ts';
@@ -132,24 +133,17 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
     return { d: best, y };
   };
 
-  // The ground's height: the real one, but level with the road beside it (a pavement's width),
-  // blending back to the real one over 30 m; and the river's bed cut through it.
-  // The stadium's ground is level, its pitch and stands in a bowl cut into the slope.
+  // The ground as it is, from the map (the LiDAR's, every 2 m near the route), with the river's
+  // bed cut through it. The stadium's ground is level, its pitch and stands in a bowl cut into the
+  // slope.
   const pads = map.sights.flatMap((s) => (s.kind === 'stadium' ? [{ x: s.x, z: s.z, c: Math.cos(s.angle), s: Math.sin(s.angle), rx: s.L + s.W + 30, rz: s.W + 36, y: nat(s.x, s.z) }] : []));
-  const ground = (x: number, z: number): number => {
+  const land = (x: number, z: number): number => {
     let h = nat(x, z);
     for (const p of pads) {
       const dx = x - p.x;
       const dz = z - p.z;
       const e = Math.hypot((dx * p.c + dz * p.s) / p.rx, (-dx * p.s + dz * p.c) / p.rz);
       if (e < 1.3) h = p.y + (h - p.y) * smooth(0.9, 1.3, e);
-    }
-    const { d, i } = distanceToRoad(track, x, z);
-    if (i >= 0) {
-      const s = track.samples[i];
-      // A kerb's height below the road, or below its lower edge where it's banked.
-      const roadY = s.p.y - Math.abs(s.r.y) * (s.w / 2) - 0.18;
-      h = roadY + (h - roadY) * smooth(4, 30, d);
     }
     const r = riverAt(x, z);
     if (r.d < HW + 12) {
@@ -159,38 +153,217 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
     return h;
   };
   const overWater = (s: Sample) => riverAt(s.p.x, s.p.z).d < HW + 8;
+  const bridged = (s: Sample) => s.bridge || overWater(s);
 
-  // ---- The land near the track: a mesh on the data's own 10 m grid, the map painted on it. ----
+  // What's at the back of each side of the road, for road.ts. A pavement slopes from the kerb's top
+  // to meet the ground at its back, as real ones do on a hill, as steeply as 12% up or 5% down;
+  // past that, a wall or a skirt makes up the difference. A reservation's far kerb is level with
+  // its near one. With neither, the road's own edge.
+  const KERB = 0.15;
+  const backs = new Map<number, { y: number; ground: number }>();
+  const edges = (s: Sample, k: 0 | 1) => {
+    let e = backs.get(s.d * 2 + k);
+    if (!e) {
+      const side = k ? 1 : -1;
+      const kb = s.kerbs[k];
+      const o = surfacePoint(s, side * (s.w / 2 + Math.abs(kb)), 0);
+      const g = land(o.x, o.z);
+      const top = surfacePoint(s, side * (s.w / 2 + 0.25), KERB).y;
+      const y = kb > 0 ? top + Math.max(-0.05 * kb, Math.min(0.12 * kb, g - top)) : kb < 0 ? surfacePoint(s, side * (s.w / 2 - kb), KERB).y : o.y + 0.02;
+      e = { y, ground: g };
+      backs.set(s.d * 2 + k, e);
+    }
+    return e;
+  };
+  // Where (x, z) is by the road: its nearest sample, how far right of the centre line, which side,
+  // and how far past the road's edge (negative on the road).
+  const beside = (x: number, z: number) => {
+    const { d, i } = distanceToRoad(track, x, z);
+    if (i < 0) return null;
+    const s = track.samples[i];
+    const lat = (x - s.p.x) * s.r.x + (z - s.p.z) * s.r.z;
+    return { s, lat, d, k: (lat > 0 ? 1 : 0) as 0 | 1 };
+  };
+  // The ground things stand on: the road's surface, the pavement's, and the land beyond.
+  const ground = (x: number, z: number): number => {
+    const b = beside(x, z);
+    if (b) {
+      const { s, lat, d, k } = b;
+      if (d < 0) return surfacePoint(s, lat, 0).y;
+      if (s.kerbs[k] > 0 && d < s.kerbs[k]) {
+        const top = surfacePoint(s, Math.sign(lat) * (s.w / 2 + 0.25), KERB).y;
+        return top + (edges(s, k).y - top) * Math.max(0, (d - 0.25) / (s.kerbs[k] - 0.25));
+      }
+      if (s.kerbs[k] < 0 && d < -s.kerbs[k]) return surfacePoint(s, lat, KERB).y;
+    }
+    return land(x, z);
+  };
+  // The land's mesh is made of cells of C metres, each split into small ones of F metres where it
+  // needs them (below). It keeps under the road and its pavements, and DEEP metres past them (a
+  // small cell, corner to corner, so no cell that reaches over the pavement rises through it),
+  // where the verges (below) cover the step down to it, VERGE metres wide. `top` is as high as it
+  // may be there and still be hidden: under the road (whose surface is drawn 2 cm up), under a
+  // pavement, or no more than 5 cm over the ground under a verge, which is drawn over it where they
+  // meet.
+  const C = quality === 'low' ? 20 : 10;
+  const F = quality === 'low' ? 4 : 2;
+  const DEEP = F * 1.42 + 0.1;
+  const VERGE = 2 * DEEP + 0.4;
+  const meshAt = (x: number, z: number): { y: number; top: number; d: number } => {
+    const h = land(x, z);
+    const b = beside(x, z);
+    if (!b) return { y: h, top: Infinity, d: Infinity };
+    const back = Math.abs(b.s.kerbs[b.k]);
+    const road = surfacePoint(b.s, b.lat, 0).y;
+    if (b.d < back + DEEP) return { y: Math.min(h, road) - 0.35, top: b.d < 0 ? road : b.d < back ? road + 0.12 : bridged(b.s) ? Infinity : h + 0.05, d: b.d };
+    return { y: h, top: b.d < back + VERGE && !bridged(b.s) ? h + 0.05 : Infinity, d: b.d };
+  };
+  const paint = paintGround(map, B, track, quality);
+  const uvAt = (x: number, z: number): [number, number] => [(x - B.x0) / (B.x1 - B.x0), 1 - (z - B.z0) / (B.z1 - B.z0)];
+
+  // ---- The land near the track, the map painted on it: cells of 10 m, split into cells of 2 m
+  // where they need them (on Low, 20 m and 4 m), as the data has the ground every 2 m near the
+  // route. A cell is split where its two triangles would rise through the road or a verge, or, near
+  // the road, miss the ground by more than a little: a bank, a terrace, a cutting. Where a big cell
+  // meets small ones, the small ones' points along their shared side are set on its edge, so the
+  // land has no cracks. ----
   {
-    const step = quality === 'low' ? 20 : 10;
-    const nx = Math.floor((B.x1 - B.x0) / step) + 1;
-    const nz = Math.floor((B.z1 - B.z0) / step) + 1;
-    const pos = new Float32Array(nx * nz * 3);
-    const uv = new Float32Array(nx * nz * 2);
+    const r = C / F;
+    const band = quality === 'high' ? 20 : quality === 'medium' ? 10 : 0;
+    const tol = quality === 'high' ? 0.5 : 0.8;
+    const nx = Math.floor((B.x1 - B.x0) / C);
+    const nz = Math.floor((B.z1 - B.z0) / C);
+    const cornerY = new Float32Array((nx + 1) * (nz + 1));
+    for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) cornerY[j * (nx + 1) + i] = meshAt(B.x0 + i * C, B.z0 + j * C).y;
+    const fine = new Uint8Array(nx * nz);
     for (let j = 0; j < nz; j++) {
       for (let i = 0; i < nx; i++) {
-        const x = B.x0 + i * step;
-        const z = B.z0 + j * step;
-        const k = j * nx + i;
-        pos.set([x, ground(x, z), z], k * 3);
-        uv.set([(x - B.x0) / (B.x1 - B.x0), 1 - (z - B.z0) / (B.z1 - B.z0)], k * 2);
+        if (distanceToRoad(track, B.x0 + (i + 0.5) * C, B.z0 + (j + 0.5) * C).d > Math.max(band, C * 0.71 + 10)) continue;
+        const y00 = cornerY[j * (nx + 1) + i];
+        const y10 = cornerY[j * (nx + 1) + i + 1];
+        const y01 = cornerY[(j + 1) * (nx + 1) + i];
+        const y11 = cornerY[(j + 1) * (nx + 1) + i + 1];
+        test: for (let b = 0; b <= r; b++) {
+          for (let a = 0; a <= r; a++) {
+            const u = a / r;
+            const v = b / r;
+            // The cell's two triangles, split from (i + 1, j) to (i, j + 1).
+            const flat = u + v <= 1 ? y00 + (y10 - y00) * u + (y01 - y00) * v : y11 + (y01 - y11) * (1 - u) + (y10 - y11) * (1 - v);
+            const m = meshAt(B.x0 + i * C + a * F, B.z0 + j * C + b * F);
+            const e = m.y - flat;
+            if (flat > m.top || (m.top === Infinity && m.d < band && Math.abs(e) > tol)) {
+              fine[j * nx + i] = 1;
+              break test;
+            }
+          }
+        }
       }
     }
+    const isFine = (i: number, j: number) => i >= 0 && j >= 0 && i < nx && j < nz && fine[j * nx + i] === 1;
+    const coarse = (i: number, j: number) => i >= 0 && j >= 0 && i < nx && j < nz && fine[j * nx + i] === 0;
+    const W = nx * r + 1;
+    const ids = new Map<number, number>();
+    const pos: number[] = [];
+    const uv: number[] = [];
+    const cornerAt = (i: number, j: number) => cornerY[j * (nx + 1) + i];
+    // A point of the 2 m lattice, made once.
+    const vertex = (ix: number, iz: number): number => {
+      const key = iz * W + ix;
+      let v = ids.get(key);
+      if (v !== undefined) return v;
+      const x = B.x0 + ix * F;
+      const z = B.z0 + iz * F;
+      const ci = Math.floor(ix / r);
+      const cj = Math.floor(iz / r);
+      let y: number;
+      if (ix % r === 0 && iz % r === 0) y = cornerAt(ix / r, iz / r);
+      else if (ix % r === 0 && (coarse(ix / r - 1, cj) || coarse(ix / r, cj))) y = cornerAt(ix / r, cj) + (cornerAt(ix / r, cj + 1) - cornerAt(ix / r, cj)) * ((iz % r) / r);
+      else if (iz % r === 0 && (coarse(ci, iz / r - 1) || coarse(ci, iz / r))) y = cornerAt(ci, iz / r) + (cornerAt(ci + 1, iz / r) - cornerAt(ci, iz / r)) * ((ix % r) / r);
+      else y = meshAt(x, z).y;
+      v = pos.length / 3;
+      pos.push(x, y, z);
+      uv.push(...uvAt(x, z));
+      ids.set(key, v);
+      return v;
+    };
     const idx: number[] = [];
-    for (let j = 0; j < nz - 1; j++) {
-      for (let i = 0; i < nx - 1; i++) {
-        const a = j * nx + i;
-        idx.push(a, a + nx, a + 1, a + 1, a + nx, a + nx + 1);
+    const cell = (a: number, b: number, c: number, d: number) => idx.push(a, c, b, b, c, d); // corners (i, j), (i + 1, j), (i, j + 1), (i + 1, j + 1)
+    for (let j = 0; j < nz; j++) {
+      for (let i = 0; i < nx; i++) {
+        if (!isFine(i, j)) {
+          cell(vertex(i * r, j * r), vertex((i + 1) * r, j * r), vertex(i * r, (j + 1) * r), vertex((i + 1) * r, (j + 1) * r));
+          continue;
+        }
+        for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) cell(vertex(i * r + a, j * r + b), vertex(i * r + a + 1, j * r + b), vertex(i * r + a, j * r + b + 1), vertex(i * r + a + 1, j * r + b + 1));
       }
     }
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geo.setIndex(idx);
     geo.computeVertexNormals();
-    const land = new THREE.Mesh(geo, groundMaterial(paintGround(map, B, track, quality)));
-    land.receiveShadow = true;
-    group.add(land);
+    const mesh = new THREE.Mesh(geo, groundMaterial(paint));
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+
+  // ---- The verges: the land beside the road, from the back of each side VERGE metres out, at
+  // the ground's own height, over the land's mesh where it keeps down out of the road's way.
+  // Narrower on the inside of a bend, and stopping short of another stretch of the road. ----
+  {
+    const pos: number[] = [];
+    const uv: number[] = [];
+    const idx: number[] = [];
+    const OUT = [0, 0.4, 1, 2, 3.2, 4.4].map((o) => (o * VERGE) / 4.4);
+    const every = F;
+    for (const k of [0, 1] as const) {
+      const side = k ? 1 : -1;
+      for (const [a, b] of runs(track, (s) => !bridged(s))) {
+        let prev: number[] | null = null;
+        const len = b - a === N ? N : (b - a + N) % N;
+        for (let m = 0; m <= len; m += every) {
+          const i = (a + Math.min(m, len)) % N;
+          const s = track.samples[i];
+          const t0 = track.samples[(i - 4 + N) % N].t;
+          const t1 = track.samples[(i + 4) % N].t;
+          // The bend's radius, on the side it turns to.
+          const turn = (t0.x * t1.z - t0.z * t1.x) / 8;
+          const room = Math.sign(turn) === side ? 1 / Math.abs(turn) - 0.5 - (s.w / 2 + Math.abs(s.kerbs[k])) : Infinity;
+          const back = s.w / 2 + Math.abs(s.kerbs[k]);
+          const row: number[] = [];
+          for (const o of OUT) {
+            if (o > room) break;
+            const p = surfacePoint(s, side * (back + o), 0);
+            const near = distanceToRoad(track, p.x, p.z);
+            if (o > 0 && near.d < 1 && Math.abs(((near.i - i + N + N / 2) % N) - N / 2) > 30) break;
+            const y = o === 0 ? (s.kerbs[k] === 0 ? edges(s, k).y : edges(s, k).ground) : land(p.x, p.z);
+            row.push(pos.length / 3);
+            pos.push(p.x, y, p.z);
+            uv.push(...uvAt(p.x, p.z));
+          }
+          if (prev && prev.length > 1 && row.length > 1) {
+            for (let q = 0; q + 1 < Math.min(prev.length, row.length); q++) {
+              // Wound to face up on either side.
+              if (side > 0) idx.push(prev[q], prev[q + 1], row[q], prev[q + 1], row[q + 1], row[q]);
+              else idx.push(prev[q], row[q], prev[q + 1], prev[q + 1], row[q], row[q + 1]);
+            }
+          }
+          prev = row;
+        }
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    const m = groundMaterial(paint);
+    m.polygonOffset = true;
+    m.polygonOffsetFactor = -1;
+    m.polygonOffsetUnits = -2;
+    const verges = new THREE.Mesh(geo, m);
+    verges.receiveShadow = true;
+    group.add(verges);
   }
 
   // ---- The hills further off: the whole map every 50 m, under the near land where they meet. ----
@@ -274,14 +447,14 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   // ---- The road, its bridges, the lamps along it: baked together at the end, being many small
   // meshes. (The land, the hills and the buildings are a mesh each already.) ----
   const statics = new THREE.Group();
-  const road = buildRoad(track, overWater, { start: tex.sign("P. KIDDY'S WHITE PARTY", 'VOLTA DOS AMIGOS'), checkpoint: tex.sign('CHECKPOINT', '', '#111318', '#ffe14d', 1024, 160) });
+  const road = buildRoad(track, overWater, { start: tex.sign("P. KIDDY'S WHITE PARTY", 'VOLTA DOS AMIGOS'), checkpoint: tex.sign('CHECKPOINT', '', '#111318', '#ffe14d', 1024, 160) }, edges);
   statics.add(road.group);
   updates.push(road.update);
   for (const [a, b] of runs(track, overWater)) {
     const mid = track.samples[(a + Math.floor(((b - a + N) % N) / 2)) % N];
     statics.add(bridge(track, a, b, riverAt(mid.p.x, mid.p.z).y, HW));
   }
-  group.add(lamps(track, ground, (s) => !overWater(s), 34));
+  group.add(lamps(track, ground, (s) => !bridged(s), 34));
   group.add(stringLights(track, [[N - 140, N + 150]]));
 
   // ---- The party at the start, where the lobby shows your car; and the eggs. ----
@@ -301,7 +474,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   // ---- Buildings, clear of the party and the eggs. ----
   const keepOut = [party.clear, ...spots.map((s) => s.clear)];
   const list = all.filter((b) => !keepOut.some((k) => b.pts.some(([x, z]) => Math.hypot(x - k.x, z - k.z) < k.r) || Math.hypot(b.cx - k.x, b.cz - k.z) < k.r));
-  group.add(buildBuildings(list, ground));
+  group.add(buildBuildings(list));
 
   // ---- Trees, from the map and filling its parks and woods: the map's own anywhere in the box,
   // those filled in within 230 m of the road, and none within 11 m of it. ----
@@ -445,7 +618,8 @@ interface Building {
   kind: number; // 0 house, 1 flats, 2 shop, 3 church, 4 civic
   roof: number; // 0 flat, 1 hipped, 2 gabled
   color: number;
-  h: number;
+  y: number; // the ground at its lowest corner
+  h: number; // from there
   cx: number;
   cz: number;
 }
@@ -476,7 +650,7 @@ function nearBuildings(map: Braga, track: Track, near: (x: number, z: number) =>
       });
       if (edges || onRoad(b, cx, cz)) continue;
     }
-    out.push({ pts: b.pts, kind: b.kind, roof: b.roof, color: b.color, h: b.h, cx, cz });
+    out.push({ pts: b.pts, kind: b.kind, roof: b.roof, color: b.color, y: b.y, h: b.h, cx, cz });
   }
   return out;
 }
@@ -571,7 +745,9 @@ function rectangle(pts: [number, number][]): { cx: number; cz: number; ux: numbe
   return { ...best, fill: Math.abs(area / 2) / best.area };
 }
 
-function buildBuildings(list: Building[], ground: (x: number, z: number) => number): THREE.Group {
+// Each building stands on the ground at its lowest corner, from the map, its walls going a little
+// below it, so a row of houses steps down a hill as the real ones do; its height is from there.
+function buildBuildings(list: Building[]): THREE.Group {
   const walls = { flats: new Batch(), ground: new Batch(), house: new Batch(), shop: new Batch(), church: new Batch() };
   const tiles = new Batch();
   const flat = new Batch();
@@ -585,17 +761,16 @@ function buildBuildings(list: Building[], ground: (x: number, z: number) => numb
     let area = 0;
     for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) area += (pts[j][0] - pts[i][0]) * (pts[j][1] + pts[i][1]);
     if (area < 0) pts = [...pts].reverse();
-    const gs = pts.map(([x, z]) => ground(x, z));
-    const base = Math.min(...gs) - 0.6;
-    const mean = gs.reduce((a, v) => a + v, 0) / gs.length;
-    const top = mean + b.h;
+    const base = b.y - 0.6;
+    const foot = b.y;
+    const top = b.y + b.h;
     const church = b.kind === 3;
     col.set(church ? '#f6f4ef' : b.kind === 2 || b.kind === 4 ? SHOPS[b.color % SHOPS.length] : FACADES[b.color % FACADES.length]);
     roofCol.set(ROOFS[b.color % ROOFS.length]);
 
     // Walls: flats get a ground floor of doors and shops, the rest one texture all the way up.
     const upper = church ? walls.church : b.kind === 0 ? walls.house : b.kind === 1 ? walls.flats : walls.shop;
-    const split = b.kind === 1 && b.h > 6 ? mean + 3 : base;
+    const split = b.kind === 1 && b.h > 6 ? foot + 3 : base;
     let u = 0;
     for (let k = 0; k < pts.length; k++) {
       const [ax, az] = pts[k];
@@ -603,9 +778,9 @@ function buildBuildings(list: Building[], ground: (x: number, z: number) => numb
       const l = Math.hypot(bx - ax, bz - az);
       const u0 = u / 6;
       const u1 = (u + l) / 6;
-      if (split > base) walls.ground.quad(V(ax, base, az), V(ax, split, az), V(bx, split, bz), V(bx, base, bz), [u0, (base - mean) / 3], [u0, 1], [u1, 1], [u1, (base - mean) / 3], col);
-      const v0 = split > base ? 0 : (base - mean) / 3;
-      const lift = split > base ? mean + 3 : mean;
+      if (split > base) walls.ground.quad(V(ax, base, az), V(ax, split, az), V(bx, split, bz), V(bx, base, bz), [u0, (base - foot) / 3], [u0, 1], [u1, 1], [u1, (base - foot) / 3], col);
+      const v0 = split > base ? 0 : (base - foot) / 3;
+      const lift = split > base ? foot + 3 : foot;
       upper.quad(V(ax, split, az), V(ax, top, az), V(bx, top, bz), V(bx, split, bz), [u0, v0], [u0, (top - lift) / 3], [u1, (top - lift) / 3], [u1, v0], col);
       u += l;
     }

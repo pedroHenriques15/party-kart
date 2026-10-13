@@ -17,7 +17,7 @@ The game races the Volta dos Amigos, `braga-map/tracks/amigos.js`, from the map 
 games share: the `braga-map` package, its own repo
 ([github.com/pedroHenriques15/braga-map](https://github.com/pedroHenriques15/braga-map), next to
 this one at `../braga-map`). It plans the track on the real streets from OpenStreetMap and the
-relief, and makes the city round it. Its README says how a track is planned and what to change.
+ground from DGT's LiDAR, and makes the city round it. Its README says how a track is planned and what to change.
 **Nothing of the track or the city is edited here.** To change them:
 
 1. Change braga-map's scripts (`tools/track.mjs` plans the tracks, `tools/world.mjs` makes the

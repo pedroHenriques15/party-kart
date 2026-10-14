@@ -246,8 +246,10 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   - The sights (`sights.ts`): Bom Jesus and its Escadório and the Sameiro on the hills, at twice
     their size so they show from the track; the cross on the Picoto; the Estádio 1.º de Maio with
     its track, terraces, covered stand and floodlights; Makro's and the Altice Forum's signs; and
-    the Tourigalo, a black bull with a rooster's head on its lawn, head to the west, with its
-    restaurant's sign behind.
+    the Tourigalo, a black bull with a rooster's head on its lawn, head to the west, five times its
+    real size and exaggerated (braga-map's decision 015), its testicles swinging (the one moving
+    part, outside the bake), with its restaurant's sign behind; 9 draw calls and about 25,000
+    triangles.
 - **The road** (`render/road.ts`), the same for any track: the ribbon (asphalt, or granite setts),
   the white lines painted on it as each stretch's `lanes` says, and beyond its edges, as `kerbs`
   says, granite kerbs with calçada pavements behind them, central reservations, or nothing. Each

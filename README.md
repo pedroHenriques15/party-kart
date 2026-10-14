@@ -76,7 +76,8 @@ granite kerbs, central reservations where the avenues have them, and granite set
 street is cobbled. A blue-and-white plate names each street as you turn into it. Bom Jesus and the
 Sameiro stand on the hills to the east, drawn twice their size so you can find them, and the cross
 on top of the Picoto. By the Avenida Doutor António Alves Palha's roundabout stands the Tourigalo, the
-black bull with a rooster's head, on its lawn. Each friend's house has its joke on it: a dog, a
+black bull with a rooster's head, on its lawn: five times its real size, and exaggerated in every
+part, on purpose. Each friend's house has its joke on it: a dog, a
 dentist, a supermarket, a café, and an alarm clock.
 
 The first track, the cartoon Braga Grand Prix (the Avenida, the Sé, the switchbacks of Bom Jesus

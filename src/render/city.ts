@@ -9,7 +9,7 @@ import { heightOn, loadWorld, type Box, type Building as MapBuilding, type Track
 import * as THREE from 'three';
 import { distanceToRoad, surfacePoint, type Sample, type Track } from '../track/track.ts';
 import { buildEggs, eggSpots, type Eggs } from './eggs.ts';
-import { buildSights, horizon } from './sights.ts';
+import { buildSights, horizon, TOURIGALO_CLEAR } from './sights.ts';
 import { bake, box, mat } from './kit.ts';
 import type { Quality } from './look.ts';
 import { bridge, buildRoad, lamps, ribbon, runs } from './road.ts';
@@ -483,8 +483,8 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   const eggs = buildEggs(track, ground, spots, roofAt);
   group.add(bake(eggs.group));
 
-  // ---- Buildings, clear of the plinth and the eggs. ----
-  const keepOut = [plinth.clear, ...spots.map((s) => s.clear)];
+  // ---- Buildings, clear of the plinth, the eggs and the Tourigalo. ----
+  const keepOut = [plinth.clear, ...spots.map((s) => s.clear), ...map.sights.filter((s) => s.kind === 'tourigalo').map((s) => ({ x: s.x, z: s.z, r: TOURIGALO_CLEAR }))];
   const list = all.filter((b) => !keepOut.some((k) => b.pts.some(([x, z]) => Math.hypot(x - k.x, z - k.z) < k.r) || Math.hypot(b.cx - k.x, b.cz - k.z) < k.r));
   group.add(buildBuildings(list));
 

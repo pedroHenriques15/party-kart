@@ -91,7 +91,7 @@ class Cells<T> {
 // and whether its reference point (near its middle, off any 10 cm grid) is inside; a point is
 // inside when that, and the number of edges between it and the reference point, say so. The rings
 // are read even-odd, so pieces that don't overlap can share one.
-class Rings {
+export class Rings {
   cells = new Map<number, { inside: boolean; e: number[] }>();
   constructor(rings: [number, number][][]) {
     const rows = new Map<number, number[]>();
@@ -176,9 +176,13 @@ function toSegment(x: number, z: number, ax: number, az: number, bx: number, bz:
 // it (a kerb over the carriageway), with each point of its outline at its height. Its height inside
 // is its outline's nearest edges', weighted by how near; and where it meets the land at grade, it's
 // eased to the land's height there, as the map's ends can be a few decimetres off the ground's.
-class Piece {
+export class Piece {
   level: 'bridge' | 'tunnel';
   raise: number;
+  // Its outline and holes as the map has them, for drawing it, and what it's paved with if it's a
+  // carriageway (a pavement is calçada).
+  outline: [number, number][][];
+  surface: 'asphalt' | 'setts' | 'paving' | 'dirt' | null;
   rings: Rings;
   e: number[] = []; // its edges, six numbers each: ax, az, ay, bx, bz, by
   cells = new Cells<number>();
@@ -187,9 +191,11 @@ class Piece {
   // For raw(): which edges it has looked at this time, so an edge in two cells counts once.
   private stamp: Int32Array = new Int32Array(0);
   private looks = 0;
-  constructor(level: 'bridge' | 'tunnel', raise: number, rings: [number, number][][], ys: number[][]) {
+  constructor(level: 'bridge' | 'tunnel', raise: number, rings: [number, number][][], ys: number[][], surface: Piece['surface'] = null) {
     this.level = level;
     this.raise = raise;
+    this.outline = rings;
+    this.surface = surface;
     this.rings = new Rings(rings);
     this.box = { x0: Infinity, z0: Infinity, x1: -Infinity, z1: -Infinity };
     rings.forEach((r, ri) => {
@@ -269,6 +275,14 @@ interface State {
   hop: boolean; // bumped up a kerb, and still rising
 }
 
+// A deck's parapet or a tunnel's side, as a car meets it and as it's drawn: (nx, nz) is the way out
+// of the piece it stands on.
+export interface Side extends Wall {
+  kind: 'parapet' | 'bore';
+  nx: number;
+  nz: number;
+}
+
 // The parts of the world's ground that don't change, shared by every ground made from them.
 interface Data {
   world: Braga;
@@ -282,6 +296,7 @@ interface Data {
   dropped: Cells<Wall>; // kerbs dropped at crossings
   kerbs: Cells<Wall>; // raised kerbs, for which way a bump goes
   lines: Cells<{ ax: number; az: number; bx: number; bz: number; ya: number; yb: number; ground: boolean }>;
+  sides: Side[];
   inside: Rings; // the open world's area
   counts: Record<string, number>;
 }
@@ -312,6 +327,14 @@ export class WorldGround implements Ground {
     return this.d.land.land(x, z);
   }
 
+  // How far a pavement on the ground is over the land at (x, z): a kerb's height, sloping down to a
+  // kerb dropped at a crossing.
+  raise(x: number, z: number): number {
+    let r = KERB;
+    for (const k of this.d.dropped.at(x, z) ?? []) r = Math.min(r, KERB * Math.min(1, toSegment(x, z, k.ax, k.az, k.bx, k.bz).d / DROP));
+    return r;
+  }
+
   // What a car at height y stands on at (x, z): the highest surface no more than a step over it.
   floor(x: number, z: number, y: number): Floor {
     const d = this.d;
@@ -320,8 +343,7 @@ export class WorldGround implements Ground {
     if (d.roads.has(x, z)) kind = 'road';
     else if (d.paves.has(x, z)) {
       kind = 'pavement';
-      raise = KERB;
-      for (const k of d.dropped.at(x, z) ?? []) raise = Math.min(raise, KERB * Math.min(1, toSegment(x, z, k.ax, k.az, k.bx, k.bz).d / DROP));
+      raise = this.raise(x, z);
     }
     const ground = (kind === 'land' ? d.land.land(x, z) : d.land.firm(x, z)) + raise;
     let best: Floor | null = ground <= y + STEP ? { y: ground, kind, raise, piece: null, buried: false } : null;
@@ -563,7 +585,7 @@ function inRing(r: [number, number][], x: number, z: number): boolean {
 
 // A footprint's outline less the carriageways it stands on, as segments [ax, az, bx, bz]: its own
 // edges off them, and their edges in it (a passage's sides); and whether it stood on any.
-function trimmed(pts: [number, number][], roads: Rings): { segs: [number, number, number, number][]; cut: boolean } {
+export function trimmed(pts: [number, number][], roads: Rings): { segs: [number, number, number, number][]; cut: boolean } {
   const n = pts.length;
   const x0 = Math.min(...pts.map((p) => p[0]));
   const x1 = Math.max(...pts.map((p) => p[0]));
@@ -660,12 +682,13 @@ export function worldGround(world: Braga): WorldGround {
   const pieces: Piece[] = [];
   for (const p of [...S.carriageways, ...S.pavements]) {
     if (p.level === 'ground' || !p.ys) continue;
-    pieces.push(new Piece(p.level, 'surface' in p ? 0 : KERB, p.rings, p.ys));
+    pieces.push(new Piece(p.level, 'surface' in p ? 0 : KERB, p.rings, p.ys, 'surface' in p ? p.surface : null));
   }
   const pieceCells = new Cells<Piece>();
   for (const p of pieces) pieceCells.add(p.box.x0, p.box.z0, p.box.x1, p.box.z1, p);
 
   const walls = new Cells<Wall>();
+  const sides: Side[] = [];
   const addWall = (w: Wall, what: string) => {
     walls.add(Math.min(w.ax, w.bx), Math.min(w.az, w.bz), Math.max(w.ax, w.bx), Math.max(w.az, w.bz), w);
     counts[what] = (counts[what] ?? 0) + 1;
@@ -720,8 +743,9 @@ export function worldGround(world: Braga): WorldGround {
         }
         // A tunnel's side as high as a tunnel, or as the land beside it if that's lower: never so
         // high it stands in the street over the tunnel.
-        if (yg > ye) addWall({ ax: x0, az: z0, bx: x1, bz: z1, y0: ye - 0.5, y1: Math.min(yg - STEP, ye + BORE) }, 'tunnel sides');
-        else addWall({ ax: x0, az: z0, bx: x1, bz: z1, y0: ye - DEEP, y1: ye + PARAPET }, 'parapets');
+        const side: Side = yg > ye ? { ax: x0, az: z0, bx: x1, bz: z1, y0: ye - 0.5, y1: Math.min(yg - STEP, ye + BORE), kind: 'bore', nx: px, nz: pz } : { ax: x0, az: z0, bx: x1, bz: z1, y0: ye - DEEP, y1: ye + PARAPET, kind: 'parapet', nx: px, nz: pz };
+        addWall(side, side.kind === 'bore' ? 'tunnel sides' : 'parapets');
+        sides.push(side);
       }
     }
   }
@@ -794,5 +818,5 @@ export function worldGround(world: Braga): WorldGround {
   }
 
   counts.pieces = pieces.length;
-  return new WorldGround({ world, land, roads, paves, pieces, pieceCells, walls, posts, dropped, kerbs, lines, inside, counts });
+  return new WorldGround({ world, land, roads, paves, pieces, pieceCells, walls, posts, dropped, kerbs, lines, sides, inside, counts });
 }

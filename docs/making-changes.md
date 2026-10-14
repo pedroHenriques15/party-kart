@@ -55,8 +55,10 @@ Other things to know:
   the race there. `?view=x,y,z,tx,ty,tz` holds the camera anywhere, to look at the scenery, and
   `?scenery&view=…` shows the city alone from there, without starting a race. `?stats` shows what
   the game costs in a corner: the frame rate, draw calls, triangles, textures, load time and download.
-- The city keeps only what's near the track (`nearBuildings` and the trees in `buildCity`): the
-  map has the whole of Braga in it, for the other games.
+- The city keeps what's in the open world's area and 300 m round it (`nearBuildings` and the trees
+  in `buildCity`): the map has the whole of Braga in it, for the other games. Every street in the
+  area is drawn from the map's surfaces (`streets.ts`); beyond the open world's tiles they're
+  painted on the land.
 
 ### The first track, for reference
 
@@ -194,7 +196,9 @@ footprint's rectangle, a front), make the world again (see "The track"), and add
    - `mat(color, opts)` for shared materials;
    - textures drawn in `src/render/textures.ts`, since there are no image files.
 2. Place it by position, the way the map has it: `distanceToRoad(track, x, z).i` is the nearest
-   sample, and `surfacePoint(sample, lateral, up)` a point beside it. Stand it on `ground(x, z)`.
+   sample, and `surfacePoint(sample, lateral, up)` a point beside it; or `kerbNear(x, z, r)` (from
+   `buildStreets`) the nearest raised kerb, and the way into its pavement. Stand it on
+   `ground(x, z)`: the highest of the land, the streets and the decks there.
 3. Keep the buildings off it: add its spot to `keepOut` in `buildCity` (a centre and a radius).
 4. Add it to `statics` in `buildCity`, which is run through `bake()` to merge its static meshes by
    material. **Anything that moves needs `userData.moves = true`**, and its animation goes in an

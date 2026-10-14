@@ -70,10 +70,12 @@ the Avenida Doutor Viriato Amaral Nunes past the Estádio 1.º de Maio and the A
 new link into what was the dead end of the Rua Nova do Couteiro, over the river again, and home
 along the Rua Conselheiro Lobato.
 
-The streets are as wide as they are (never under 9 m, so eight karts fit), with their lanes
-painted white, their zebra crossings, traffic lights and bus stops, calçada pavements behind
-granite kerbs, central reservations where the avenues have them, and granite setts where the
-street is cobbled. A blue-and-white plate names each street as you turn into it. Bom Jesus and the
+Every street round it is drawn as it is, at its real width: its lanes painted white, its zebra
+crossings, traffic lights and lamps, calçada pavements behind granite kerbs, central reservations
+and islands where it has them, granite setts where it's cobbled, its bridges and tunnels, and
+road-works barriers where it leaves the Volta dos Amigos' area. The race takes its streets at least
+9 m wide, so eight karts fit. A blue-and-white plate names each street as you turn into it, and
+its bus stops stand on the pavement. Bom Jesus and the
 Sameiro stand on the hills to the east, drawn twice their size so you can find them, and the cross
 on top of the Picoto. By the Avenida Doutor António Alves Palha's roundabout stands the Tourigalo, the
 black bull with a rooster's head, on its lawn: five times its real size, and exaggerated in every
@@ -111,8 +113,8 @@ a race runs slowly, the game steps down a level by itself, as far as Low.
 - `src/game/`: a race: the arena (clock, cars, items in flight, order), a racer (laps, boxes,
   items, hits, bumps, slipstreams, catch-up), the items' rules, and the bots.
 - `src/render/`: the look (sky, sun, shadows, quality); the city round the track (`city.ts`,
-  from the map), the road (`road.ts`), the bridges off it and the tunnels' mouths
-  (`levels.ts`), the easter eggs (`eggs.ts`); trees, karts and
+  from the map), every street in its area (`streets.ts`), what the race adds to them (`road.ts`),
+  the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs (`eggs.ts`); trees, karts and
   drivers, items, particles, skid marks; and the first track's world (`world.ts`,
   `landmarks.ts`, `braga.ts`), for reference.
 - The map of Braga is its own repo, [braga-map](https://github.com/pedroHenriques15/braga-map),

@@ -1,6 +1,8 @@
-// The road itself, whatever the track: its surfaces and the lines painted on it, the kerbs and
-// pavements and central reservations beside it, the skirts under its edges, the barriers
-// at the start, boost pads, the start line and gates, bridges, and the lights along it.
+// What the race adds to the streets (raceMarks): the start line, the gates at the start and the
+// checkpoints, the boost pads and the barriers at the start, laid on the streets as they're drawn
+// (streets.ts). And the first track's road (buildRoad), which had no streets under it: its surfaces
+// and the lines painted on them, the kerbs and pavements and central reservations beside it, the
+// skirts under its edges, bridges, and the lights along it.
 import * as THREE from 'three';
 import { surfacePoint, type Sample, type Track } from '../track/track.ts';
 import * as tex from './textures.ts';
@@ -8,10 +10,14 @@ import * as tex from './textures.ts';
 // How many samples from `from` to `to`, round the loop; [0, N] is all the way round.
 const stretch = (N: number, from: number, to: number) => (to - from === N ? N : (to - from + N) % N);
 
-// A strip along the road between two lateral offsets, lifted off the surface by `lift`. Its
-// texture runs a tile every vScale metres along it, and across it from 0 to 1, or a tile every
-// uScale metres when that's given.
-export function ribbon(track: Track, from: number, to: number, side: (s: Sample) => [number, number], lift: number, vScale: number, uScale = 0): THREE.BufferGeometry {
+// The height of what's under a point, where something laid along the road stands on the streets as
+// they're drawn rather than on the track's own surface.
+export type At = (x: number, z: number) => number;
+
+// A strip along the road between two lateral offsets, lifted off the surface by `lift` (off what
+// `at` says is under it, given that). Its texture runs a tile every vScale metres along it, and
+// across it from 0 to 1, or a tile every uScale metres when that's given.
+export function ribbon(track: Track, from: number, to: number, side: (s: Sample) => [number, number], lift: number, vScale: number, uScale = 0, at?: At): THREE.BufferGeometry {
   const N = track.samples.length;
   const pos: number[] = [];
   const uv: number[] = [];
@@ -22,7 +28,7 @@ export function ribbon(track: Track, from: number, to: number, side: (s: Sample)
     const [a, b] = side(s);
     const L = surfacePoint(s, a, lift);
     const R = surfacePoint(s, b, lift);
-    pos.push(L.x, L.y, L.z, R.x, R.y, R.z);
+    pos.push(L.x, at ? at(L.x, L.z) + lift : L.y, L.z, R.x, at ? at(R.x, R.z) + lift : R.y, R.z);
     if (uScale) uv.push(a / uScale, v, b / uScale, v);
     else uv.push(0, v, 1, v);
     v += 1 / vScale;
@@ -40,64 +46,8 @@ export function ribbon(track: Track, from: number, to: number, side: (s: Sample)
   return g;
 }
 
-// A strip along the road between two lateral offsets, each at a height of its own (in the world,
-// not off the surface): edge(s) gives [left offset, its height, right offset, its height]. Its
-// texture runs across a tile every uScale metres and along a tile every vScale metres.
-export function band(track: Track, from: number, to: number, edge: (s: Sample) => [number, number, number, number], vScale: number, uScale: number): THREE.BufferGeometry {
-  const N = track.samples.length;
-  const pos: number[] = [];
-  const uv: number[] = [];
-  const idx: number[] = [];
-  let v = 0;
-  for (let k = 0; k <= stretch(N, from, to); k++) {
-    const s = track.samples[(from + k) % N];
-    const [a, ya, b, yb] = edge(s);
-    const L = surfacePoint(s, a, 0);
-    const R = surfacePoint(s, b, 0);
-    pos.push(L.x, ya, L.z, R.x, yb, R.z);
-    uv.push(a / uScale, v, b / uScale, v);
-    v += 1 / vScale;
-    if (k > 0) {
-      const q = k * 2;
-      idx.push(q - 2, q - 1, q, q - 1, q + 1, q);
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  return g;
-}
-
-// A wall at a lateral offset from the road's centre, between two heights in the world that
-// heights(s) gives, its texture a tile every uScale metres along and up.
-export function wallBetween(track: Track, from: number, to: number, lateral: (s: Sample) => number, heights: (s: Sample) => [number, number], uScale: number): THREE.BufferGeometry {
-  const N = track.samples.length;
-  const pos: number[] = [];
-  const uv: number[] = [];
-  const idx: number[] = [];
-  for (let k = 0; k <= stretch(N, from, to); k++) {
-    const s = track.samples[(from + k) % N];
-    const p = surfacePoint(s, lateral(s), 0);
-    const [lo, hi] = heights(s);
-    pos.push(p.x, lo, p.z, p.x, hi, p.z);
-    uv.push(k / uScale, lo / uScale, k / uScale, hi / uScale);
-    if (k > 0) {
-      const q = k * 2;
-      idx.push(q - 2, q, q - 1, q - 1, q, q + 1);
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  return g;
-}
-
-// A wall standing on the road's edge, from height a to b.
-export function wall(track: Track, from: number, to: number, lateral: (s: Sample) => number, a: number, b: number, uScale: number): THREE.BufferGeometry {
+// A wall standing on the road's edge (or on what `at` says is under it), from height a to b.
+export function wall(track: Track, from: number, to: number, lateral: (s: Sample) => number, a: number, b: number, uScale: number, at?: At): THREE.BufferGeometry {
   const N = track.samples.length;
   const pos: number[] = [];
   const uv: number[] = [];
@@ -106,6 +56,11 @@ export function wall(track: Track, from: number, to: number, lateral: (s: Sample
     const s = track.samples[(from + k) % N];
     const lo = surfacePoint(s, lateral(s), a);
     const hi = surfacePoint(s, lateral(s), b);
+    if (at) {
+      const y = at(lo.x, lo.z);
+      lo.y = y + a;
+      hi.y = y + b;
+    }
     pos.push(lo.x, lo.y, lo.z, hi.x, hi.y, hi.z);
     uv.push(k / uScale, 0, k / uScale, 1);
     if (k > 0) {
@@ -148,22 +103,14 @@ export interface RoadSigns {
   checkpoint: THREE.Texture;
 }
 
-// What's at the back of one side of the road at a sample (k: 0 left, 1 right): the height its
-// paving ends at, beyond the pavement or the reservation (or at the road's edge, with neither), and
-// the height of the ground just beyond.
-export type Edges = (s: Sample, k: 0 | 1) => { y: number; ground: number };
-
-// The road and everything on it. `overWater` marks the samples on bridges over water, which get no
-// skirt. With `edges`, each pavement slopes to meet the ground at its back, as a real one does,
-// and the road's sides meet the ground: a retaining wall up to it where it's higher, a skirt down
-// to it where it's lower, and on a bridge a deck. Without, the pavements are level with the kerb
-// and a skirt hangs 6 m down from every edge, for ground that's been made level with the road.
-export function buildRoad(track: Track, overWater: (s: Sample) => boolean, signs: RoadSigns, edges?: Edges): { group: THREE.Group; update: (t: number) => void } {
-  const group = new THREE.Group();
-  const updates: ((t: number) => void)[] = [];
+// The first track's road and everything on it. `overWater` marks the samples on bridges over
+// water, which get no skirt. Its pavements are level with the kerb and a skirt hangs 6 m down from
+// every edge, for ground that's been made level with the road.
+export function buildRoad(track: Track, overWater: (s: Sample) => boolean, signs: RoadSigns): { group: THREE.Group; update: (t: number) => void } {
   const N = track.samples.length;
 
   // The road, a mesh per surface.
+  const group = new THREE.Group();
   const surfaces = { asphalt: tex.asphalt(), cobble: tex.setts(), grass: tex.grass() };
   for (const kind of ['asphalt', 'cobble', 'grass'] as const) {
     const mat = new THREE.MeshStandardMaterial({ map: surfaces[kind], roughness: kind === 'asphalt' ? 0.82 : 0.9, metalness: 0 });
@@ -202,16 +149,13 @@ export function buildRoad(track: Track, overWater: (s: Sample) => boolean, signs
   }
 
   // Beyond each edge: a pavement of calçada behind a granite kerb, a central reservation, or
-  // nothing; then what meets the ground beyond, as `edges` has it (see above). Bridges get a
-  // parapet instead.
+  // nothing; and a skirt under it. Bridges get a parapet instead.
   {
     const KERB = 0.15;
-    const graniteTex = tex.granite();
-    const granite = new THREE.MeshStandardMaterial({ map: graniteTex, roughness: 0.85, side: THREE.DoubleSide });
+    const granite = new THREE.MeshStandardMaterial({ map: tex.granite(), roughness: 0.85, side: THREE.DoubleSide });
     const paving = new THREE.MeshStandardMaterial({ map: tex.calcada(), roughness: 0.8 });
     const verge = new THREE.MeshStandardMaterial({ map: tex.ground(), roughness: 0.95 });
     const skirtMat = new THREE.MeshStandardMaterial({ color: '#77736b', side: THREE.DoubleSide, roughness: 0.9 });
-    const bridged = (s: Sample) => overWater(s) || s.bridge;
     for (const [k, side] of [[0, -1], [1, 1]] as const) {
       const edge = (s: Sample) => (side * s.w) / 2;
       const out = (s: Sample) => side * (s.w / 2 + Math.abs(s.kerbs[k]));
@@ -221,14 +165,9 @@ export function buildRoad(track: Track, overWater: (s: Sample) => boolean, signs
         group.add(new THREE.Mesh(wall(track, a, b, edge, 0, KERB, 1), granite));
         group.add(new THREE.Mesh(ribbon(track, a, b, (s) => span(s, 0, 0.25), KERB, 1, 1), granite));
       }
-      // Pavements: from the kerb's back to the outer edge, at the height `edges` gives there.
+      // Pavements: from the kerb's back to the outer edge, level with it.
       for (const [a, b] of runs(track, (s) => s.kerbs[k] > 0)) {
-        const back = (s: Sample): [number, number, number, number] => {
-          const inner = surfacePoint(s, side * (s.w / 2 + 0.25), KERB).y;
-          const outer = edges && !bridged(s) ? edges(s, k).y : surfacePoint(s, side * (s.w / 2 + s.kerbs[k]), KERB).y;
-          return side < 0 ? [-(s.w / 2 + s.kerbs[k]), outer, -(s.w / 2 + 0.25), inner] : [s.w / 2 + 0.25, inner, s.w / 2 + s.kerbs[k], outer];
-        };
-        const m = new THREE.Mesh(band(track, a, b, back, 2.5, 2.5), paving);
+        const m = new THREE.Mesh(ribbon(track, a, b, (s) => span(s, 0.25, s.kerbs[k]), KERB, 2.5, 2.5), paving);
         m.receiveShadow = true;
         group.add(m);
       }
@@ -236,32 +175,13 @@ export function buildRoad(track: Track, overWater: (s: Sample) => boolean, signs
       for (const [a, b] of runs(track, (s) => s.kerbs[k] < 0)) {
         group.add(new THREE.Mesh(ribbon(track, a, b, (s) => span(s, 0.25, -s.kerbs[k] - 0.25), KERB, 2, 2), track.samples[a].kerbs[k] < -2 ? verge : paving));
         group.add(new THREE.Mesh(ribbon(track, a, b, (s) => span(s, -s.kerbs[k] - 0.25, -s.kerbs[k]), KERB, 1, 1), granite));
-        if (!edges) group.add(new THREE.Mesh(wall(track, a, b, out, -0.6, KERB, 1), granite));
+        group.add(new THREE.Mesh(wall(track, a, b, out, -0.6, KERB, 1), granite));
       }
-      if (edges) {
-        // Where the side meets the ground: a retaining wall of granite up to it where the ground is
-        // higher, a skirt down to it where it's lower.
-        const at = (s: Sample) => (s.kerbs[k] === 0 ? edge(s) : out(s));
-        const higher = (s: Sample) => edges(s, k).ground > edges(s, k).y + 0.15;
-        const span2 = (s: Sample): [number, number] => {
-          const e = edges(s, k);
-          return [Math.min(e.y, e.ground) - 0.4, Math.max(e.y, e.ground)];
-        };
-        for (const [a, b] of runs(track, (s) => !bridged(s) && higher(s))) group.add(new THREE.Mesh(wallBetween(track, a, b, at, span2, 1.6), granite));
-        for (const [a, b] of runs(track, (s) => !bridged(s) && !higher(s))) group.add(new THREE.Mesh(wallBetween(track, a, b, at, span2, 20), skirtMat));
-        // A bridge over a road: its deck, a metre and more deep, under the road and the pavements.
-        for (const [a, b] of runs(track, (s) => s.bridge && !overWater(s))) {
-          const outer = (s: Sample) => side * (s.w / 2 + Math.max(0.3, s.kerbs[k]));
-          group.add(new THREE.Mesh(wall(track, a, b, outer, -1.3, KERB, 20), skirtMat));
-          if (k === 0) group.add(new THREE.Mesh(ribbon(track, a, b, (s) => [s.w / 2 + Math.max(0.3, s.kerbs[1]), -(s.w / 2 + Math.max(0.3, s.kerbs[0]))], -1.3, 20, 20), skirtMat));
-        }
-      } else {
-        for (const [a, b] of runs(track, (s) => s.kerbs[k] > 0 && !overWater(s))) group.add(new THREE.Mesh(wall(track, a, b, out, -6, KERB, 20), skirtMat));
-        // Nothing beyond: the skirt at the edge itself.
-        for (const [a, b] of runs(track, (s) => s.kerbs[k] === 0 && !overWater(s))) group.add(new THREE.Mesh(wall(track, a, b, edge, -6, 0.02, 20), skirtMat));
-      }
+      for (const [a, b] of runs(track, (s) => s.kerbs[k] > 0 && !overWater(s))) group.add(new THREE.Mesh(wall(track, a, b, out, -6, KERB, 20), skirtMat));
+      // Nothing beyond: the skirt at the edge itself.
+      for (const [a, b] of runs(track, (s) => s.kerbs[k] === 0 && !overWater(s))) group.add(new THREE.Mesh(wall(track, a, b, edge, -6, 0.02, 20), skirtMat));
       // Parapets on the bridges.
-      for (const [a, b] of runs(track, (s) => (edges ? bridged(s) : overWater(s)))) {
+      for (const [a, b] of runs(track, overWater)) {
         const outer = (s: Sample) => side * (s.w / 2 + Math.max(0.3, s.kerbs[k]));
         group.add(new THREE.Mesh(wall(track, a, b, outer, -0.5, 1.1, 2), granite));
         group.add(new THREE.Mesh(ribbon(track, a, b, (s) => (side < 0 ? [outer(s) - 0.35, outer(s)] : [outer(s), outer(s) + 0.35]), 1.1, 1, 1), granite));
@@ -269,22 +189,35 @@ export function buildRoad(track: Track, overWater: (s: Sample) => boolean, signs
     }
   }
 
+  const marks = raceMarks(track, signs);
+  group.add(marks.group);
+  return { group, update: marks.update };
+}
+
+// What the race adds to the road: the barriers along the kerbs at the start, the boost pads, the start
+// line, and the gates at the start and the checkpoints. Given `at`, laid on what it says is under
+// them (the streets as they're drawn) rather than on the track's own surface.
+export function raceMarks(track: Track, signs: RoadSigns, at?: At): { group: THREE.Group; update: (t: number) => void } {
+  const group = new THREE.Group();
+  const updates: ((t: number) => void)[] = [];
+  const N = track.samples.length;
+
   // The barriers along the kerbs at the start, white and blue with the race's name.
   const wallMat = new THREE.MeshStandardMaterial({ map: tex.banner(), side: THREE.DoubleSide, roughness: 0.6 });
   for (const [a, b] of runs(track, (_s, i) => i < 160 || i > N - 160)) {
-    for (const side of [-1, 1]) group.add(new THREE.Mesh(wall(track, a, b, (s) => side * (s.w / 2 + 0.4), 0.15, 1.3, 8), wallMat));
+    for (const side of [-1, 1]) group.add(new THREE.Mesh(wall(track, a, b, (s) => side * (s.w / 2 + 0.4), 0.15, 1.3, 8, at), wallMat));
   }
 
   // Boost pads, their arrows running.
   const boostTex = tex.boost();
   const boostMat = new THREE.MeshBasicMaterial({ map: boostTex, transparent: true, opacity: 0.95 });
-  for (const [a, b] of runs(track, (s) => s.boost)) group.add(new THREE.Mesh(ribbon(track, a, b, (s) => [-s.w * 0.3, s.w * 0.3], 0.05, 4), boostMat));
+  for (const [a, b] of runs(track, (s) => s.boost)) group.add(new THREE.Mesh(ribbon(track, a, b, (s) => [-s.w * 0.3, s.w * 0.3], 0.05, 4, 0, at), boostMat));
   updates.push((t) => (boostTex.offset.y = -t * 2.5));
 
   // The start line, and gates at the start and the checkpoints.
-  group.add(new THREE.Mesh(ribbon(track, N - 2, 1, (s) => [-s.w / 2, s.w / 2], 0.04, 3), new THREE.MeshBasicMaterial({ map: tex.checker() })));
-  group.add(gate(track, 0, signs.start, 9));
-  for (const i of track.checkpoints) group.add(gate(track, i, signs.checkpoint, 6.5));
+  group.add(new THREE.Mesh(ribbon(track, N - 2, 1, (s) => [-s.w / 2, s.w / 2], 0.04, 3, 0, at), new THREE.MeshBasicMaterial({ map: tex.checker() })));
+  group.add(gate(track, 0, signs.start, 9, at));
+  for (const i of track.checkpoints) group.add(gate(track, i, signs.checkpoint, 6.5, at));
 
   return { group, update: (t) => updates.forEach((u) => u(t)) };
 }
@@ -424,7 +357,7 @@ const GATE_PILLAR = new THREE.MeshStandardMaterial({ color: '#f4f2ec', roughness
 const GATE_FINIAL = new THREE.MeshStandardMaterial({ color: '#a49d90', roughness: 0.85 });
 
 // Two pillars and a sign across the road.
-export function gate(track: Track, i: number, sign: THREE.Texture, height: number): THREE.Group {
+export function gate(track: Track, i: number, sign: THREE.Texture, height: number, at?: At): THREE.Group {
   const s = track.samples[i];
   const g = new THREE.Group();
   const span = s.w + 2.4;
@@ -449,7 +382,7 @@ export function gate(track: Track, i: number, sign: THREE.Texture, height: numbe
     g.add(board);
   }
   const base = surfacePoint(s, 0, 0);
-  g.position.set(base.x, base.y, base.z);
+  g.position.set(base.x, at ? at(base.x, base.z) : base.y, base.z);
   g.rotation.y = -Math.atan2(s.t.z, s.t.x);
   return g;
 }

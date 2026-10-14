@@ -128,6 +128,23 @@ export const rock = () =>
   });
 
 // The barriers at the start: white with blue bands, as Braga's street plates are, and the race's name.
+// A road-works barrier's board: red and white stripes on the slant, as Portugal's are.
+export const roadworks = () =>
+  canvas(256, 32, (g) => {
+    g.fillStyle = '#f4f2ee';
+    g.fillRect(0, 0, 256, 32);
+    g.fillStyle = '#d0202a';
+    for (let x = -32; x < 256; x += 64) {
+      g.beginPath();
+      g.moveTo(x, 32);
+      g.lineTo(x + 32, 0);
+      g.lineTo(x + 64, 0);
+      g.lineTo(x + 32, 32);
+      g.closePath();
+      g.fill();
+    }
+  });
+
 export const banner = () =>
   canvas(512, 64, (g) => {
     g.fillStyle = '#fbfbf8';
@@ -608,6 +625,30 @@ function ripplesRaw(): THREE.CanvasTexture {
 
 // For landmarks that draw their own façades.
 export const drawTexture = canvas;
+
+// Several drawings as the layers of one texture, each drawn to w × h: so meshes that would each have
+// had their own can be one mesh, each vertex saying which layer it takes.
+export function layered(images: HTMLCanvasElement[], w: number, h: number): THREE.DataArrayTexture {
+  const data = new Uint8Array(w * h * 4 * images.length);
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true })!;
+  images.forEach((img, k) => {
+    g.clearRect(0, 0, w, h);
+    g.drawImage(img, 0, 0, w, h);
+    data.set(g.getImageData(0, 0, w, h).data, k * w * h * 4);
+  });
+  const t = new THREE.DataArrayTexture(data, w, h, images.length);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = true;
+  t.anisotropy = 8;
+  t.needsUpdate = true;
+  return t;
+}
 
 // ---- The Volta dos Amigos: Braga's buildings, roofs and streets. ----
 // The walls are painted near white so each building's own colour (its vertex colours) tints

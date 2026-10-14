@@ -147,14 +147,18 @@ How a race runs:
 ## Gotchas
 
 - **The track and the city come from braga-map.** The track is `braga-map/tracks/amigos.js`, and
-  `buildCity` loads the city round it from the map's tiles (`loadWorld(amigos.box)`), then clears
-  its own road of buildings and trees. Other games use the same map, so change it there: run its
+  `buildCity` loads the city round it from the map's tiles (`loadWorld(amigos.box)`): every street
+  in the open world's area drawn from the map's surfaces (`streets.ts`), the buildings cut back at
+  the kerb as the karts find them (`ground.ts`). Other games use the same map, so change it there: run its
   scripts, tag a new version, then change the tag in `package.json` and `npm install`. To try a
   change before tagging it, `npm install --install-links ../braga-map` (again after each change
   there), and put the tag back before committing. See "The track" in `docs/making-changes.md`.
 - **The road's width is kerb to kerb.** A sample's `w` is the carriageway, and the walls stand at
-  its edges. The pavements, central reservations and lane lines beyond and on it are only drawn
-  (`kerbs` and `lanes`, carried through the layout like `w`), so karts never drive on them.
+  its edges (`kerbs` and `lanes`, carried through the layout like `w`, are the first track's, and
+  only drawn). **The streets drawn aren't the race's road:** they're the map's, at their real
+  widths (`streets.ts`), and the race still drives the track's road, at least 9 m wide and its line
+  up to 3 m off the street's middle, until braga-map's task 037 puts it on them. Until then a kart
+  can drive over a drawn pavement, and the race's marks (`raceMarks`) stand where the track is.
 - **The friends' houses.** The waypoints are only in braga-map's ignored `.cache/places.json` and
   the shared map's database. Since braga-map's decision 014 (the owner's choice, knowing the repos
   are public) the easter eggs stand on the houses themselves, and the drivers are the friends by

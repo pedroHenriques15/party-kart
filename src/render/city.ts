@@ -1,39 +1,44 @@
-// The Volta dos Amigos's world: Braga as it is, from the map the games share (braga-map, made
-// from OpenStreetMap and DGT's LiDAR), loaded tile by tile round the track. The land as the ground
-// really is, meeting the road as it does, and what's on it painted onto the ground; every building
-// near the track on its own ground, with its floors and its roof, and none on the road; trees; the
-// Rio Este and its bridges; zebra crossings, traffic lights and bus stops; the street names; the
-// granite plinth with Braga's arms at the start; the sights (sights.ts); and the friends' easter
-// eggs on their houses (eggs.ts). The road itself is road.ts.
-import { heightOn, loadWorld, type Box, type Building as MapBuilding, type Line, type Track as Course, type World as Braga } from 'braga-map';
+// The Volta dos Amigos's world: Braga as it is, from the map the games share (braga-map, made from
+// OpenStreetMap and DGT's LiDAR), loaded tile by tile round the track. The land as the ground really
+// is, and what's on it painted onto it; every street in the open world's area as it is (streets.ts),
+// laid on the ground the karts drive on (src/world/ground.ts); every building in the area and round
+// it on its own ground, with its floors and its roof, cut back at the kerb where it stands on a
+// carriageway; trees; the Rio Este and its bridges; the decks and tunnels (levels.ts); the granite
+// plinth with Braga's arms at the start; the sights (sights.ts); and the friends' easter eggs on their
+// houses (eggs.ts). What only the race adds to the streets is road.ts.
+import { heightOn, loadWorld, type Box, type Building as MapBuilding, type Track as Course, type World as Braga } from 'braga-map';
 import * as THREE from 'three';
-import { distanceToRoad, surfacePoint, type Sample, type Track } from '../track/track.ts';
-import { makeLand, smooth } from '../world/land.ts';
+import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
+import { Rings, trimmed, worldGround, type WorldGround } from '../world/ground.ts';
+import { smooth } from '../world/land.ts';
 import { buildEggs, eggSpots, type Eggs } from './eggs.ts';
 import { buildSights, horizon, TOURIGALO_CLEAR } from './sights.ts';
 import { bake, box, mat } from './kit.ts';
+import { Lattice, Surface } from './lattice.ts';
 import { buildLevels, isDeck, nearLevels } from './levels.ts';
 import type { Quality } from './look.ts';
-import { bridge, buildRoad, lamps, ribbon, runs } from './road.ts';
+import { raceMarks } from './road.ts';
 import { clipConvex, convexPieces, faces, shapeOf, wallTop } from './roofs.ts';
+import { buildStreets, streetEdges, type Built } from './streets.ts';
 import * as tex from './textures.ts';
 import { plantTrees, type Tree } from './trees.ts';
 import type { World } from './world.ts';
 
-// How far a point is from the road, roughly (to within 40 m), from a grid of 50 m squares over the
-// box: for keeping only what's near the track. Infinity outside the box.
-function reach(track: Track, B: Box): (x: number, z: number) => number {
+// How far a point is from the open world's area (0 inside it), roughly (to within 40 m), from a grid
+// of 50 m squares over the box: for keeping what's in the area and round it. Infinity outside the box.
+function reach(map: Braga, B: Box): (x: number, z: number) => number {
   const C = 50;
   const nx = Math.ceil((B.x1 - B.x0) / C);
   const nz = Math.ceil((B.z1 - B.z0) / C);
   const d = new Float32Array(nx * nz);
-  const pts = track.samples.filter((_, i) => i % 10 === 0).map((s) => s.p);
+  const e = map.open.pts;
   for (let j = 0; j < nz; j++) {
     for (let i = 0; i < nx; i++) {
       const x = B.x0 + (i + 0.5) * C;
       const z = B.z0 + (j + 0.5) * C;
+      if (map.inOpen(x, z)) continue;
       let m = Infinity;
-      for (const p of pts) m = Math.min(m, Math.hypot(p.x - x, p.z - z));
+      for (let k = 0; k < e.length; k++) m = Math.min(m, segDist(x, z, ...e[k], ...e[(k + 1) % e.length]));
       d[j * nx + i] = m;
     }
   }
@@ -70,9 +75,11 @@ const SHOPS = ['#eeeeea', '#dcdcd6', '#e6e0d4', '#cfd4d6'];
 const ROOFS = ['#b55a3c', '#a54e35', '#c26942', '#9c4a34'];
 
 // The ground's material: the map painted on it, and a fine grain tiled by world position, so it
-// isn't smeared up close.
+// isn't smeared up close. Where the painting is clear, there's a street over it (streets.ts) and the
+// land isn't drawn, whatever its height. The canvas leaves a clear pixel black, so a pixel's colour
+// is taken back out of its share of what's clear.
 function groundMaterial(map: THREE.Texture): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({ map, roughness: 0.96 });
+  const m = new THREE.MeshStandardMaterial({ map, roughness: 0.96, alphaTest: 0.5 });
   const grain = tex.grain();
   m.onBeforeCompile = (sh) => {
     sh.uniforms.grain = { value: grain };
@@ -81,244 +88,184 @@ function groundMaterial(map: THREE.Texture): THREE.MeshStandardMaterial {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWorldXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform sampler2D grain;\nvarying vec2 vWorldXZ;')
-      .replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= (0.62 + 0.76 * texture2D(grain, vWorldXZ / 5.0).r) * (0.8 + 0.4 * texture2D(grain, vWorldXZ / 41.0).r);');
+      .replace(
+        '#include <map_fragment>',
+        '#include <map_fragment>\ndiffuseColor.rgb /= max(diffuseColor.a, 0.01);\ndiffuseColor.rgb *= (0.62 + 0.76 * texture2D(grain, vWorldXZ / 5.0).r) * (0.8 + 0.4 * texture2D(grain, vWorldXZ / 41.0).r);',
+      )
+      .replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\ndiffuseColor.a = 1.0;');
   };
   return m;
 }
 
 // ---- The world ----
 
-export async function buildCity(track: Track, course: Course, quality: Quality): Promise<World & { eggs: Eggs }> {
+// Besides the city, the world as the karts' ground (ground.ts), built for it and kept for driving on.
+export async function buildCity(track: Track, course: Course, quality: Quality): Promise<World & { eggs: Eggs; drive: WorldGround }> {
   const map = await loadWorld(course.box);
   const B = course.box;
   const group = new THREE.Group();
   const updates: ((t: number) => void)[] = [];
-  const N = track.samples.length;
   const far = (x: number, z: number) => heightOn(map.far, x, z);
-  const near = reach(track, B);
+  const near = reach(map, B);
 
-  // The land as it's drawn and driven on (land.ts): the ground as it is, from the map (the LiDAR's,
-  // every 2 m near the route), held down at the tunnels' mouths, the stadium level in its bowl, and
-  // the Rio Este's bed cut through it, its water well below the road where the road crosses it.
-  const { land, river, riverAt, HW, openings } = makeLand(map, B, track);
-  const overWater = (s: Sample) => riverAt(s.p.x, s.p.z).d < HW + 8;
-  const bridged = (s: Sample) => s.bridge || overWater(s);
+  // The world as the karts have it (ground.ts): the land as it's drawn and driven on (land.ts:
+  // braga-map's ground, the LiDAR's, held down at the tunnels' mouths, the stadium level in its bowl,
+  // and the Rio Este's bed cut through it), every street at its level, and what stands on them.
+  const wg = worldGround(map);
+  const { land, firm, river, riverAt, HW, openings } = wg.d.land;
+  // The ground things stand on: the highest of the land, the streets on it and the decks over it.
+  const ground = (x: number, z: number): number => wg.floor(x, z, 1e4).y;
 
-  // What's at the back of each side of the road, for road.ts. A pavement slopes from the kerb's top
-  // to meet the ground at its back, as real ones do on a hill, as steeply as 12% up or 5% down;
-  // past that, a wall or a skirt makes up the difference. A reservation's far kerb is level with
-  // its near one. With neither, the road's own edge.
-  const KERB = 0.15;
-  const backs = new Map<number, { y: number; ground: number }>();
-  const edges = (s: Sample, k: 0 | 1) => {
-    let e = backs.get(s.d * 2 + k);
-    if (!e) {
-      const side = k ? 1 : -1;
-      const kb = s.kerbs[k];
-      const o = surfacePoint(s, side * (s.w / 2 + Math.abs(kb)), 0);
-      const g = land(o.x, o.z);
-      const top = surfacePoint(s, side * (s.w / 2 + 0.25), KERB).y;
-      const y = kb > 0 ? top + Math.max(-0.05 * kb, Math.min(0.12 * kb, g - top)) : kb < 0 ? surfacePoint(s, side * (s.w / 2 - kb), KERB).y : o.y + 0.02;
-      e = { y, ground: g };
-      backs.set(s.d * 2 + k, e);
-    }
-    return e;
-  };
-  // Where (x, z) is by the road: its nearest sample, how far right of the centre line, which side,
-  // and how far past the road's edge (negative on the road).
-  const beside = (x: number, z: number) => {
-    const { d, i } = distanceToRoad(track, x, z);
-    if (i < 0) return null;
-    const s = track.samples[i];
-    const lat = (x - s.p.x) * s.r.x + (z - s.p.z) * s.r.z;
-    return { s, lat, d, k: (lat > 0 ? 1 : 0) as 0 | 1 };
-  };
-  // The ground things stand on: the road's surface, the pavement's, and the land beyond.
-  const ground = (x: number, z: number): number => {
-    const b = beside(x, z);
-    if (b) {
-      const { s, lat, d, k } = b;
-      if (d < 0) return surfacePoint(s, lat, 0).y;
-      if (s.kerbs[k] > 0 && d < s.kerbs[k]) {
-        const top = surfacePoint(s, Math.sign(lat) * (s.w / 2 + 0.25), KERB).y;
-        return top + (edges(s, k).y - top) * Math.max(0, (d - 0.25) / (s.kerbs[k] - 0.25));
+  // The bridges the map has drawn as decks (levels.ts); and the streets' outline, where they meet
+  // the land.
+  const decks = new Set(map.lines.filter((l) => isDeck(l, land)));
+  const nearLv = nearLevels(openings, decks);
+  const edges = streetEdges(map.streets);
+  const outline: [number, number, number, number][] = [];
+  for (const p of [...map.streets.carriageways, ...map.streets.pavements]) {
+    if (p.level !== 'ground') continue;
+    for (const r of p.rings) {
+      for (let k = 0; k < r.length; k++) {
+        const [ax, az] = r[k];
+        const [bx, bz] = r[(k + 1) % r.length];
+        if (!edges.has(`${bx},${bz},${ax},${az}`)) outline.push([ax, az, bx, bz]);
       }
-      if (s.kerbs[k] < 0 && d < -s.kerbs[k]) return surfacePoint(s, lat, KERB).y;
     }
-    return land(x, z);
-  };
-  // The land's mesh is made of cells of C metres, each split into small ones of F metres where it
-  // needs them (below). It keeps under the road and its pavements, and DEEP metres past them (a
-  // small cell, corner to corner, so no cell that reaches over the pavement rises through it),
-  // where the verges (below) cover the step down to it, VERGE metres wide. `top` is as high as it
-  // may be there and still be hidden: under the road (whose surface is drawn 2 cm up), under a
-  // pavement, or no more than 5 cm over the ground under a verge, which is drawn over it where they
-  // meet.
+  }
+  const openTiles = new Set(map.open.tiles);
+  const inOpenTiles = (x: number, z: number) => openTiles.has(map.tileAt(x, z));
+  const paint = paintGround(map, B, quality, inOpenTiles, outline);
+
+  // ---- The land, the map painted on it: cells of 10 m, split into cells of 2 m where they need
+  // them (on Low, 20 m and 4 m), as the data has the ground every 2 m in the area. A cell is split
+  // near a tunnel's mouth or under a deck (levels.ts), and where the land shows beside a street and
+  // its two triangles would miss the ground there by more than a little: so a bank, a terrace or a
+  // cutting meets the street as it does. (Under a street or a building it doesn't show.) Where a big
+  // cell meets small ones, the small ones' points along their shared side are set on its edge, so
+  // the land has no cracks. ----
   const C = quality === 'low' ? 20 : 10;
   const F = quality === 'low' ? 4 : 2;
-  const DEEP = F * 1.42 + 0.1;
-  const VERGE = 2 * DEEP + 0.4;
-  const meshAt = (x: number, z: number): { y: number; top: number; d: number } => {
-    const h = land(x, z);
-    const b = beside(x, z);
-    if (!b) return { y: h, top: Infinity, d: Infinity };
-    const back = Math.abs(b.s.kerbs[b.k]);
-    const road = surfacePoint(b.s, b.lat, 0).y;
-    if (b.d < back + DEEP) return { y: Math.min(h, road) - 0.35, top: b.d < 0 ? road : b.d < back ? road + 0.12 : bridged(b.s) ? Infinity : h + 0.05, d: b.d };
-    return { y: h, top: b.d < back + VERGE && !bridged(b.s) ? h + 0.05 : Infinity, d: b.d };
-  };
-  // The bridges off the road drawn as decks (levels.ts), and so not painted on the land under them;
-  // nor the tunnels, under it.
-  const decks = new Set(map.lines.filter((l) => isDeck(l, track, land)));
-  const nearLv = nearLevels(openings, decks);
-  const paint = paintGround(map, B, track, quality, (l) => l.level !== 'tunnel' && !decks.has(l));
-  const uvAt = (x: number, z: number): [number, number] => [(x - B.x0) / (B.x1 - B.x0), 1 - (z - B.z0) / (B.z1 - B.z0)];
-
-  // ---- The land near the track, the map painted on it: cells of 10 m, split into cells of 2 m
-  // where they need them (on Low, 20 m and 4 m), as the data has the ground every 2 m near the
-  // route. A cell is split where its two triangles would rise through the road or a verge, or, near
-  // the road, miss the ground by more than a little: a bank, a terrace, a cutting. Where a big cell
-  // meets small ones, the small ones' points along their shared side are set on its edge, so the
-  // land has no cracks. ----
+  const lat = new Lattice(B, C, F);
   {
-    const r = C / F;
-    const band = quality === 'high' ? 20 : quality === 'medium' ? 10 : 0;
-    const tol = quality === 'high' ? 0.5 : 0.8;
-    const nx = Math.floor((B.x1 - B.x0) / C);
-    const nz = Math.floor((B.z1 - B.z0) / C);
-    const cornerY = new Float32Array((nx + 1) * (nz + 1));
-    for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) cornerY[j * (nx + 1) + i] = meshAt(B.x0 + i * C, B.z0 + j * C).y;
-    const fine = new Uint8Array(nx * nz);
-    for (let j = 0; j < nz; j++) {
-      for (let i = 0; i < nx; i++) {
-        // (Near a tunnel's mouth or a deck too: levels.ts.)
+    const r = lat.r;
+    const tol = quality === 'high' ? 0.8 : quality === 'medium' ? 1 : 1.2;
+    // The small cells' points under a street or a building, where the land doesn't show.
+    const W = lat.nx * r + 1;
+    const H = lat.nz * r + 1;
+    const raster = (polys: [number, number][][][], inset: number, v: number, m: Uint8Array) => {
+      for (const rings of polys) {
+        let z0 = Infinity;
+        let z1 = -Infinity;
+        for (const ring of rings) for (const [, z] of ring) [z0, z1] = [Math.min(z0, z), Math.max(z1, z)];
+        for (let iz = Math.max(0, Math.ceil((z0 - B.z0) / F)); iz <= Math.min(H - 1, Math.floor((z1 - B.z0) / F)); iz++) {
+          const z = B.z0 + iz * F;
+          const xs: number[] = [];
+          for (const ring of rings) {
+            for (let k = 0; k < ring.length; k++) {
+              const [ax, az] = ring[k];
+              const [bx, bz] = ring[(k + 1) % ring.length];
+              if (az > z !== bz > z) xs.push(ax + ((z - az) / (bz - az)) * (bx - ax));
+            }
+          }
+          xs.sort((a, b) => a - b);
+          for (let k = 0; k + 1 < xs.length; k += 2) for (let ix = Math.max(0, Math.ceil((xs[k] + inset - B.x0) / F)); ix <= Math.min(W - 1, Math.floor((xs[k + 1] - inset - B.x0) / F)); ix++) m[iz * W + ix] |= v;
+        }
+      }
+    };
+    const hidden = new Uint8Array(W * H);
+    raster([...map.streets.carriageways, ...map.streets.pavements].filter((p) => p.level === 'ground').map((p) => p.rings), 0.6, 1, hidden);
+    raster(map.buildings.filter((b) => near(b.pts[0][0], b.pts[0][1]) < 300).map((b) => [b.pts]), 0.3, 2, hidden);
+    // The cells where the land shows next to a street.
+    const touch = new Uint8Array(lat.nx * lat.nz);
+    for (let iz = 1; iz < H - 1; iz++) {
+      for (let ix = 1; ix < W - 1; ix++) {
+        const k = iz * W + ix;
+        if (hidden[k] || !(hidden[k - 1] & 1 || hidden[k + 1] & 1 || hidden[k - W] & 1 || hidden[k + W] & 1)) continue;
+        touch[Math.min(lat.nz - 1, Math.floor(iz / r)) * lat.nx + Math.min(lat.nx - 1, Math.floor(ix / r))] = 1;
+      }
+    }
+    const corner = new Float32Array((lat.nx + 1) * (lat.nz + 1));
+    for (let j = 0; j <= lat.nz; j++) for (let i = 0; i <= lat.nx; i++) corner[j * (lat.nx + 1) + i] = land(B.x0 + i * C, B.z0 + j * C);
+    for (let j = 0; j < lat.nz; j++) {
+      for (let i = 0; i < lat.nx; i++) {
         const lv = nearLv(B.x0 + (i + 0.5) * C, B.z0 + (j + 0.5) * C);
-        if (!lv && distanceToRoad(track, B.x0 + (i + 0.5) * C, B.z0 + (j + 0.5) * C).d > Math.max(band, C * 0.71 + 10)) continue;
-        const y00 = cornerY[j * (nx + 1) + i];
-        const y10 = cornerY[j * (nx + 1) + i + 1];
-        const y01 = cornerY[(j + 1) * (nx + 1) + i];
-        const y11 = cornerY[(j + 1) * (nx + 1) + i + 1];
+        if (!lv && !touch[j * lat.nx + i]) continue;
+        const y00 = corner[j * (lat.nx + 1) + i];
+        const y10 = corner[j * (lat.nx + 1) + i + 1];
+        const y01 = corner[(j + 1) * (lat.nx + 1) + i];
+        const y11 = corner[(j + 1) * (lat.nx + 1) + i + 1];
         test: for (let b = 0; b <= r; b++) {
           for (let a = 0; a <= r; a++) {
+            if (!lv && hidden[(j * r + b) * W + i * r + a]) continue;
             const u = a / r;
             const v = b / r;
             // The cell's two triangles, split from (i + 1, j) to (i, j + 1).
             const flat = u + v <= 1 ? y00 + (y10 - y00) * u + (y01 - y00) * v : y11 + (y01 - y11) * (1 - u) + (y10 - y11) * (1 - v);
-            const m = meshAt(B.x0 + i * C + a * F, B.z0 + j * C + b * F);
-            const e = m.y - flat;
-            if (flat > m.top || (m.top === Infinity && (m.d < band || lv) && Math.abs(e) > tol)) {
-              fine[j * nx + i] = 1;
+            if (Math.abs(land(B.x0 + i * C + a * F, B.z0 + j * C + b * F) - flat) > (lv ? (quality === 'high' ? 0.5 : 0.8) : tol)) {
+              lat.fine[j * lat.nx + i] = 1;
               break test;
             }
           }
         }
       }
     }
-    const isFine = (i: number, j: number) => i >= 0 && j >= 0 && i < nx && j < nz && fine[j * nx + i] === 1;
-    const coarse = (i: number, j: number) => i >= 0 && j >= 0 && i < nx && j < nz && fine[j * nx + i] === 0;
-    const W = nx * r + 1;
-    const ids = new Map<number, number>();
-    const pos: number[] = [];
-    const uv: number[] = [];
-    const cornerAt = (i: number, j: number) => cornerY[j * (nx + 1) + i];
-    // A point of the 2 m lattice, made once.
-    const vertex = (ix: number, iz: number): number => {
-      const key = iz * W + ix;
-      let v = ids.get(key);
-      if (v !== undefined) return v;
-      const x = B.x0 + ix * F;
-      const z = B.z0 + iz * F;
-      const ci = Math.floor(ix / r);
-      const cj = Math.floor(iz / r);
-      let y: number;
-      if (ix % r === 0 && iz % r === 0) y = cornerAt(ix / r, iz / r);
-      else if (ix % r === 0 && (coarse(ix / r - 1, cj) || coarse(ix / r, cj))) y = cornerAt(ix / r, cj) + (cornerAt(ix / r, cj + 1) - cornerAt(ix / r, cj)) * ((iz % r) / r);
-      else if (iz % r === 0 && (coarse(ci, iz / r - 1) || coarse(ci, iz / r))) y = cornerAt(ci, iz / r) + (cornerAt(ci + 1, iz / r) - cornerAt(ci, iz / r)) * ((ix % r) / r);
-      else y = meshAt(x, z).y;
-      v = pos.length / 3;
-      pos.push(x, y, z);
-      uv.push(...uvAt(x, z));
-      ids.set(key, v);
-      return v;
-    };
-    const idx: number[] = [];
-    const cell = (a: number, b: number, c: number, d: number) => idx.push(a, c, b, b, c, d); // corners (i, j), (i + 1, j), (i, j + 1), (i + 1, j + 1)
-    for (let j = 0; j < nz; j++) {
-      for (let i = 0; i < nx; i++) {
-        if (!isFine(i, j)) {
-          cell(vertex(i * r, j * r), vertex((i + 1) * r, j * r), vertex(i * r, (j + 1) * r), vertex((i + 1) * r, (j + 1) * r));
-          continue;
-        }
-        for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) cell(vertex(i * r + a, j * r + b), vertex(i * r + a + 1, j * r + b), vertex(i * r + a, j * r + b + 1), vertex(i * r + a + 1, j * r + b + 1));
-      }
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    geo.setIndex(idx);
-    geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, groundMaterial(paint));
-    mesh.receiveShadow = true;
-    group.add(mesh);
   }
-
-  // ---- The verges: the land beside the road, from the back of each side VERGE metres out, at
-  // the ground's own height, over the land's mesh where it keeps down out of the road's way.
-  // Narrower on the inside of a bend, and stopping short of another stretch of the road. ----
+  const landMesh = new Surface(lat, land);
   {
-    const pos: number[] = [];
-    const uv: number[] = [];
-    const idx: number[] = [];
-    const OUT = [0, 0.4, 1, 2, 3.2, 4.4].map((o) => (o * VERGE) / 4.4);
-    const every = F;
-    for (const k of [0, 1] as const) {
-      const side = k ? 1 : -1;
-      for (const [a, b] of runs(track, (s) => !bridged(s))) {
-        let prev: number[] | null = null;
-        const len = b - a === N ? N : (b - a + N) % N;
-        for (let m = 0; m <= len; m += every) {
-          const i = (a + Math.min(m, len)) % N;
-          const s = track.samples[i];
-          const t0 = track.samples[(i - 4 + N) % N].t;
-          const t1 = track.samples[(i + 4) % N].t;
-          // The bend's radius, on the side it turns to.
-          const turn = (t0.x * t1.z - t0.z * t1.x) / 8;
-          const room = Math.sign(turn) === side ? 1 / Math.abs(turn) - 0.5 - (s.w / 2 + Math.abs(s.kerbs[k])) : Infinity;
-          const back = s.w / 2 + Math.abs(s.kerbs[k]);
-          const row: number[] = [];
-          for (const o of OUT) {
-            if (o > room) break;
-            const p = surfacePoint(s, side * (back + o), 0);
-            const near = distanceToRoad(track, p.x, p.z);
-            if (o > 0 && near.d < 1 && Math.abs(((near.i - i + N + N / 2) % N) - N / 2) > 30) break;
-            const y = o === 0 ? (s.kerbs[k] === 0 ? edges(s, k).y : edges(s, k).ground) : land(p.x, p.z);
-            row.push(pos.length / 3);
-            pos.push(p.x, y, p.z);
-            uv.push(...uvAt(p.x, p.z));
-          }
-          if (prev && prev.length > 1 && row.length > 1) {
-            for (let q = 0; q + 1 < Math.min(prev.length, row.length); q++) {
-              // Wound to face up on either side.
-              if (side > 0) idx.push(prev[q], prev[q + 1], row[q], prev[q + 1], row[q + 1], row[q]);
-              else idx.push(prev[q], row[q], prev[q + 1], prev[q + 1], row[q], row[q + 1]);
+    const r = lat.r;
+    const W = lat.nx * r + 1;
+    const material = groundMaterial(paint);
+    const lands = new THREE.Group();
+    lands.name = 'land';
+    // A tile of the land at a time, a kilometre square, so whole tiles out of view are skipped. Its
+    // normals are the land's own over a small cell either way, so they agree where tiles meet.
+    const T = Math.round(1000 / C);
+    for (let tj = 0; tj < lat.nz; tj += T) {
+      for (let ti = 0; ti < lat.nx; ti += T) {
+        const ids = new Map<number, number>();
+        const pos: number[] = [];
+        const nor: number[] = [];
+        const uv: number[] = [];
+        // A point of the small cells' lattice, made once.
+        const vertex = (ix: number, iz: number): number => {
+          const key = iz * W + ix;
+          let v = ids.get(key);
+          if (v !== undefined) return v;
+          const x = B.x0 + ix * F;
+          const z = B.z0 + iz * F;
+          v = pos.length / 3;
+          pos.push(x, landMesh.at(ix, iz), z);
+          const gx = (landMesh.y(x + F, z) - landMesh.y(x - F, z)) / (2 * F);
+          const gz = (landMesh.y(x, z + F) - landMesh.y(x, z - F)) / (2 * F);
+          const l = Math.hypot(gx, 1, gz);
+          nor.push(-gx / l, 1 / l, -gz / l);
+          uv.push((x - B.x0) / (B.x1 - B.x0), 1 - (z - B.z0) / (B.z1 - B.z0));
+          ids.set(key, v);
+          return v;
+        };
+        const idx: number[] = [];
+        const cell = (a: number, b: number, c: number, d: number) => idx.push(a, c, b, b, c, d); // corners (i, j), (i + 1, j), (i, j + 1), (i + 1, j + 1)
+        for (let j = tj; j < Math.min(lat.nz, tj + T); j++) {
+          for (let i = ti; i < Math.min(lat.nx, ti + T); i++) {
+            if (!lat.isFine(i, j)) {
+              cell(vertex(i * r, j * r), vertex((i + 1) * r, j * r), vertex(i * r, (j + 1) * r), vertex((i + 1) * r, (j + 1) * r));
+              continue;
             }
+            for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) cell(vertex(i * r + a, j * r + b), vertex(i * r + a + 1, j * r + b), vertex(i * r + a, j * r + b + 1), vertex(i * r + a + 1, j * r + b + 1));
           }
-          prev = row;
         }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+        geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        geo.setIndex(idx);
+        geo.computeBoundingSphere();
+        const mesh = new THREE.Mesh(geo, material);
+        mesh.receiveShadow = true;
+        lands.add(mesh);
       }
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    geo.setIndex(idx);
-    geo.computeVertexNormals();
-    const m = groundMaterial(paint);
-    m.polygonOffset = true;
-    m.polygonOffsetFactor = -1;
-    m.polygonOffsetUnits = -2;
-    const verges = new THREE.Mesh(geo, m);
-    verges.receiveShadow = true;
-    group.add(verges);
+    group.add(lands);
   }
 
   // ---- The hills further off: the whole map every 50 m, under the near land where they meet. ----
@@ -399,21 +346,32 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
     updates.push((t) => normal.offset.set(t * 0.02, -t * 0.12));
   }
 
-  // ---- The road, its bridges, the lamps along it: baked together at the end, being many small
-  // meshes. (The land, the hills and the buildings are a mesh each already.) ----
+  // ---- Every street in the area (streets.ts), and what stands along them. ----
+  // The buildings' footprints, where nothing meeting the land shows.
+  const houses = new Rings(map.buildings.filter((b) => near(b.pts[0][0], b.pts[0][1]) < 100).map((b) => b.pts));
+  const streets = buildStreets(map, wg, landMesh, (x, z) => houses.has(x, z), quality, track, course);
+  streets.group.name = 'streets';
+  group.add(streets.group);
+  updates.push(streets.update);
+
+  // ---- What only the race adds to the streets: the start line, the gates, the boost pads, the
+  // barriers at the start; the Rio Este's stone bridges under the streets crossing it; the decks, their
+  // pillars and the tunnels' mouths (levels.ts). Baked together at the end, being many small meshes.
   const statics = new THREE.Group();
-  const road = buildRoad(track, overWater, { start: tex.sign('VOLTA DOS AMIGOS', 'BRAGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('PONTO DE CONTROLO', '', '#111318', '#ffe14d', 1024, 160) }, edges);
+  const top = (x: number, z: number) => wg.floor(x, z, firm(x, z) + 1).y;
+  const road = raceMarks(track, { start: tex.sign('VOLTA DOS AMIGOS', 'BRAGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('PONTO DE CONTROLO', '', '#111318', '#ffe14d', 1024, 160) }, top);
   statics.add(road.group);
   updates.push(road.update);
-  for (const [a, b] of runs(track, overWater)) {
-    const mid = track.samples[(a + Math.floor(((b - a + N) % N) / 2)) % N];
-    statics.add(bridge(track, a, b, riverAt(mid.p.x, mid.p.z).y, HW));
-  }
-  statics.add(buildLevels(map, track, land, decks, openings, overWater));
-  group.add(lamps(track, ground, (s) => !bridged(s), 34));
+  statics.add(riverBridges(map, firm, riverAt, HW));
+  // A mouth's concrete keeps under a street over its tunnel, and under a deck's underside.
+  const under = (x: number, z: number) => {
+    const f = wg.floor(x, z, 1e4);
+    return f.kind === 'deck' ? f.y - 1.25 : f.kind === 'road' || f.kind === 'pavement' ? f.y - 0.05 : Infinity;
+  };
+  statics.add(buildLevels(map, land, decks, openings, inOpenTiles, under));
 
   // ---- The plinth at the start, where the lobby shows your car; and the eggs. ----
-  const all = nearBuildings(map, track, near);
+  const all = nearBuildings(map, near, wg);
   const buildingsNear = (x: number, z: number, r: number) => {
     let n = 0;
     for (const b of all) if (Math.abs(b.cx - x) < r + 30 && Math.abs(b.cz - z) < r + 30 && b.pts.some(([px, pz]) => Math.hypot(px - x, pz - z) < r)) n++;
@@ -441,10 +399,11 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   // ---- Buildings, clear of the plinth, the eggs and the Tourigalo. ----
   const keepOut = [plinth.clear, ...spots.map((s) => s.clear), ...map.sights.filter((s) => s.kind === 'tourigalo').map((s) => ({ x: s.x, z: s.z, r: TOURIGALO_CLEAR }))];
   const list = all.filter((b) => !keepOut.some((k) => b.pts.some(([x, z]) => Math.hypot(x - k.x, z - k.z) < k.r) || Math.hypot(b.cx - k.x, b.cz - k.z) < k.r));
-  group.add(buildBuildings(list));
+  group.add(Object.assign(buildBuildings(list), { name: 'buildings' }));
 
-  // ---- Trees, from the map and filling its parks and woods: the map's own anywhere in the box,
-  // those filled in within 230 m of the road, and none within 11 m of it. ----
+  // ---- Trees, from the map and filling its parks and woods. In the area every one the karts can
+  // hit (all but those on a carriageway, ground.ts); round it the map's own anywhere in the box and
+  // those filled in within 230 m, fewer on Medium and Low. ----
   {
     const trees: Tree[] = [];
     let seed = 3;
@@ -454,11 +413,8 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
     for (const { x, z, pine, filled } of map.trees) {
       const r = near(x, z);
       if (r === Infinity || (filled && r > 230)) continue;
-      if (r < 80) {
-        const { d, i } = distanceToRoad(track, x, z);
-        if (i >= 0 && d + track.samples[i].w / 2 < 11) continue;
-      }
-      if (k++ % every) continue;
+      if (wg.d.roads.has(x, z)) continue;
+      if (r > 0 && k++ % every) continue;
       if (riverAt(x, z).d < HW + 3) continue;
       // None on the plinth or in the eggs' ground.
       if (keepOut.some((c) => Math.hypot(x - c.x, z - c.z) < c.r)) continue;
@@ -472,13 +428,8 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
       });
     }
     // Big tiles and plain crowns: there are thousands of them.
-    group.add(plantTrees(trees, 800, true));
+    group.add(Object.assign(plantTrees(trees, 800, quality === 'low' ? 'lean' : true), { name: 'trees' }));
   }
-
-  // ---- Along the road: zebra crossings, traffic lights, bus stops. ----
-  const furniture = streetFurniture(track, ground, course);
-  statics.add(furniture.group);
-  updates.push(furniture.update);
 
   // ---- The sights: Bom Jesus and the Sameiro on the hills, the cross on the Picoto, the stadium,
   // the Altice Forum, Makro and the Tourigalo. ----
@@ -486,10 +437,9 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   group.add(sights.group);
   updates.push(sights.update);
 
-  // ---- Names: a plate as the road enters each street, brown signs to the landmarks. ----
-  statics.add(streetPlates(track, ground, course.streets));
-  for (const l of course.landmarks) statics.add(landmarkSign(track, ground, l));
-  group.add(bake(statics));
+  // ---- Brown signs to the landmarks the route passes. ----
+  for (const l of course.landmarks) statics.add(landmarkSign(track, ground, streets.kerbNear, l));
+  group.add(Object.assign(bake(statics), { name: 'statics' }));
 
   return {
     group,
@@ -498,23 +448,27 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
     stage: plinth.stage,
     stageAt: plinth.at,
     eggs,
+    drive: wg,
   };
 }
 
 // ---- The ground's map ----
 
 // Paints what the ground is onto one big canvas over the scenery's box: the land, the parks and
-// woods, water, squares, every other street with its pavements, the railway, and pavements along
-// the track.
-function paintGround(map: Braga, B: Box, track: Track, quality: Quality, painted: (l: Line) => boolean): THREE.CanvasTexture {
+// woods, water, squares, and beyond the open world's tiles, the streets with their pavements and
+// the railway. Where a street is drawn (streets.ts), the canvas is left clear, so the land under it
+// isn't drawn (groundMaterial): every street on the ground in the area, but a little in from its
+// edge, where the land meets it.
+function paintGround(map: Braga, B: Box, quality: Quality, inOpenTiles: (x: number, z: number) => boolean, outline: [number, number, number, number][]): THREE.CanvasTexture {
   const res = quality === 'high' ? 1 : quality === 'medium' ? 1.4 : 2; // metres a pixel
   const W = Math.min(4096, Math.round((B.x1 - B.x0) / res));
   const H = Math.min(4096, Math.round((B.z1 - B.z0) / res));
+  const toPx: [number, number, number, number, number, number] = [W / (B.x1 - B.x0), 0, 0, H / (B.z1 - B.z0), (-B.x0 * W) / (B.x1 - B.x0), (-B.z0 * H) / (B.z1 - B.z0)];
   const c = document.createElement('canvas');
   c.width = W;
   c.height = H;
   const g = c.getContext('2d')!;
-  g.setTransform(W / (B.x1 - B.x0), 0, 0, H / (B.z1 - B.z0), (-B.x0 * W) / (B.x1 - B.x0), (-B.z0 * H) / (B.z1 - B.z0));
+  g.setTransform(...toPx);
   g.fillStyle = '#76844f';
   g.fillRect(B.x0, B.z0, B.x1 - B.x0, B.z1 - B.z0);
 
@@ -532,8 +486,17 @@ function paintGround(map: Braga, B: Box, track: Track, quality: Quality, painted
     }
   }
 
-  // Every other street: pavement first, then asphalt; the small ones, then the big ones.
-  const lines = map.lines.filter(painted).map(({ kind, w, pts }) => ({ k: kind, w, pts }));
+  // The streets beyond the open world's tiles: pavement first, then asphalt; the small ones, then the
+  // big ones. (In them, every street is drawn: streets.ts.)
+  g.save();
+  g.beginPath();
+  g.rect(B.x0, B.z0, B.x1 - B.x0, B.z1 - B.z0);
+  for (const t of map.open.tiles) {
+    const [i, j] = t.match(/-?\d+/g)!.map(Number);
+    g.rect(i * map.tile, j * map.tile, map.tile, map.tile);
+  }
+  g.clip('evenodd');
+  const lines = map.lines.filter((l) => l.level !== 'tunnel' && !l.pts.every(([x, z]) => inOpenTiles(x, z))).map(({ kind, w, pts }) => ({ k: kind, w, pts }));
   g.lineCap = 'round';
   g.lineJoin = 'round';
   const stroke = (pts: [number, number][], width: number, color: string) => {
@@ -549,47 +512,119 @@ function paintGround(map: Braga, B: Box, track: Track, quality: Quality, painted
   g.setLineDash([3, 4]);
   for (const { k, pts } of lines) if (k <= 3) stroke(pts, 0.15, 'rgba(240,240,232,0.8)');
   g.setLineDash([]);
+  g.restore();
 
-  // Under the track and its pavements, as wide as each is.
-  const s = track.samples;
-  for (const pass of [0, 1]) {
-    for (let i = 0; i < s.length; i += 2) {
-      const a = s[i];
-      const b = s[(i + 2) % s.length];
-      const out = Math.max(0, a.kerbs[0], a.kerbs[1]);
-      stroke(
-        [
-          [a.p.x, a.p.z],
-          [b.p.x, b.p.z],
-        ],
-        pass ? a.w : a.w + 2 * out + (out ? 1 : 0),
-        pass ? '#47494d' : '#948f86',
-      );
-    }
+  // Where the streets are drawn: every piece on the ground, on a canvas of its own, less a band along
+  // their outline, so the land is left only where it meets them; then cleared from the painting.
+  const m = document.createElement('canvas');
+  m.width = W;
+  m.height = H;
+  const mg = m.getContext('2d')!;
+  mg.setTransform(...toPx);
+  mg.fillStyle = '#000';
+  for (const p of [...map.streets.carriageways, ...map.streets.pavements]) {
+    if (p.level !== 'ground') continue;
+    mg.beginPath();
+    for (const r of p.rings) r.forEach(([x, z], k) => (k ? mg.lineTo(x, z) : mg.moveTo(x, z)));
+    mg.fill('evenodd');
   }
+  mg.globalCompositeOperation = 'destination-out';
+  mg.lineWidth = 2 * res * 0.6;
+  mg.lineCap = 'round';
+  mg.beginPath();
+  for (const [ax, az, bx, bz] of outline) {
+    mg.moveTo(ax, az);
+    mg.lineTo(bx, bz);
+  }
+  mg.stroke();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'destination-out';
+  g.drawImage(m, 0, 0);
+  g.globalCompositeOperation = 'source-over';
 
+  // Taken as the canvas holds it, each colour already times its share of what's clear, so a pixel at
+  // a street's edge is blended rightly with its neighbours (groundMaterial takes the share back out).
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.premultiplyAlpha = true;
   t.anisotropy = 8;
   return t;
+}
+
+// ---- The Rio Este's bridges ----
+
+// A granite bridge under each street that crosses the river at the ground's level (the street on the
+// land without the river's bed cut into it, as the karts drive it): a block with an arch through it
+// over the water.
+function riverBridges(map: Braga, firm: (x: number, z: number) => number, riverAt: (x: number, z: number) => { d: number; y: number }, halfW: number): THREE.Group {
+  const g = new THREE.Group();
+  const stone = new THREE.MeshStandardMaterial({ map: tex.rock(), color: '#cfc6b6', roughness: 0.9 });
+  const done: [number, number][] = [];
+  for (const l of map.lines) {
+    if (l.kind > 8 || (l.level !== 'ground' && l.level !== 'under')) continue;
+    for (let k = 1; k < l.pts.length; k++) {
+      const [ax, az] = l.pts[k - 1];
+      const [bx, bz] = l.pts[k];
+      const L = Math.hypot(bx - ax, bz - az);
+      // Where it's nearest the river's middle, if it's over the water there.
+      let best = { d: Infinity, t: 0 };
+      for (let t = 0; t <= 1; t += 1 / Math.max(1, Math.ceil(L))) {
+        const d = riverAt(ax + (bx - ax) * t, az + (bz - az) * t).d;
+        if (d < best.d) best = { d, t };
+      }
+      if (best.d > halfW * 0.5) continue;
+      const x = ax + (bx - ax) * best.t;
+      const z = az + (bz - az) * best.t;
+      if (done.some(([px, pz]) => Math.hypot(px - x, pz - z) < 10)) continue;
+      done.push([x, z]);
+      const ux = (bx - ax) / L;
+      const uz = (bz - az) / L;
+      const top = firm(x, z) - 0.05;
+      const water = riverAt(x, z).y;
+      const half = halfW + 4;
+      const bottom = water - 1.5 - top;
+      const shape = new THREE.Shape();
+      shape.moveTo(-half, bottom);
+      shape.lineTo(half, bottom);
+      shape.lineTo(half, 0);
+      shape.lineTo(-half, 0);
+      shape.closePath();
+      // A flat (segmental) arch over the water, kept well inside the block.
+      const r = Math.min(halfW + 1, half - 2);
+      const spring = water - top;
+      const rise = Math.max(1, -0.9 - spring);
+      const hole = new THREE.Path();
+      hole.moveTo(-r, bottom + 0.3);
+      hole.lineTo(r, bottom + 0.3);
+      hole.lineTo(r, spring);
+      hole.absellipse(0, spring, r, rise, 0, Math.PI, false);
+      hole.lineTo(-r, bottom + 0.3);
+      shape.holes.push(hole);
+      const width = l.w + 7;
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false });
+      geo.translate(0, 0, -width / 2);
+      const m = new THREE.Mesh(geo, stone);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      m.position.set(x, top, z);
+      m.rotation.y = -Math.atan2(uz, ux);
+      g.add(m);
+    }
+  }
+  return g;
 }
 
 // ---- Buildings ----
 
 // A building as the map has it (its height and roof measured from the LiDAR, mostly), its middle,
-// and how far that is from the road (to within 40 m).
-type Building = MapBuilding & { cx: number; cz: number; road: number };
+// and how far that is from the open world's area (to within 40 m). One cut back at the kerb is one or
+// more of these, each its own part of the footprint, with the whole one's roof (`whole`).
+type Building = MapBuilding & { cx: number; cz: number; road: number; whole?: [number, number][] };
 
-// The map's buildings in the box within 300 m of the road, but none on the road or its kerb: the
-// road is wider than the streets were. Nor, for the houses the map filled in, on its pavement.
-function nearBuildings(map: Braga, track: Track, near: (x: number, z: number) => number): Building[] {
-  const onRoad = (b: MapBuilding, x: number, z: number) => {
-    const { d, i } = distanceToRoad(track, x, z);
-    if (i < 0) return false;
-    if (d < 1) return true;
-    const s = track.samples[i];
-    return b.filled && d < s.kerbs[(x - s.p.x) * s.r.x + (z - s.p.z) * s.r.z > 0 ? 1 : 0];
-  };
+// The map's buildings in the area and within 300 m of it, in the box. One that stands on a carriageway
+// is cut back at the kerb (braga-map's decision 021), as the karts find it (ground.ts): solid only off
+// the carriageway, a passage through one left open.
+function nearBuildings(map: Braga, near: (x: number, z: number) => number, wg: WorldGround): Building[] {
   const out: Building[] = [];
   for (const b of map.buildings) {
     const n = b.pts.length;
@@ -597,16 +632,53 @@ function nearBuildings(map: Braga, track: Track, near: (x: number, z: number) =>
     const cz = b.pts.reduce((a, p) => a + p[1], 0) / n;
     const r = near(cx, cz);
     if (r > 300) continue;
-    const size = Math.max(...b.pts.map(([x, z]) => Math.hypot(x - cx, z - cz)));
-    if (r - size < 80) {
-      const edges = b.pts.some(([ax, az], k) => {
-        const [bx, bz] = b.pts[(k + 1) % n];
-        for (let f = 0; f <= 1; f += 0.25) if (onRoad(b, ax + (bx - ax) * f, az + (bz - az) * f)) return true;
-        return false;
-      });
-      if (edges || onRoad(b, cx, cz)) continue;
+    if (r > 60) {
+      out.push({ ...b, cx, cz, road: r });
+      continue;
     }
-    out.push({ ...b, cx, cz, road: r });
+    const { segs, cut } = trimmed(b.pts, wg.d.roads);
+    if (!cut) {
+      out.push({ ...b, cx, cz, road: r });
+      continue;
+    }
+    for (const pts of loops(segs)) {
+      const m = pts.length;
+      out.push({ ...b, pts, cx: pts.reduce((a, p) => a + p[0], 0) / m, cz: pts.reduce((a, p) => a + p[1], 0) / m, road: r, whole: b.pts });
+    }
+  }
+  return out;
+}
+
+// Segments that close into rings (what's left of a footprint cut at the kerb) joined into them, end
+// to end, either way round. Pieces that don't close are left out.
+function loops(segs: [number, number, number, number][]): [number, number][][] {
+  const id = (x: number, z: number) => `${Math.round(x * 100)},${Math.round(z * 100)}`;
+  const at = new Map<string, number[]>();
+  segs.forEach(([ax, az, bx, bz], k) => {
+    for (const p of [id(ax, az), id(bx, bz)]) at.set(p, [...(at.get(p) ?? []), k]);
+  });
+  const used = new Set<number>();
+  const out: [number, number][][] = [];
+  for (let s = 0; s < segs.length; s++) {
+    if (used.has(s)) continue;
+    used.add(s);
+    const ring: [number, number][] = [[segs[s][0], segs[s][1]]];
+    let [x, z] = [segs[s][2], segs[s][3]];
+    const start = id(segs[s][0], segs[s][1]);
+    let closed = false;
+    for (let guard = 0; guard < segs.length; guard++) {
+      if (id(x, z) === start) {
+        closed = true;
+        break;
+      }
+      ring.push([x, z]);
+      const next = (at.get(id(x, z)) ?? []).find((k) => !used.has(k));
+      if (next === undefined) break;
+      used.add(next);
+      const [ax, az, bx, bz] = segs[next];
+      [x, z] = id(ax, az) === id(x, z) ? [bx, bz] : [ax, az];
+    }
+    if (closed && ring.length >= 3) out.push(ring);
   }
   return out;
 }
@@ -657,18 +729,48 @@ class Batch {
     this.tri(a, b, c, ua, ub, uc, color);
     this.tri(a, c, d, ua, uc, ud, color);
   }
-  mesh(material: THREE.Material): THREE.Mesh | null {
-    if (!this.pos.length) return null;
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
-    const m = new THREE.Mesh(g, material);
-    m.castShadow = true;
-    m.receiveShadow = true;
-    return m;
+}
+
+// Batches as one mesh, each its layer of the material's textures: the vertices' uv and layer in
+// `wuv`.
+function merged(parts: [Batch, number][], material: THREE.Material): THREE.Mesh | null {
+  const n = parts.reduce((a, [b]) => a + b.pos.length / 3, 0);
+  if (!n) return null;
+  const pos = new Float32Array(n * 3);
+  const nor = new Float32Array(n * 3);
+  const col = new Float32Array(n * 3);
+  const wuv = new Float32Array(n * 3);
+  let o = 0;
+  for (const [b, layer] of parts) {
+    pos.set(b.pos, o * 3);
+    nor.set(b.nor, o * 3);
+    col.set(b.col, o * 3);
+    for (let k = 0; k < b.uv.length / 2; k++) wuv.set([b.uv[k * 2], b.uv[k * 2 + 1], layer], (o + k) * 3);
+    o += b.pos.length / 3;
   }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('wuv', new THREE.BufferAttribute(wuv, 3));
+  const m = new THREE.Mesh(g, material);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+
+// The material of a mesh whose vertices each take a layer of `array` (merged): tinted by their
+// colours. With `ground`, layer 0 (the flats' floors) takes layer 1 (doors and shops) below v = 1.
+function layeredMaterial(array: THREE.DataArrayTexture, roughness: number, ground = false): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness });
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.layers = { value: array };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 wuv;\nvarying vec3 vWuv;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWuv = wuv;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform highp sampler2DArray layers;\nvarying vec3 vWuv;')
+      .replace('#include <map_fragment>', ground ? 'diffuseColor *= texture(layers, vec3(vWuv.xy, vWuv.z < 0.5 && vWuv.y <= 1.0 ? 1.0 : vWuv.z));' : 'diffuseColor *= texture(layers, vWuv);');
+  };
+  return m;
 }
 
 // A roof's colour as the aerial photo has it, as it looks from the street: the photo sees it through
@@ -686,10 +788,16 @@ function seenUpClose([r, g, b]: [number, number, number]): [number, number, numb
 // runs, its pitch, its ridge's height and its colour, tiles or sheets or flat. The walls' windows
 // are its storeys. A wall another building stands against, as high as it or higher, isn't drawn.
 function buildBuildings(list: Building[]): THREE.Group {
-  // Two of each batch: the buildings near the road, which cast shadows, and those further off,
-  // which can't: the sun's shadows are only drawn 70 m round the camera, which is on the road.
+  // The batches a kilometre square at a time, so whole squares out of view are skipped, and the sun's
+  // shadows (drawn only 70 m round the camera) draw only those near it.
   const batches = () => ({ walls: { flats: new Batch(), house: new Batch(), shop: new Batch(), church: new Batch() }, tiles: new Batch(), flat: new Batch() });
-  const sets = [batches(), batches()];
+  const sets = new Map<string, ReturnType<typeof batches>>();
+  const setOf = (b: Building) => {
+    const k = `${Math.floor(b.cx / 1000)},${Math.floor(b.cz / 1000)}`;
+    let s = sets.get(k);
+    if (!s) sets.set(k, (s = batches()));
+    return s;
+  };
   const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
   const col = new THREE.Color();
   const roofCol = new THREE.Color();
@@ -701,14 +809,15 @@ function buildBuildings(list: Building[]): THREE.Group {
     let area = 0;
     for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) area += (pts[j][0] - pts[i][0]) * (pts[j][1] + pts[i][1]);
     if (area < 0) pts = [...pts].reverse();
-    return { b, pts, shape: shapeOf({ ...b, pts }) };
+    // A building cut back at the kerb keeps the whole one's roof.
+    return { b, pts, shape: shapeOf({ ...b, pts: b.whole ?? pts }) };
   });
   const side = (a: [number, number], c: [number, number]) => `${a[0]},${a[1]}>${c[0]},${c[1]}`;
   const sides = new Map<string, (typeof all)[number]>();
   for (const it of all) for (let k = 0; k < it.pts.length; k++) sides.set(side(it.pts[k], it.pts[(k + 1) % it.pts.length]), it);
 
   for (const { b, pts, shape } of all) {
-    const { walls, tiles, flat } = sets[b.road > 150 ? 1 : 0];
+    const { walls, tiles, flat } = setOf(b);
     const base = b.y - 0.6;
     const foot = b.y;
     const church = b.kind === 3;
@@ -764,7 +873,7 @@ function buildBuildings(list: Building[]): THREE.Group {
         const U = (p: [number, number]): [number, number] => [(p[0] * ax + p[1] * az) / 3, (foot + shape.height(p[0], p[1])) / (3 * (sin || 1))];
         for (let i = 1; i + 1 < poly.length; i++) batch.up(P(poly[0]), P(poly[i]), P(poly[i + 1]), U(poly[0]), U(poly[i]), U(poly[i + 1]), roofCol);
       };
-      if (shape.fill > 0.9) for (const f of faces(shape, 0.4)) lay(f.pts, f.plane);
+      if (shape.fill > 0.9 && !b.whole) for (const f of faces(shape, 0.4)) lay(f.pts, f.plane);
       else {
         const contour = pts.map(([x, z]) => new THREE.Vector2(x, z));
         const fs = faces(shape, 0);
@@ -802,29 +911,22 @@ function buildBuildings(list: Building[]): THREE.Group {
   }
 
   const g = new THREE.Group();
-  const wallMat = (map: THREE.Texture) => new THREE.MeshStandardMaterial({ map, vertexColors: true, roughness: 0.88 });
-  // Flats: their ground floor's doors and shops below the first storey, their floors above.
-  const flats = wallMat(tex.flatsFloor());
-  const ground = tex.groundFloor();
-  flats.onBeforeCompile = (sh) => {
-    sh.uniforms.groundMap = { value: ground };
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D groundMap;')
-      .replace('#include <map_fragment>', '#ifdef USE_MAP\n  diffuseColor *= mix(texture2D(map, vMapUv), texture2D(groundMap, vMapUv), step(vMapUv.y, 1.0));\n#endif');
-  };
-  const house = wallMat(tex.houseWall());
-  const shop = wallMat(tex.shopWall());
-  const church = wallMat(tex.churchWall());
-  const tiled = new THREE.MeshStandardMaterial({ map: tex.roofTiles(), vertexColors: true, roughness: 0.75 });
-  const flatRoof = new THREE.MeshStandardMaterial({ map: tex.flatRoof(), vertexColors: true, roughness: 0.95 });
-  sets.forEach(({ walls, tiles, flat }, far) => {
-    for (const [batch, m] of [[walls.flats, flats], [walls.house, house], [walls.shop, shop], [walls.church, church], [tiles, tiled], [flat, flatRoof]] as const) {
-      const mesh = batch.mesh(m);
-      if (!mesh) continue;
-      mesh.castShadow = !far;
-      g.add(mesh);
+  // The walls' textures as the layers of one (the flats' floors, their ground floor of doors and
+  // shops, below the first storey, the houses', the shops' and the churches'), and the roofs' as
+  // another (tiles, flat): a square kilometre's walls are one mesh, and its roofs another.
+  const wallArt = [tex.flatsFloor(), tex.groundFloor(), tex.houseWall(), tex.shopWall(), tex.churchWall()];
+  const roofArt = [tex.roofTiles(), tex.flatRoof()];
+  const walled = layeredMaterial(tex.layered(wallArt.map((t) => t.image as HTMLCanvasElement), 256, 128), 0.88, true);
+  const roofed = layeredMaterial(tex.layered(roofArt.map((t) => t.image as HTMLCanvasElement), 256, 256), 0.85);
+  for (const t of [...wallArt, ...roofArt]) t.dispose();
+  for (const { walls, tiles, flat } of sets.values()) {
+    for (const mesh of [
+      merged([[walls.flats, 0], [walls.house, 2], [walls.shop, 3], [walls.church, 4]], walled),
+      merged([[tiles, 0], [flat, 1]], roofed),
+    ]) {
+      if (mesh) g.add(mesh);
     }
-  });
+  }
   return g;
 }
 
@@ -890,144 +992,18 @@ function startPlinth(track: Track, ground: (x: number, z: number) => number, cro
 
 // ---- Names ----
 
-// A blue-and-white plate on a post as the road turns into each street, facing the karts coming.
-function streetPlates(track: Track, ground: (x: number, z: number) => number, streets: { name: string; x: number; z: number }[]): THREE.Group {
-  const g = new THREE.Group();
-  if (!streets.length) return g;
-  const atlas = tex.streetPlates(streets.map((s) => s.name));
-  const pos: number[] = [];
-  const uv: number[] = [];
-  const posts: THREE.Matrix4[] = [];
-  streets.forEach((st, k) => {
-    const i = distanceToRoad(track, st.x, st.z).i;
-    if (i < 0) return;
-    const s = track.samples[i];
-    const p = surfacePoint(s, s.w / 2 + (s.kerbs[1] > 1.2 ? s.kerbs[1] - 0.5 : 1.4), 0);
-    const y = s.kerbs[1] > 0 ? p.y + 0.15 : ground(p.x, p.z);
-    posts.push(new THREE.Matrix4().makeTranslation(p.x, y + 1.3, p.z));
-    // The plate spans across the road's direction, its face towards the karts coming.
-    const hw = 1.1;
-    const ax = p.x - s.r.x * hw;
-    const az = p.z - s.r.z * hw;
-    const bx = p.x + s.r.x * hw;
-    const bz = p.z + s.r.z * hw;
-    const lo = y + 2.2;
-    const hi = y + 2.68;
-    const n = streets.length;
-    const v0 = 1 - (k + 1) / n;
-    const v1 = 1 - k / n;
-    pos.push(ax, lo, az, bx, lo, bz, bx, hi, bz, ax, lo, az, bx, hi, bz, ax, hi, az);
-    uv.push(0, v0, 1, v0, 1, v1, 0, v0, 1, v1, 0, v1);
-  });
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  geo.computeVertexNormals();
-  g.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: atlas, roughness: 0.4, side: THREE.DoubleSide })));
-  const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 6), mat('#3a3d42', { metalness: 0.5 }), posts.length);
-  posts.forEach((m, k) => post.setMatrixAt(k, m));
-  post.computeBoundingSphere();
-  g.add(post);
-  return g;
-}
-
-// ---- Along the road ----
-
-// Zebra crossings across the road where the map has them, traffic lights at the kerb before the
-// junctions, and the bus stops, a shelter or a pole, on the pavement.
-function streetFurniture(track: Track, ground: (x: number, z: number) => number, meta: Course): { group: THREE.Group; update: (t: number) => void } {
-  const g = new THREE.Group();
-  const N = track.samples.length;
-  const zebra = new THREE.MeshStandardMaterial({ map: tex.zebra(), transparent: true, alphaTest: 0.4, roughness: 0.6 });
-  for (const [x, z] of meta.crossings) {
-    const { d, i } = distanceToRoad(track, x, z);
-    if (i < 0 || d > 2) continue;
-    g.add(new THREE.Mesh(ribbon(track, (i - 2 + N) % N, (i + 2) % N, (s) => [-s.w / 2 + 0.4, s.w / 2 - 0.4], 0.035, 4, 1), zebra));
-  }
-
-  // Traffic lights: a pole at the right-hand kerb 10 m before, its lamps towards the karts coming.
-  const metal = mat('#3d4146', { metalness: 0.5, roughness: 0.5 });
-  const black = mat('#141516', { roughness: 0.5 });
-  const lit = ['#ff3b2f', '#ffb000', '#2fdc6a'].map((c) => new THREE.MeshBasicMaterial({ color: c, toneMapped: false }));
-  const off = mat('#2a2b2d', { roughness: 0.4 });
-  const lights: THREE.Mesh[] = [];
-  for (const [x, z] of meta.signals) {
-    const { d, i: at } = distanceToRoad(track, x, z);
-    if (at < 0 || d > 6) continue;
-    const i = (at - 10 + N) % N;
-    const s = track.samples[i];
-    const p = surfacePoint(s, s.w / 2 + 0.5, 0);
-    const y = s.kerbs[1] !== 0 ? p.y + 0.15 : ground(p.x, p.z);
-    const pole = new THREE.Group();
-    pole.add(box(0.14, 3.2, 0.14, metal, 0, 0, 0));
-    pole.add(box(0.3, 1.0, 0.36, black, 0.18, 2.3, 0));
-    for (let k = 0; k < 3; k++) {
-      const m = new THREE.Mesh(new THREE.CircleGeometry(0.11, 12), off);
-      m.position.set(0.335, 3.1 - k * 0.3, 0);
-      m.rotation.y = Math.PI / 2;
-      pole.add(m);
-    }
-    // The one that's lit, moved to its place in front of the others.
-    const on = new THREE.Mesh(new THREE.CircleGeometry(0.11, 12), lit[2]);
-    on.rotation.y = Math.PI / 2;
-    on.userData.moves = true;
-    pole.add(on);
-    // Its +x faces the karts coming: back along the road.
-    pole.position.set(p.x, y, p.z);
-    pole.rotation.y = -Math.atan2(-s.t.z, -s.t.x);
-    g.add(pole);
-    lights.push(on);
-  }
-  // Each light keeps its own time: green, amber, red.
-  const update = (t: number) =>
-    lights.forEach((m, k) => {
-      const u = (t + k * 7.3) % 20;
-      const j = u < 11 ? 2 : u < 13 ? 1 : 0;
-      m.material = lit[j];
-      m.position.set(0.34, 3.1 - (2 - j) * 0.3, 0);
-    });
-
-  // Bus stops: a shelter of glass under a flat roof, or just the pole, beside the road.
-  const glass = mat('#9fb7c4', { roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.35 });
-  const sign = new THREE.MeshStandardMaterial({ map: tex.sign('PARAGEM', '', '#ffffff', '#1b3f8b', 256, 128, ''), roughness: 0.5 });
-  for (const st of meta.stops) {
-    const { i } = distanceToRoad(track, st.x, st.z);
-    if (i < 0) continue;
-    const s = track.samples[i];
-    const side = Math.sign((st.x - s.p.x) * s.r.x + (st.z - s.p.z) * s.r.z) || 1;
-    const k = side < 0 ? 0 : 1;
-    const pave = s.kerbs[k] > 0 ? s.kerbs[k] : 0;
-    const p = surfacePoint(s, side * (s.w / 2 + (pave > 2.4 ? pave - 1.1 : pave + 1.2)), 0);
-    const y = pave > 2.4 ? p.y + 0.15 : ground(p.x, p.z);
-    const stop = new THREE.Group();
-    if (st.shelter) {
-      stop.add(box(1.5, 0.1, 3.6, metal, 0, 2.4, 0), box(0.04, 2.3, 3.4, glass, -0.7, 0.1, 0));
-      for (const zz of [-1.7, 1.7]) stop.add(box(0.08, 2.4, 0.08, metal, -0.7, 0, zz), box(1.3, 2.3, 0.04, glass, 0, 0.1, zz));
-      stop.add(box(0.4, 0.45, 2.4, metal, -0.45, 0, 0));
-    }
-    stop.add(box(0.08, 2.8, 0.08, metal, 0.6, 0, st.shelter ? 2.2 : 0));
-    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.3), sign);
-    plate.position.set(0.6, 2.6, st.shelter ? 2.2 : 0);
-    plate.rotation.y = Math.PI / 2;
-    stop.add(plate);
-    // Its +x faces the road.
-    stop.position.set(p.x, y, p.z);
-    stop.rotation.y = -Math.atan2(s.t.z, s.t.x) + (side < 0 ? -Math.PI / 2 : Math.PI / 2);
-    g.add(stop);
-  }
-  return { group: g, update };
-}
-
-// A brown sign on two posts by the road, pointing out a landmark on that side.
-function landmarkSign(track: Track, ground: (x: number, z: number) => number, l: { name: string; x: number; z: number }): THREE.Group {
+// A brown sign on two posts on the pavement, pointing out a landmark the route passes on that side:
+// at the kerb nearest a point 40 m before it, so it's read on the way.
+function landmarkSign(track: Track, ground: (x: number, z: number) => number, kerbNear: Built['kerbNear'], l: { name: string; x: number; z: number }): THREE.Group {
   const g = new THREE.Group();
   const { i } = distanceToRoad(track, l.x, l.z);
   if (i < 0) return g;
-  // A little before the landmark, so it's read on the way.
   const N = track.samples.length;
   const s = track.samples[(i - 40 + N) % N];
   const side = Math.sign((l.x - s.p.x) * s.r.x + (l.z - s.p.z) * s.r.z) || 1;
-  const p = surfacePoint(s, side * (s.w / 2 + 2.2), 0);
+  const want = surfacePoint(s, side * (s.w / 2 + 2.2), 0);
+  const k = kerbNear(want.x, want.z, 12);
+  const p = k ? { x: k.x + k.nx * 0.8, z: k.z + k.nz * 0.8 } : want;
   const y = ground(p.x, p.z);
   const board = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.9), new THREE.MeshStandardMaterial({ map: tex.brownSign(l.name), roughness: 0.5, side: THREE.DoubleSide }));
   board.position.set(p.x, y + 2.4, p.z);

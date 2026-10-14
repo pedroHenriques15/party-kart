@@ -28,7 +28,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/audio.ts` | browser | Every sound and the mix it goes through (buses, a limiter, places): synthesized with Web Audio, but the city's, recorded (`src/sounds/`) |
 | `src/ambience.ts` | sim | What's round every 10 m of the track (traffic, town, park, woods) and where the churches, the rivers, the bus stops and the stadium are, from the map, for the city's sound |
 | `src/input.ts` | browser | The keyboard and the touch screen: held controls, plus actions counted once per press |
-| `src/render/` | browser | three.js: the look, the city round the track (`city.ts`), the road (`road.ts`), the bridges off it, the pillars under its own and the tunnels' mouths (`levels.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
+| `src/render/` | browser | three.js: the look, the city round the track (`city.ts`, its land on `lattice.ts`), every street in the open world's area (`streets.ts`, laid on the ground by `tin.ts`), what the race adds to them (`road.ts`), the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
 
 The **sim** files never import three.js or touch the DOM, so `node --test` can load them. The
 tests in `test/` drive real cars round the real track with them.
@@ -264,35 +264,68 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   three quality levels. High has pixel ratio up to 2 and 2048 shadows. Medium has 1.25 and 1024
   shadows. Low has 1 and no shadows. Changing quality marks every material for recompiling.
 - **The city** (`render/city.ts`), from braga-map: `loadWorld(amigos.box)` loads the map's
-  500 m tiles under the track's box (48 of them, each a chunk the bundle splits off), and the city
-  keeps what's near the road and clears the road itself: buildings within 300 m, none on the road
-  or its kerb (nor, for the houses the map filled in, its pavement); trees off the road, those
-  filled into parks and woods only within 230 m; the river kept 4.5 m under the road where it
-  crosses; and the Tourigalo's bull turned to face the road.
-  - The land is the ground as it is (braga-map's, from DGT's LiDAR, every 2 m near the route),
-    with the river's bed cut through it and level under the stadium. Its mesh is cells of 10 m
-    (20 m on Low), each split into cells of 2 m (4 m on Low) where it needs them: where its two
-    triangles would rise through the road or a verge, or, near the road, miss the ground by more
-    than 0.5 m (0.8 m on Medium). It keeps a little under the road, its pavements and 3 m past
-    them (6 m on Low), so nothing of it shows through, and the verges, strips at the ground's own
-    height 6 m wide (12 m on Low) beside each side of the road, are drawn over it there. Further
-    off, the whole map's hills every 50 m, coloured by the map's woods and towns and tucked under
-    it, and the horizon's hills 15 km round every 250 m (`horizon` in `sights.ts`).
+  500 m tiles under the track's box (48 of them, each a chunk the bundle splits off), and makes the
+  world the karts' ground of it (`worldGround`, `src/world/ground.ts`, kept as the city's `drive`
+  for driving on). It keeps what's in the open world's area and 300 m round it: every building, cut
+  back at the kerb where it stands on a carriageway as the karts find it (`trimmed`, braga-map's
+  decision 021); in the area every tree the karts can hit (all but those on a carriageway), and
+  round it the map's own and those filled into parks and woods within 230 m, every 2nd on Medium
+  and every 3rd on Low; and the Tourigalo's bull turned to face the road.
+  - The land is the ground as the karts have it (`land.ts`: braga-map's, from DGT's LiDAR, every
+    2 m in the area), with the river's bed cut through it and level under the stadium. Its mesh is
+    on a lattice (`lattice.ts`) of cells of 10 m (20 m on Low), each split into cells of 2 m (4 m on
+    Low) where it needs them: near a tunnel's mouth or under a deck, and where the land shows beside
+    a street (not under it, nor under a building) and its two triangles would miss the ground there
+    by more than 0.8 m (1 m on Medium, 1.2 on Low). It's drawn a square kilometre at a time. Under
+    the streets it isn't drawn at all: the painting is left clear there, 0.6 pixels in from their
+    outline, and the land's material skips what's clear, whatever the land's height, so it never
+    shows through a street. Further off, the whole map's hills every 50 m, coloured by the map's
+    woods and towns and tucked under it, and the horizon's hills 15 km round every 250 m (`horizon`
+    in `sights.ts`).
   - What's on the land is painted onto one canvas over the land: the parks, woods and fields,
-    water, squares, every other street at its own width with its pavements, the railway. It's 1 m
-    a pixel on High,
-    1.4 on Medium, 2 on Low. A fine grain, tiled by world position (`onBeforeCompile`), keeps it
-    from looking smeared up close.
+    water, squares, and beyond the open world's tiles every street at its own width with its
+    pavements, and the railway. It's 1 m a pixel on High, 1.4 on Medium, 2 on Low, uploaded with
+    its colours times their share of what's clear, so the land's edge at a street isn't darkened. A
+    fine grain, tiled by world position (`onBeforeCompile`), keeps it from looking smeared up
+    close.
   - Buildings are their footprints from the map, standing on the ground at their lowest corner
     (`y`, from the map), so a row of houses steps down a hill, and raised to their floors: walls
     textured a floor and two windows at a time and tinted by vertex colour, a ground floor of
     doors and shops on flats, and hipped or gabled roofs over each footprint's rectangle where it
-    nearly fills it (flat otherwise). Churches get a tower. They're seven meshes in all, one per material.
-  - Then the trees (`plantTrees`, plain crowns in 800 m tiles), the Rio Este and its bridges,
-    lamps, zebra crossings, traffic lights and bus stops (`streetFurniture`), a blue-and-white
-    plate for each street, brown signs to landmarks, the granite plinth with Braga's arms at the
-    start (where the lobby shows your car), and the easter eggs on the friends' houses (`eggs.ts`).
-    Neither buildings nor trees stand on the plinth or in an egg's ground.
+    nearly fills it (flat otherwise; cut to it when the building's been cut at the kerb). Churches
+    get a tower. They're six meshes a square kilometre, one per material, so the sun's shadows
+    draw only the squares near the camera.
+  - Then the trees (`plantTrees`, plain crowns in 800 m tiles, plainer still on Low), the Rio Este,
+    the decks' pillars and abutments and the tunnels' mouths (`levels.ts`), brown signs to
+    landmarks on the pavement, the granite plinth with Braga's arms at the start (where the lobby
+    shows your car), and the easter eggs on the friends' houses (`eggs.ts`). Neither buildings nor
+    trees stand on the plinth or in an egg's ground.
+- **The streets** (`render/streets.ts`): every street in the open world's area as braga-map gives
+  it (`world.streets`, its task 033), on the ground the karts drive on (`ground.ts`): a carriageway
+  on the land without the river's bed cut into it (`firm`), a pavement, a central reservation or an
+  island a kerb over it (15 cm, sloping down to a kerb dropped at a crossing), a deck's or a
+  tunnel's road at its height. Each piece is triangulated (three.js's earcut, its outline cut into
+  pieces of at most 10 m on High) and its edges halved where the ground under them bends by more
+  than 25 cm (50 on a pavement; coarser on Medium and Low; `tin.ts`). Whether an edge is halved
+  depends on that edge alone, so the pieces either side of it meet at the same points, without
+  cracks. The carriageways drawn are 3.4 cm off the ground the karts stand on at the median, and
+  19 cm at the 90th percentile (`test/streets.test.ts`). Asphalt, setts, calçada, grass on a wide
+  reservation or an island, each texture's rows along the nearest street's line.
+  - A granite kerb wherever a pavement meets a carriageway: its face, and on High its stones' tops.
+    Where a street's outline meets the land, a skirt down to it, or a granite retaining wall up to
+    it where the land stands more than 12 cm over the edge (25 on Low), and on High a granite step
+    at a pavement's back; none against a building. The decks' undersides, and their parapets and
+    the tunnels' sides where the karts meet them (`ground.ts`'s `sides`).
+  - The lines painted on the carriageways as they're drawn: lanes and middles, dashed or solid,
+    zebras (their bars on one grid of a metre, so crossings the map has side by side line up),
+    stop lines.
+  - Lamps on every pavement wide enough, half a metre behind the kerb, about one every 30 m down a
+    street; a traffic light at each stop line's kerb end, facing the cars stopping; the route's bus
+    stops and street plates at the kerb nearest them (braga-map's tiles have no names or stops
+    yet: its task 042); and a row of red-and-white road-works barriers with "Estrada cortada"
+    across every street where it leaves the area (braga-map's gates, its task 032).
+  - The surfaces and faces are one mesh a tile (500 m), their textures layers of one array
+    texture (`tuv`: each vertex's uv and layer); the paint another.
   - The sights (`sights.ts`): Bom Jesus and its Escadório and the Sameiro on the hills, at twice
     their size so they show from the track; the cross on the Picoto; the Estádio 1.º de Maio with
     its track, terraces, covered stand and floodlights; Makro's and the Altice Forum's signs; and
@@ -300,14 +333,11 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     real size and exaggerated (braga-map's decision 015), its testicles swinging (the one moving
     part, outside the bake), with its restaurant's sign behind; 9 draw calls and about 25,000
     triangles.
-- **The road** (`render/road.ts`), the same for any track: the ribbon (asphalt, or granite setts),
-  the white lines painted on it as each stretch's `lanes` says, and beyond its edges, as `kerbs`
-  says, granite kerbs with calçada pavements behind them, central reservations, or nothing. Each
-  side meets the ground as its `edges` (from `city.ts`) say: a pavement slopes from the kerb to
-  meet the ground at its back (12% up at most, 5% down), and past that a granite retaining wall
-  goes up to the ground where it's higher and a skirt down to it where it's lower; a bridge over a
-  road gets a deck. Parapets on the bridges, the barriers at the start, boost pads,
-  the start line and gates, string lights (the first track's) and lamps.
+- **The road** (`render/road.ts`): what the race adds to the streets (`raceMarks`): the start
+  line, the gates at the start and the checkpoints, the boost pads and the barriers at the start,
+  laid on the streets as they're drawn. The race still drives the track's own road, at least 9 m
+  wide, until braga-map's task 037 puts it on the streets. `buildRoad` draws the first track's road
+  (its ribbon, lines, kerbs, pavements and skirts), which had no streets under it.
 - **The first track's world** (`render/world.ts`, with `landmarks.ts`, `braga.ts` and
   `buildTrees`) is kept for reference, and nothing builds it.
 - **Few draw calls**: `mat()` shares one material per colour and settings, and `bake()` merges each
@@ -385,20 +415,37 @@ it adds against it. Measure with
 `?stats` in a race, `node scripts/shots.mjs <label> --medium` at braga-map's viewpoints, and
 `node scripts/download.mjs` (task 004 in braga-map).
 
-**What it costs today** (2026-10-14: party-kart `0c3b077` with `levels.ts`, braga-map 1.6.0, on a
-desktop RTX 4060 Ti; the round is `shots/2026-10-14-task012/`. The race of 8 karts is from
-2026-10-13, party-kart `ac47bf0` and braga-map 1.2.0, `shots/2026-10-13-budget/`):
+**What it costs today** (2026-10-15: party-kart with every street in the area drawn, braga-map's
+task 035, on braga-map 1.7.0, on a desktop RTX 4060 Ti; the round is `shots/2026-10-15-task035/`.
+The race of 8 karts is from 2026-10-13, party-kart `ac47bf0` and braga-map 1.2.0,
+`shots/2026-10-13-budget/`, before the streets):
 
 | | High | Medium | Low |
 |---|---|---|---|
 | Pixel ratio, the sun's shadows | 2, 2048 px | 1.25, 1024 px | 1, none |
-| The city alone, at the 29 viewpoints: draw calls | 58–184 | 58–184 | 40–165 |
-| The city alone: triangles | 0.83–1.14 M | 0.77–0.95 M | 0.48–0.59 M |
+| The city alone, at the 29 viewpoints: draw calls | 58–226 | 58–226 | 39–207 |
+| The city alone: triangles | 0.40–1.57 M | 0.38–1.31 M | 0.25–0.88 M |
 | A race of 8 karts, on the start straight: draw calls | 680 | 561 | 456 |
 | A race of 8 karts: triangles | 1.22 M | 1.00 M | 0.61 M |
-| Textures | 94 MB | 61 MB | 45 MB |
-| Building the city | 1.9–2.7 s | 1.7–2.6 s | 1.1–1.7 s |
+| Textures | 91 MB | 57 MB | 42 MB |
+| Building the city | 3.8–5.3 s | 2.9–4.9 s | 2.6–4.5 s |
 
+**What every street in the area cost** (task 035, against `shots/2026-10-14-task012/`, the same 29
+viewpoints): before it, the city was 58–184 draw calls on High and Medium and 40–165 on Low,
+0.83–1.14 M triangles on High, 0.77–0.95 M on Medium and 0.48–0.59 M on Low, 94, 61 and 45 MB of
+textures, and built in 1.9–2.7 s on High, 1.7–2.6 on Medium and 1.1–1.7 on Low. The busiest
+viewpoints are still `robert-smith`, `alameda-fujacal`, `conselheiro-lobato` and
+`imaculada-conceicao`: about 40 more draw calls each and 0.4 M more triangles on High (0.3 M on
+Low), where the streets, the land beside them and the buildings round the whole area are in view.
+The quietest got cheaper (0.40 M on High where it was 0.83 M): what's drawn is cut into tiles, so
+what's out of view isn't drawn, where the track's road and its land were always drawn whole. Over
+the whole box, on High, the streets are 0.70 M triangles (their surfaces 0.31 M, the granite of
+the kerbs, steps and walls 0.19 M, the rest the paint, the skirts, the decks and what stands along
+them), the land 0.38 M, the trees 0.28 M and the buildings 0.20 M; on Low, 0.45, 0.17, 0.10 and
+0.20 M. Textures went down by 3 MB: the streets' and the buildings' textures are layers of three
+arrays. Building the city takes about twice as long, the streets about 1.4 s of it on the desktop (two
+rounds an hour apart differed by up to 0.9 s, the desktop busy with other work): a phone, three to
+five times slower, would wait 10–20 s. The download grew by 0.01 MB, the code.
 The download before a race is 5.27 MB as it is, on every level, and `node scripts/download.mjs`
 gzips it to 1.56 MB: the game (three.js, PeerJS and the code) is 0.30 MB of that, and the map's 48
 tiles 1.25 MB, up from 1.12 MB since braga-map 1.5.0 put in the buildings OpenStreetMap lacks.
@@ -408,12 +455,13 @@ viewpoints are `robert-smith` (184 draw calls) and `alameda-fujacal`, `imaculada
 calls on High and Medium, 3 on Low, and up to 19 k triangles (the decks and mouths about 1.5 k, the
 rest the land's small cells round them). braga-map 1.7.0 (2026-10-14, for the open world's ground,
 its task 034) takes the download to 6.79 MB, 2.07 MB gzipped (the tiles 1.75 MB): every street as
-surfaces and the ground every 2 m under the open world's area, which the game downloads but doesn't
-draw or drive on until the open world's tasks 035 and 036.
+surfaces and the ground every 2 m under the open world's area, which the game draws since task 035
+and drives on from task 036. Task 035's code takes it to 6.81 MB, 2.08 MB gzipped.
 
 - **Textures**, on High: the ground's painted map is 44 MB (3330 × 2600 pixels, a metre each; 22 MB
   on Medium, 11 on Low), the sun's shadows 16 MB (4 on Medium), the street plates 10.5 MB, the sky's
-  reflections 6 MB, and everything else 8 MB. That's counted as the scene holds them (`textureBytes`
+  reflections 6 MB, and everything else 5 MB (the streets' eight textures 2.8 MB of it, as one
+  array). That's counted as the scene holds them (`textureBytes`
   in `src/stats.ts`): four bytes a pixel and a third more for the mipmaps. A canvas texture keeps its
   canvas as well, which Chrome may hold on the graphics card too: the ground's is another 34 MB on
   High.
@@ -421,7 +469,7 @@ draw or drive on until the open world's tasks 035 and 036.
   The 37th takes it past 4096, the most some phones take.
 - **The karts cost more draw calls than the city.** Each is about 40 on Low to 60 on High (its parts
   aren't merged, and are drawn again for the shadows), so 8 karts are two or three times the city.
-- **The frame time on the PC** is 0.2–2.6 ms on every level, so it can't tell them apart. Only a
+- **The frame time on the PC** is 0.4–2.6 ms on every level, so it can't tell them apart. Only a
   phone gives the frame rate.
 - **Stepping down a level in a race** (`watchSpeed`) changes the pixel ratio and the shadows only.
   The city stays as it was built (`buildCity` runs once), so a phone that starts on Medium and drops

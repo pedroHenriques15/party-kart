@@ -15,8 +15,14 @@ function merge(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
 }
 
 // Each kind: a crown and a trunk, about 1 unit to 8 tall. Plain ones have fewer faces, for
-// places with thousands of trees.
-function shapes(kind: Kind, plain = false): { crown: THREE.BufferGeometry; trunk: THREE.BufferGeometry } {
+// places with thousands of trees; lean ones fewer still, for the Low graphics.
+function shapes(kind: Kind, plain: boolean | 'lean' = false): { crown: THREE.BufferGeometry; trunk: THREE.BufferGeometry } {
+  if (plain === 'lean' && kind !== 'cypress') {
+    // About 20 faces a tree.
+    const trunk = new THREE.CylinderGeometry(0.28, 0.4, kind === 'pine' ? 3 : 4, 4, 1, true).translate(0, kind === 'pine' ? 1.5 : 2, 0);
+    if (kind === 'pine') return { crown: new THREE.ConeGeometry(2.4, 6, 5).translate(0, 5, 0), trunk };
+    return { crown: new THREE.IcosahedronGeometry(2.7, 0).translate(0, 5, 0), trunk };
+  }
   if (plain && kind !== 'cypress') {
     // About 50 faces a tree, trunk and all.
     const trunk = new THREE.CylinderGeometry(0.26, 0.4, kind === 'pine' ? 3 : 4, 5, 1, true).translate(0, kind === 'pine' ? 1.5 : 2, 0);
@@ -108,7 +114,7 @@ export function buildTrees(track: Track, ground: Ground): THREE.Group {
 }
 
 // Trees in tiles, each its own instanced meshes, so whole tiles out of view are skipped.
-export function plantTrees(trees: Tree[], TILE = 300, plain = false): THREE.Group {
+export function plantTrees(trees: Tree[], TILE = 300, plain: boolean | 'lean' = false): THREE.Group {
   const group = new THREE.Group();
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();

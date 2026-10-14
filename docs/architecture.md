@@ -26,7 +26,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/audio.ts` | browser | Every sound and the mix it goes through (buses, a limiter, places): synthesized with Web Audio, but the city's, recorded (`src/sounds/`) |
 | `src/ambience.ts` | sim | What's round every 10 m of the track (traffic, town, park, woods) and where the churches, the rivers, the bus stops and the stadium are, from the map, for the city's sound |
 | `src/input.ts` | browser | The keyboard and the touch screen: held controls, plus actions counted once per press |
-| `src/render/` | browser | three.js: the look, the city round the track (`city.ts`), the road (`road.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
+| `src/render/` | browser | three.js: the look, the city round the track (`city.ts`), the road (`road.ts`), the bridges off it, the pillars under its own and the tunnels' mouths (`levels.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
 
 The **sim** files never import three.js or touch the DOM, so `node --test` can load them. The
 tests in `test/` drive real cars round the real track with them.
@@ -338,26 +338,28 @@ it adds against it. Measure with
 `?stats` in a race, `node scripts/shots.mjs <label> --medium` at braga-map's viewpoints, and
 `node scripts/download.mjs` (task 004 in braga-map).
 
-**What it costs today** (2026-10-14: party-kart `31dcce9`, braga-map 1.5.0, on a desktop
-RTX 4060 Ti; the round is `shots/2026-10-14-task011/`. The race of 8 karts is from 2026-10-13,
-party-kart `ac47bf0` and braga-map 1.2.0, `shots/2026-10-13-budget/`):
+**What it costs today** (2026-10-14: party-kart `0c3b077` with `levels.ts`, braga-map 1.6.0, on a
+desktop RTX 4060 Ti; the round is `shots/2026-10-14-task012/`. The race of 8 karts is from
+2026-10-13, party-kart `ac47bf0` and braga-map 1.2.0, `shots/2026-10-13-budget/`):
 
 | | High | Medium | Low |
 |---|---|---|---|
 | Pixel ratio, the sun's shadows | 2, 2048 px | 1.25, 1024 px | 1, none |
-| The city alone, at the 29 viewpoints: draw calls | 52–178 | 52–178 | 37–162 |
-| The city alone: triangles | 0.81–1.12 M | 0.76–0.93 M | 0.47–0.58 M |
+| The city alone, at the 29 viewpoints: draw calls | 58–184 | 58–184 | 40–165 |
+| The city alone: triangles | 0.83–1.14 M | 0.77–0.95 M | 0.48–0.59 M |
 | A race of 8 karts, on the start straight: draw calls | 680 | 561 | 456 |
 | A race of 8 karts: triangles | 1.22 M | 1.00 M | 0.61 M |
 | Textures | 94 MB | 61 MB | 45 MB |
-| Building the city | 1.8–2.6 s | 1.6–2.5 s | 1.1–1.5 s |
+| Building the city | 1.9–2.7 s | 1.7–2.6 s | 1.1–1.7 s |
 
-The download before a race is 5.26 MB as it is, on every level, and `node scripts/download.mjs`
+The download before a race is 5.27 MB as it is, on every level, and `node scripts/download.mjs`
 gzips it to 1.56 MB: the game (three.js, PeerJS and the code) is 0.30 MB of that, and the map's 48
 tiles 1.25 MB, up from 1.12 MB since braga-map 1.5.0 put in the buildings OpenStreetMap lacks.
 GitHub Pages compresses a little less: 1.47 MB live when the script said 1.41. The busiest
-viewpoints are `robert-smith` (178 draw calls) and `alameda-fujacal`, `imaculada-conceicao` and
-`conselheiro-lobato` (1.12 M triangles on High).
+viewpoints are `robert-smith` (184 draw calls) and `alameda-fujacal`, `imaculada-conceicao` and
+`conselheiro-lobato` (1.14 M triangles on High). braga-map 1.6.0's bridges and tunnels added 6 draw
+calls on High and Medium, 3 on Low, and up to 19 k triangles (the decks and mouths about 1.5 k, the
+rest the land's small cells round them).
 
 - **Textures**, on High: the ground's painted map is 44 MB (3330 × 2600 pixels, a metre each; 22 MB
   on Medium, 11 on Low), the sun's shadows 16 MB (4 on Medium), the street plates 10.5 MB, the sky's

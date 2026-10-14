@@ -5,12 +5,13 @@
 // Rio Este and its bridges; zebra crossings, traffic lights and bus stops; the street names; the
 // granite plinth with Braga's arms at the start; the sights (sights.ts); and the friends' easter
 // eggs on their houses (eggs.ts). The road itself is road.ts.
-import { heightOn, loadWorld, type Box, type Building as MapBuilding, type Track as Course, type World as Braga } from 'braga-map';
+import { heightOn, loadWorld, type Box, type Building as MapBuilding, type Line, type Track as Course, type World as Braga } from 'braga-map';
 import * as THREE from 'three';
 import { distanceToRoad, surfacePoint, type Sample, type Track } from '../track/track.ts';
 import { buildEggs, eggSpots, type Eggs } from './eggs.ts';
 import { buildSights, horizon, TOURIGALO_CLEAR } from './sights.ts';
 import { bake, box, mat } from './kit.ts';
+import { buildLevels, isDeck, mouths, nearLevels, THROAT } from './levels.ts';
 import type { Quality } from './look.ts';
 import { bridge, buildRoad, lamps, ribbon, runs } from './road.ts';
 import { clipConvex, convexPieces, faces, shapeOf, wallTop } from './roofs.ts';
@@ -137,6 +138,10 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   // bed cut through it. The stadium's ground is level, its pitch and stands in a bowl cut into the
   // slope.
   const pads = map.sights.flatMap((s) => (s.kind === 'stadium' ? [{ x: s.x, z: s.z, c: Math.cos(s.angle), s: Math.sin(s.angle), rx: s.L + s.W + 30, rz: s.W + 36, y: nat(s.x, s.z) }] : []));
+  // In front of a tunnel's mouth, and in its throat, the land is down at the tunnel's road: the
+  // LiDAR's ground slopes up there from the cutting's floor to whatever is over the tunnel, which
+  // would bury the opening (levels.ts).
+  const openings = mouths(map);
   const land = (x: number, z: number): number => {
     let h = nat(x, z);
     for (const p of pads) {
@@ -144,6 +149,15 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
       const dz = z - p.z;
       const e = Math.hypot((dx * p.c + dz * p.s) / p.rx, (-dx * p.s + dz * p.c) / p.rz);
       if (e < 1.3) h = p.y + (h - p.y) * smooth(0.9, 1.3, e);
+    }
+    for (const m of openings) {
+      const dx = x - m.x;
+      const dz = z - m.z;
+      if (Math.abs(dx) > 16 || Math.abs(dz) > 16) continue;
+      const a = dx * m.ux + dz * m.uz;
+      const b = -dx * m.uz + dz * m.ux;
+      const half = Math.max(6, m.w + 1) / 2;
+      if ((a > 0 && a < 12 && Math.abs(b) < half + 1.5) || (a > -THROAT - 2 && a <= 0 && Math.abs(b) < half + 0.5)) h = Math.min(h, m.y - 0.05 + Math.max(0, a - 6) * 0.4);
     }
     const r = riverAt(x, z);
     if (r.d < HW + 12) {
@@ -218,7 +232,11 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
     if (b.d < back + DEEP) return { y: Math.min(h, road) - 0.35, top: b.d < 0 ? road : b.d < back ? road + 0.12 : bridged(b.s) ? Infinity : h + 0.05, d: b.d };
     return { y: h, top: b.d < back + VERGE && !bridged(b.s) ? h + 0.05 : Infinity, d: b.d };
   };
-  const paint = paintGround(map, B, track, quality);
+  // The bridges off the road drawn as decks (levels.ts), and so not painted on the land under them;
+  // nor the tunnels, under it.
+  const decks = new Set(map.lines.filter((l) => isDeck(l, track, land)));
+  const nearLv = nearLevels(openings, decks);
+  const paint = paintGround(map, B, track, quality, (l) => l.level !== 'tunnel' && !decks.has(l));
   const uvAt = (x: number, z: number): [number, number] => [(x - B.x0) / (B.x1 - B.x0), 1 - (z - B.z0) / (B.z1 - B.z0)];
 
   // ---- The land near the track, the map painted on it: cells of 10 m, split into cells of 2 m
@@ -238,7 +256,9 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
     const fine = new Uint8Array(nx * nz);
     for (let j = 0; j < nz; j++) {
       for (let i = 0; i < nx; i++) {
-        if (distanceToRoad(track, B.x0 + (i + 0.5) * C, B.z0 + (j + 0.5) * C).d > Math.max(band, C * 0.71 + 10)) continue;
+        // (Near a tunnel's mouth or a deck too: levels.ts.)
+        const lv = nearLv(B.x0 + (i + 0.5) * C, B.z0 + (j + 0.5) * C);
+        if (!lv && distanceToRoad(track, B.x0 + (i + 0.5) * C, B.z0 + (j + 0.5) * C).d > Math.max(band, C * 0.71 + 10)) continue;
         const y00 = cornerY[j * (nx + 1) + i];
         const y10 = cornerY[j * (nx + 1) + i + 1];
         const y01 = cornerY[(j + 1) * (nx + 1) + i];
@@ -251,7 +271,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
             const flat = u + v <= 1 ? y00 + (y10 - y00) * u + (y01 - y00) * v : y11 + (y01 - y11) * (1 - u) + (y10 - y11) * (1 - v);
             const m = meshAt(B.x0 + i * C + a * F, B.z0 + j * C + b * F);
             const e = m.y - flat;
-            if (flat > m.top || (m.top === Infinity && m.d < band && Math.abs(e) > tol)) {
+            if (flat > m.top || (m.top === Infinity && (m.d < band || lv) && Math.abs(e) > tol)) {
               fine[j * nx + i] = 1;
               break test;
             }
@@ -454,6 +474,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
     const mid = track.samples[(a + Math.floor(((b - a + N) % N) / 2)) % N];
     statics.add(bridge(track, a, b, riverAt(mid.p.x, mid.p.z).y, HW));
   }
+  statics.add(buildLevels(map, track, land, decks, openings, overWater));
   group.add(lamps(track, ground, (s) => !bridged(s), 34));
 
   // ---- The plinth at the start, where the lobby shows your car; and the eggs. ----
@@ -550,7 +571,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
 // Paints what the ground is onto one big canvas over the scenery's box: the land, the parks and
 // woods, water, squares, every other street with its pavements, the railway, and pavements along
 // the track.
-function paintGround(map: Braga, B: Box, track: Track, quality: Quality): THREE.CanvasTexture {
+function paintGround(map: Braga, B: Box, track: Track, quality: Quality, painted: (l: Line) => boolean): THREE.CanvasTexture {
   const res = quality === 'high' ? 1 : quality === 'medium' ? 1.4 : 2; // metres a pixel
   const W = Math.min(4096, Math.round((B.x1 - B.x0) / res));
   const H = Math.min(4096, Math.round((B.z1 - B.z0) / res));
@@ -577,7 +598,7 @@ function paintGround(map: Braga, B: Box, track: Track, quality: Quality): THREE.
   }
 
   // Every other street: pavement first, then asphalt; the small ones, then the big ones.
-  const lines = map.lines.map(({ kind, w, pts }) => ({ k: kind, w, pts }));
+  const lines = map.lines.filter(painted).map(({ kind, w, pts }) => ({ k: kind, w, pts }));
   g.lineCap = 'round';
   g.lineJoin = 'round';
   const stroke = (pts: [number, number][], width: number, color: string) => {

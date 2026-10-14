@@ -111,7 +111,8 @@ a race runs slowly, the game steps down a level by itself, as far as Low.
 - `src/game/`: a race: the arena (clock, cars, items in flight, order), a racer (laps, boxes,
   items, hits, bumps, slipstreams, catch-up), the items' rules, and the bots.
 - `src/render/`: the look (sky, sun, shadows, quality); the city round the track (`city.ts`,
-  from the map), the road (`road.ts`), the easter eggs (`eggs.ts`); trees, karts and
+  from the map), the road (`road.ts`), the bridges off it and the tunnels' mouths
+  (`levels.ts`), the easter eggs (`eggs.ts`); trees, karts and
   drivers, items, particles, skid marks; and the first track's world (`world.ts`,
   `landmarks.ts`, `braga.ts`), for reference.
 - The map of Braga is its own repo, [braga-map](https://github.com/pedroHenriques15/braga-map),

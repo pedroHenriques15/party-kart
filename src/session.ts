@@ -506,9 +506,13 @@ export class HostRoom implements Room {
     this.honkFor(HOST_ID);
   }
 
+  // The bye tells everyone the room closed, rather than their connection failing, and goes out
+  // before the peer closes, as a full room's does.
   leave(): void {
     this.timers.forEach(clearInterval);
-    this.peer.destroy();
+    this.broadcast({ t: 'bye', why: 'O anfitrião fechou a sala.' });
+    this.remotes.clear();
+    setTimeout(() => this.peer.destroy(), 500);
   }
 }
 
@@ -534,12 +538,12 @@ export class ClientRoom implements Room {
   private constructor(peer: Peer, conn: DataConnection) {
     this.peer = peer;
     this.conn = conn;
+    // Only the connection to the host ends the room. PeerJS's server just introduced us, so the
+    // peer's own errors, such as its socket to that server dropping mid-race, leave the race be.
+    // A host that leaves says so first, with a bye.
     conn.on('data', (raw) => this.receive(raw as ToClient));
-    conn.on('close', () => this.close('O anfitrião fechou a sala.'));
+    conn.on('close', () => this.close('Perdeu-se a ligação ao anfitrião.'));
     conn.on('error', () => this.close('Perdeu-se a ligação ao anfitrião.'));
-    peer.on('error', (e) => {
-      if (errType(e) !== 'peer-unavailable') this.close('Perdeu-se a ligação ao anfitrião.');
-    });
     this.pinger = setInterval(() => this.send({ t: 'ping' }), PING_MS);
   }
 
@@ -552,12 +556,14 @@ export class ClientRoom implements Room {
         reject(new Error(why));
       };
       const timer = setTimeout(() => fail('Não foi possível chegar a essa sala. Confirma o código, e se o anfitrião ainda a tem aberta.'), 15000);
-      peer.once('error', (e) => {
+      const failed = (e: unknown) => {
         clearTimeout(timer);
         fail(errType(e) === 'peer-unavailable' ? 'Não há nenhuma sala com esse código.' : `Não foi possível ligar (${errType(e) || 'erro'}).`);
-      });
+      };
+      peer.once('error', failed);
       conn.once('open', () => {
         clearTimeout(timer);
+        peer.off('error', failed);
         const room = new ClientRoom(peer, conn);
         room.send({ t: 'hello', name, driver });
         resolve(room);

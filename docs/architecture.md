@@ -137,7 +137,7 @@ To the clients (`ToClient`):
 | `end` | `Entry[]` | The results |
 | `ev` | `ItemEv` | Someone else's item event, relayed |
 | `honk` | id | |
-| `bye` | why | You're out (the room is full) |
+| `bye` | why | You're out: the room is full, or the host has closed it |
 
 `start` gives times relative to when it was sent, so each browser's green light comes late by its
 own one-way latency, which is tens of milliseconds. Projectiles and race times carry that skew. At
@@ -193,8 +193,10 @@ host does guard against is malformed or hostile input that could break other peo
 and overwrite `owner`/`victim` with the sender's id, so nobody can throw things in someone else's
 name. On screen, names only ever go in as text (the `h()` helper in `main.ts`).
 
-Someone joining mid-race is put straight in at the back of the grid. If the host leaves, the
-connections close and every client goes back to the home screen.
+Someone joining mid-race is put straight in at the back of the grid. If the host leaves, it sends
+everyone a `bye`, the connections close and every client goes back to the home screen. Only a
+client's connection to the host ends its room: once in, its socket to PeerJS's server can drop (the
+server restarting, a phone changing networks) and the race carries on.
 
 ## The two modes
 

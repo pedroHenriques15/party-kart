@@ -329,30 +329,33 @@ Every sound is in `audio.ts`, and plays through one mix. All are synthesized but
 
 ## The city's budget
 
-How much city the game may draw, so it keeps running on the friends' phones. The floor is an older
-Android phone, the slowest one a friend races on. The budget is today's city, which they already
-race on, per graphics level, and every change that adds to the city keeps inside it. Measure with
+How much city the game draws, against what the friends' phones are known to run. The floor is an
+older Android phone, the slowest one a friend races on. The budget is the city they raced on, per
+graphics level: a guide, not a limit (below), and every change that adds to the city measures what
+it adds against it. Measure with
 `?stats` in a race, `node scripts/shots.mjs <label> --medium` at braga-map's viewpoints, and
 `node scripts/download.mjs` (task 004 in braga-map).
 
-**What it costs today** (2026-10-14: party-kart `ac47bf0`, braga-map 1.2.0, on a desktop
-RTX 4060 Ti; the round is `shots/2026-10-13-budget/`):
+**What it costs today** (2026-10-14: party-kart `31dcce9`, braga-map 1.5.0, on a desktop
+RTX 4060 Ti; the round is `shots/2026-10-14-task011/`. The race of 8 karts is from 2026-10-13,
+party-kart `ac47bf0` and braga-map 1.2.0, `shots/2026-10-13-budget/`):
 
 | | High | Medium | Low |
 |---|---|---|---|
 | Pixel ratio, the sun's shadows | 2, 2048 px | 1.25, 1024 px | 1, none |
-| The city alone, at the 29 viewpoints: draw calls | 48–190 | 48–190 | 33–173 |
-| The city alone: triangles | 0.76–1.07 M | 0.72–0.89 M | 0.42–0.53 M |
+| The city alone, at the 29 viewpoints: draw calls | 52–178 | 52–178 | 37–162 |
+| The city alone: triangles | 0.81–1.12 M | 0.76–0.93 M | 0.47–0.58 M |
 | A race of 8 karts, on the start straight: draw calls | 680 | 561 | 456 |
 | A race of 8 karts: triangles | 1.22 M | 1.00 M | 0.61 M |
-| Textures | 91 MB | 57 MB | 42 MB |
-| Building the city | 1.4–1.8 s | 1.4–1.7 s | 0.8–1.0 s |
+| Textures | 94 MB | 61 MB | 45 MB |
+| Building the city | 1.8–2.6 s | 1.6–2.5 s | 1.1–1.5 s |
 
-The download before a race is 1.47 MB as the live site sends it, 4.87 MB as it is, on every level.
-`node scripts/download.mjs` gzips it to 1.41 MB (GitHub Pages compresses a little less): the game
-(three.js, PeerJS and the code) is 0.28 MB of that, and the map's 48 tiles 1.12 MB. The busiest
-viewpoints are `robert-smith` (190 draw calls) and `alameda-fujacal`, `imaculada-conceicao` and
-`conselheiro-lobato` (1.07 M triangles on High).
+The download before a race is 5.26 MB as it is, on every level, and `node scripts/download.mjs`
+gzips it to 1.56 MB: the game (three.js, PeerJS and the code) is 0.30 MB of that, and the map's 48
+tiles 1.25 MB, up from 1.12 MB since braga-map 1.5.0 put in the buildings OpenStreetMap lacks.
+GitHub Pages compresses a little less: 1.47 MB live when the script said 1.41. The busiest
+viewpoints are `robert-smith` (178 draw calls) and `alameda-fujacal`, `imaculada-conceicao` and
+`conselheiro-lobato` (1.12 M triangles on High).
 
 - **Textures**, on High: the ground's painted map is 44 MB (3330 × 2600 pixels, a metre each; 22 MB
   on Medium, 11 on Low), the sun's shadows 16 MB (4 on Medium), the street plates 10.5 MB, the sky's
@@ -375,11 +378,15 @@ today's city isn't known. To find out: `?stats&autodrive` on the slowest phone, 
 then Low, a race with no bots and then with 7, a whole lap, and `&at=4543` (`robert-smith`).
 braga-map's `docs/tasks/done/004-budget.md` has the steps, written for whoever has the phone.
 
-**The budget** is what the city costs today, rounded up: what the friends' phones already run. A
-change may not take the city past it. One that needs more first takes it from somewhere else, or
-measures the phone and raises the budget to what the phone holds with room to spare.
+**The budget** is what the city cost when the friends raced on it, rounded up: what their phones
+are known to run. It's a guide, not a limit (braga-map's decision 017, which replaced decision
+013's "a change may not take the city past it"): every change that adds to the city measures what
+it adds against it and says so, but realism comes first, and a change doesn't trim what's real to
+stay inside it. braga-map 1.5.0's real buildings took the city past it (0.58 M triangles on Low,
+1.56 MB to download). When the city outgrows the friends' phones or GitHub Pages, the game moves to
+a stack that scales better, or is served from the owner's homelab.
 
-| The city may take at most | High | Medium | Low |
+| The budget, a guide | High | Medium | Low |
 |---|---|---|---|
 | Draw calls, at any viewpoint | 200 | 200 | 180 |
 | Triangles, at any viewpoint | 1.1 M | 0.9 M | 0.55 M |

@@ -728,14 +728,16 @@ export const roofTiles = () =>
     noise(g, 256, 256, 3000, 0.06);
   });
 
-// A flat roof: gravel, a few patches and vents.
+// A flat roof: gravel, a few patches and vents; near white, tinted per building with its colour
+// from the aerial photo.
 export const flatRoof = () =>
   canvas(256, 256, (g) => {
-    g.fillStyle = '#8f8c86';
+    g.fillStyle = '#ecebe8';
     g.fillRect(0, 0, 256, 256);
-    noise(g, 256, 256, 16000, 0.16);
+    noise(g, 256, 256, 16000, 0.12);
     for (let i = 0; i < 6; i++) {
-      g.fillStyle = `rgba(${60 + Math.random() * 40},${60 + Math.random() * 40},${60 + Math.random() * 40},0.25)`;
+      const l = 150 + Math.random() * 60;
+      g.fillStyle = `rgba(${l},${l},${l},0.25)`;
       g.fillRect(Math.random() * 220, Math.random() * 220, 20 + Math.random() * 40, 20 + Math.random() * 40);
     }
   });

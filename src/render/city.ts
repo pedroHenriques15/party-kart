@@ -13,6 +13,7 @@ import { buildSights, horizon, TOURIGALO_CLEAR } from './sights.ts';
 import { bake, box, mat } from './kit.ts';
 import type { Quality } from './look.ts';
 import { bridge, buildRoad, lamps, ribbon, runs } from './road.ts';
+import { clipConvex, convexPieces, faces, shapeOf, wallTop } from './roofs.ts';
 import * as tex from './textures.ts';
 import { plantTrees, type Tree } from './trees.ts';
 import type { World } from './world.ts';
@@ -473,9 +474,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
       const d = inside(b.pts, x, z) ? 0 : Math.min(...b.pts.map(([px, pz], k) => segDist(x, z, px, pz, ...b.pts[(k + 1) % b.pts.length])));
       if (d >= bd) continue;
       bd = d;
-      const r = rectangle(b.pts);
-      const ridge = b.roof !== 0 && r.fill > 0.72 && r.W > 2 ? (r.W + 0.4) * 0.52 : 0;
-      best = { x: b.cx, y: b.y + b.h + ridge, z: b.cz };
+      best = { x: b.cx, y: b.y + b.ridge, z: b.cz };
     }
     return best;
   };
@@ -621,16 +620,9 @@ function paintGround(map: Braga, B: Box, track: Track, quality: Quality): THREE.
 
 // ---- Buildings ----
 
-interface Building {
-  pts: [number, number][];
-  kind: number; // 0 house, 1 flats, 2 shop, 3 church, 4 civic
-  roof: number; // 0 flat, 1 hipped, 2 gabled
-  color: number;
-  y: number; // the ground at its lowest corner
-  h: number; // from there
-  cx: number;
-  cz: number;
-}
+// A building as the map has it (its height and roof measured from the LiDAR, mostly), its middle,
+// and how far that is from the road (to within 40 m).
+type Building = MapBuilding & { cx: number; cz: number; road: number };
 
 // The map's buildings in the box within 300 m of the road, but none on the road or its kerb: the
 // road is wider than the streets were. Nor, for the houses the map filled in, on its pavement.
@@ -658,7 +650,7 @@ function nearBuildings(map: Braga, track: Track, near: (x: number, z: number) =>
       });
       if (edges || onRoad(b, cx, cz)) continue;
     }
-    out.push({ pts: b.pts, kind: b.kind, roof: b.roof, color: b.color, y: b.y, h: b.h, cx, cz });
+    out.push({ ...b, cx, cz, road: r });
   }
   return out;
 }
@@ -723,143 +715,128 @@ class Batch {
   }
 }
 
-// The smallest rectangle round a footprint, lined up with one of its edges: centre, axes along
-// and across it, half-lengths (long first), and how much of it the footprint fills.
-function rectangle(pts: [number, number][]): { cx: number; cz: number; ux: number; uz: number; L: number; W: number; fill: number } {
-  let best = { cx: 0, cz: 0, ux: 1, uz: 0, L: 0, W: 0, area: Infinity };
-  for (let k = 0; k < pts.length; k++) {
-    const [ax, az] = pts[k];
-    const [bx, bz] = pts[(k + 1) % pts.length];
-    const l = Math.hypot(bx - ax, bz - az);
-    if (l < 0.5) continue;
-    const ux = (bx - ax) / l;
-    const uz = (bz - az) / l;
-    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
-    for (const [x, z] of pts) {
-      const a = x * ux + z * uz;
-      const b = -x * uz + z * ux;
-      a0 = Math.min(a0, a);
-      a1 = Math.max(a1, a);
-      b0 = Math.min(b0, b);
-      b1 = Math.max(b1, b);
-    }
-    const area = (a1 - a0) * (b1 - b0);
-    if (area < best.area) {
-      const am = (a0 + a1) / 2;
-      const bm = (b0 + b1) / 2;
-      const along = (a1 - a0) / 2;
-      const across = (b1 - b0) / 2;
-      const long = along >= across;
-      best = {
-        cx: am * ux - bm * uz,
-        cz: am * uz + bm * ux,
-        ux: long ? ux : -uz,
-        uz: long ? uz : ux,
-        L: Math.max(along, across),
-        W: Math.min(along, across),
-        area,
-      };
-    }
-  }
-  let area = 0;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) area += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1]);
-  return { ...best, fill: Math.abs(area / 2) / best.area };
+// A roof's colour as the aerial photo has it, as it looks from the street: the photo sees it through
+// 5 km of haze, paler and bluer than it is. Terracotta (warm) gets three times its colour back, and
+// slate (cool, the haze's blue) loses half of what it seems to have; all a little darker.
+function seenUpClose([r, g, b]: [number, number, number]): [number, number, number] {
+  const l = 0.299 * r + 0.587 * g + 0.114 * b;
+  const k = r >= b ? 3 : 0.5;
+  return [r, g, b].map((c) => Math.max(0, Math.min(255, 0.85 * (l + (c - l) * k))) / 255) as [number, number, number];
 }
 
 // Each building stands on the ground at its lowest corner, from the map, its walls going a little
-// below it, so a row of houses steps down a hill as the real ones do; its height is from there.
+// below it, so a row of houses steps down a hill as the real ones do. Its walls rise to its eaves,
+// and under a gable to its roof, which is as the map measured it (roofs.ts): its shape, the way it
+// runs, its pitch, its ridge's height and its colour, tiles or sheets or flat. The walls' windows
+// are its storeys. A wall another building stands against, as high as it or higher, isn't drawn.
 function buildBuildings(list: Building[]): THREE.Group {
-  const walls = { flats: new Batch(), ground: new Batch(), house: new Batch(), shop: new Batch(), church: new Batch() };
-  const tiles = new Batch();
-  const flat = new Batch();
+  // Two of each batch: the buildings near the road, which cast shadows, and those further off,
+  // which can't: the sun's shadows are only drawn 70 m round the camera, which is on the road.
+  const batches = () => ({ walls: { flats: new Batch(), house: new Batch(), shop: new Batch(), church: new Batch() }, tiles: new Batch(), flat: new Batch() });
+  const sets = [batches(), batches()];
   const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
   const col = new THREE.Color();
   const roofCol = new THREE.Color();
 
-  for (const b of list) {
-    // Counter-clockwise seen from above (x east, z south), so the walls face out.
+  // Each footprint counter-clockwise seen from above (x east, z south), so the walls face out, and
+  // its roof's shape; and each wall by its two corners, to find the one behind it.
+  const all = list.map((b) => {
     let pts = b.pts;
     let area = 0;
     for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) area += (pts[j][0] - pts[i][0]) * (pts[j][1] + pts[i][1]);
     if (area < 0) pts = [...pts].reverse();
+    return { b, pts, shape: shapeOf({ ...b, pts }) };
+  });
+  const side = (a: [number, number], c: [number, number]) => `${a[0]},${a[1]}>${c[0]},${c[1]}`;
+  const sides = new Map<string, (typeof all)[number]>();
+  for (const it of all) for (let k = 0; k < it.pts.length; k++) sides.set(side(it.pts[k], it.pts[(k + 1) % it.pts.length]), it);
+
+  for (const { b, pts, shape } of all) {
+    const { walls, tiles, flat } = sets[b.road > 150 ? 1 : 0];
     const base = b.y - 0.6;
     const foot = b.y;
-    const top = b.y + b.h;
     const church = b.kind === 3;
     col.set(church ? '#f6f4ef' : b.kind === 2 || b.kind === 4 ? SHOPS[b.color % SHOPS.length] : FACADES[b.color % FACADES.length]);
-    roofCol.set(ROOFS[b.color % ROOFS.length]);
+    if (b.roofColor) roofCol.setRGB(...seenUpClose(b.roofColor), THREE.SRGBColorSpace);
+    else roofCol.set(b.material === 0 ? ROOFS[b.color % ROOFS.length] : b.material === 1 ? '#8b8e90' : '#8f8c86');
 
-    // Walls: flats get a ground floor of doors and shops, the rest one texture all the way up.
+    // Walls: one texture all the way up, a window's row to each storey; flats with a ground floor
+    // of doors and shops (their material draws it below the first storey's line, v = 1).
+    const storey = Math.max(2.4, (b.h - 0.4) / Math.max(1, b.floors));
     const upper = church ? walls.church : b.kind === 0 ? walls.house : b.kind === 1 ? walls.flats : walls.shop;
-    const split = b.kind === 1 && b.h > 6 ? foot + 3 : base;
+    const v = (y: number) => (y - foot) / storey;
     let u = 0;
     for (let k = 0; k < pts.length; k++) {
-      const [ax, az] = pts[k];
-      const [bx, bz] = pts[(k + 1) % pts.length];
-      const l = Math.hypot(bx - ax, bz - az);
-      const u0 = u / 6;
-      const u1 = (u + l) / 6;
-      if (split > base) walls.ground.quad(V(ax, base, az), V(ax, split, az), V(bx, split, bz), V(bx, base, bz), [u0, (base - foot) / 3], [u0, 1], [u1, 1], [u1, (base - foot) / 3], col);
-      const v0 = split > base ? 0 : (base - foot) / 3;
-      const lift = split > base ? foot + 3 : foot;
-      upper.quad(V(ax, split, az), V(ax, top, az), V(bx, top, bz), V(bx, split, bz), [u0, v0], [u0, (top - lift) / 3], [u1, (top - lift) / 3], [u1, v0], col);
-      u += l;
+      const top = wallTop(shape, pts[k], pts[(k + 1) % pts.length]);
+      // Hidden by the building behind it: no lower, and standing no higher.
+      const o = sides.get(side(pts[(k + 1) % pts.length], pts[k]));
+      const hidden = o && o.b.y <= b.y + 0.05 && top.every(([x, z, h]) => o.b.y + o.shape.height(x, z) >= foot + h - 0.05);
+      // One polygon, its top the roof over it: convex, as the roof is the lowest of its planes, so a
+      // fan from its first corner's foot.
+      const [x0, z0] = top[0];
+      const along = (x: number, z: number) => (u + Math.hypot(x - x0, z - z0)) / 6;
+      if (!hidden) {
+        const [x1, z1] = top[top.length - 1];
+        const foot0 = V(x0, base, z0);
+        const corners = top.map(([x, z, h]) => ({ p: V(x, foot + h, z), uv: [along(x, z), v(foot + h)] as [number, number] }));
+        corners.push({ p: V(x1, base, z1), uv: [along(x1, z1), v(base)] });
+        for (let q = 0; q + 1 < corners.length; q++) upper.tri(foot0, corners[q].p, corners[q + 1].p, [along(x0, z0), v(base)], corners[q].uv, corners[q + 1].uv, col);
+      }
+      u += Math.hypot(top[top.length - 1][0] - x0, top[top.length - 1][1] - z0);
     }
 
-    // The roof: hipped or gabled over the footprint's rectangle where it nearly fills it,
-    // otherwise flat.
-    const r = rectangle(pts);
-    const pitched = b.roof !== 0 && r.fill > 0.72 && r.W > 2;
-    if (!pitched) {
+    // The roof. Flat: the footprint at the eaves.
+    if (b.roof === 0) {
       const contour = pts.map(([x, z]) => new THREE.Vector2(x, z));
+      const top = foot + b.h;
       for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(contour, [])) {
         const P = (n: number) => V(pts[n][0], top, pts[n][1]);
         const U = (n: number): [number, number] => [pts[n][0] / 6, pts[n][1] / 6];
-        flat.up(P(i), P(j), P(k), U(i), U(j), U(k), col);
+        flat.up(P(i), P(j), P(k), U(i), U(j), U(k), roofCol);
       }
-      continue;
-    }
-    const o = 0.4;
-    const L = r.L + o;
-    const W = r.W + o;
-    const H = W * 0.52;
-    const ux = r.ux;
-    const uz = r.uz;
-    const vx = -uz;
-    const vz = ux;
-    const C = (a: number, bb: number, y: number) => V(r.cx + ux * a + vx * bb, y, r.cz + uz * a + vz * bb);
-    const hip = b.roof === 1 ? Math.min(W, L) : 0;
-    const A0 = C(-L, -W, top);
-    const A1 = C(L, -W, top);
-    const B1 = C(L, W, top);
-    const B0 = C(-L, W, top);
-    const R0 = C(-L + hip, 0, top + H);
-    const R1 = C(L - hip, 0, top + H);
-    const slope = Math.hypot(W, H) / 3;
-    // The two long slopes.
-    tiles.quad(A0, R0, R1, A1, [0, 0], [hip / 3, slope], [(2 * L - hip) / 3, slope], [(2 * L) / 3, 0], roofCol);
-    tiles.quad(B1, R1, R0, B0, [0, 0], [hip / 3, slope], [(2 * L - hip) / 3, slope], [(2 * L) / 3, 0], roofCol);
-    if (hip > 0) {
-      // Hipped: the ends slope too.
-      tiles.tri(B0, R0, A0, [0, 0], [W / 3, slope], [(2 * W) / 3, 0], roofCol);
-      tiles.tri(A1, R1, B1, [0, 0], [W / 3, slope], [(2 * W) / 3, 0], roofCol);
     } else {
-      // Gabled: the ends are wall, up to the ridge.
-      upper.tri(B0, R0, A0, [0, 0], [W / 6, H / 3], [(2 * W) / 6, 0], col);
-      upper.tri(A1, R1, B1, [0, 0], [W / 6, H / 3], [(2 * W) / 6, 0], col);
+      // Pitched: each face, its tiles (or sheets, grey) in rows along its eaves. Over the footprint's
+      // rectangle, overhanging the walls, where the footprint nearly fills it; else cut to the
+      // footprint.
+      const batch = tiles;
+      const lay = (poly: [number, number][], g: { gx: number; gz: number }) => {
+        const k = Math.hypot(g.gx, g.gz) || 1;
+        const ax = -g.gz / k;
+        const az = g.gx / k;
+        const sin = Math.sin(Math.atan(k));
+        const P = (p: [number, number]) => V(p[0], foot + shape.height(p[0], p[1]), p[1]);
+        const U = (p: [number, number]): [number, number] => [(p[0] * ax + p[1] * az) / 3, (foot + shape.height(p[0], p[1])) / (3 * (sin || 1))];
+        for (let i = 1; i + 1 < poly.length; i++) batch.up(P(poly[0]), P(poly[i]), P(poly[i + 1]), U(poly[0]), U(poly[i]), U(poly[i + 1]), roofCol);
+      };
+      if (shape.fill > 0.9) for (const f of faces(shape, 0.4)) lay(f.pts, f.plane);
+      else {
+        const contour = pts.map(([x, z]) => new THREE.Vector2(x, z));
+        const fs = faces(shape, 0);
+        for (const part of convexPieces(pts, THREE.ShapeUtils.triangulateShape(contour, []))) {
+          for (const f of fs) {
+            const piece = clipConvex(f.pts, part.map((n) => pts[n]));
+            if (piece.length >= 3) lay(piece, f.plane);
+          }
+        }
+      }
     }
-    // A church gets its bell tower at one end.
-    if (church) {
-      const tw = Math.min(2.6, r.W * 0.9);
-      const tc = C(-r.L + tw, 0, 0);
-      const ty = top + 9;
-      const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, bb]) => [tc.x + (ux * a + vx * bb) * tw, tc.z + (uz * a + vz * bb) * tw]);
+
+    // A church the LiDAR didn't see gets a bell tower at one end. (One it saw has its own, as a part
+    // of it.)
+    if (church && !b.measured) {
+      const vx = -shape.uz;
+      const vz = shape.ux;
+      const tw = Math.min(2.6, shape.W * 0.9);
+      const tx = shape.cx - shape.ux * (shape.L - tw);
+      const tz = shape.cz - shape.uz * (shape.L - tw);
+      const ty = foot + b.h + 9;
+      const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, bb]) => [tx + (shape.ux * a + vx * bb) * tw, tz + (shape.uz * a + vz * bb) * tw]);
       for (let k = 0; k < 4; k++) {
         const [ax, az] = corners[k];
         const [bx, bz] = corners[(k + 1) % 4];
         walls.church.quad(V(ax, base, az), V(ax, ty, az), V(bx, ty, bz), V(bx, base, bz), [0, 0], [0, (ty - base) / 3], [(2 * tw) / 6, (ty - base) / 3], [(2 * tw) / 6, 0], col);
       }
-      const apex = V(tc.x, ty + 4, tc.z);
+      const apex = V(tx, ty + 4, tz);
       for (let k = 0; k < 4; k++) {
         const [ax, az] = corners[k];
         const [bx, bz] = corners[(k + 1) % 4];
@@ -869,19 +846,29 @@ function buildBuildings(list: Building[]): THREE.Group {
   }
 
   const g = new THREE.Group();
-  const add = (batch: Batch, m: THREE.Material) => {
-    const mesh = batch.mesh(m);
-    if (mesh) g.add(mesh);
-  };
   const wallMat = (map: THREE.Texture) => new THREE.MeshStandardMaterial({ map, vertexColors: true, roughness: 0.88 });
-  add(walls.flats, wallMat(tex.flatsFloor()));
-  add(walls.ground, wallMat(tex.groundFloor()));
-  add(walls.house, wallMat(tex.houseWall()));
-  add(walls.shop, wallMat(tex.shopWall()));
-  add(walls.church, wallMat(tex.churchWall()));
-  add(tiles, new THREE.MeshStandardMaterial({ map: tex.roofTiles(), vertexColors: true, roughness: 0.75 }));
-  // Flat roofs are their own grey, whatever the walls' colour.
-  add(flat, new THREE.MeshStandardMaterial({ map: tex.flatRoof(), roughness: 0.95 }));
+  // Flats: their ground floor's doors and shops below the first storey, their floors above.
+  const flats = wallMat(tex.flatsFloor());
+  const ground = tex.groundFloor();
+  flats.onBeforeCompile = (sh) => {
+    sh.uniforms.groundMap = { value: ground };
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D groundMap;')
+      .replace('#include <map_fragment>', '#ifdef USE_MAP\n  diffuseColor *= mix(texture2D(map, vMapUv), texture2D(groundMap, vMapUv), step(vMapUv.y, 1.0));\n#endif');
+  };
+  const house = wallMat(tex.houseWall());
+  const shop = wallMat(tex.shopWall());
+  const church = wallMat(tex.churchWall());
+  const tiled = new THREE.MeshStandardMaterial({ map: tex.roofTiles(), vertexColors: true, roughness: 0.75 });
+  const flatRoof = new THREE.MeshStandardMaterial({ map: tex.flatRoof(), vertexColors: true, roughness: 0.95 });
+  sets.forEach(({ walls, tiles, flat }, far) => {
+    for (const [batch, m] of [[walls.flats, flats], [walls.house, house], [walls.shop, shop], [walls.church, church], [tiles, tiled], [flat, flatRoof]] as const) {
+      const mesh = batch.mesh(m);
+      if (!mesh) continue;
+      mesh.castShadow = !far;
+      g.add(mesh);
+    }
+  });
   return g;
 }
 

@@ -271,10 +271,11 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
 
 ## The city's budget
 
-How much city a phone can draw. The floor is an older Android phone, the slowest one a friend races
-on: the budget is what it manages with room to spare, per graphics level, and every change that
-adds to the city keeps inside it. Measure with `?stats` in a race, `node scripts/shots.mjs <label>
---medium` at braga-map's viewpoints, and `node scripts/download.mjs` (task 004 in braga-map).
+How much city the game may draw, so it keeps running on the friends' phones. The floor is an older
+Android phone, the slowest one a friend races on. The budget is today's city, which they already
+race on, per graphics level, and every change that adds to the city keeps inside it. Measure with
+`?stats` in a race, `node scripts/shots.mjs <label> --medium` at braga-map's viewpoints, and
+`node scripts/download.mjs` (task 004 in braga-map).
 
 **What it costs today** (2026-10-14: party-kart `ac47bf0`, braga-map 1.2.0, on a desktop
 RTX 4060 Ti; the round is `shots/2026-10-13-budget/`):
@@ -305,17 +306,20 @@ viewpoints are `robert-smith` (190 draw calls) and `alameda-fujacal`, `imaculada
   The 37th takes it past 4096, the most some phones take.
 - **The karts cost more draw calls than the city.** Each is about 40 on Low to 60 on High (its parts
   aren't merged, and are drawn again for the shadows), so 8 karts are two or three times the city.
-- **The frame time on the PC** is 0.2–2.6 ms on every level, so it can't tell them apart. The phone
-  gives the frame rate.
+- **The frame time on the PC** is 0.2–2.6 ms on every level, so it can't tell them apart. Only a
+  phone gives the frame rate.
 - **Stepping down a level in a race** (`watchSpeed`) changes the pixel ratio and the shadows only.
   The city stays as it was built (`buildCity` runs once), so a phone that starts on Medium and drops
   to Low keeps Medium's triangles and textures.
 
-**The phone** (to come, task 004): the frame rate on the start straight and at `robert-smith`, on
-Medium and on Low, and the load on 4G.
+**The phone wasn't measured** (the owner's call, 2026-10-14), so how much room there is above
+today's city isn't known. To find out: `?stats&autodrive` on the slowest phone, on 4G, on Medium
+then Low, a race with no bots and then with 7, a whole lap, and `&at=4543` (`robert-smith`).
+braga-map's `docs/tasks/done/004-budget.md` has the steps, written for whoever has the phone.
 
-**The budget.** Until the phone is measured, it's what the city costs today, rounded up. A change may
-not take the city past these; one that needs more first takes it from somewhere else.
+**The budget** is what the city costs today, rounded up: what the friends' phones already run. A
+change may not take the city past it. One that needs more first takes it from somewhere else, or
+measures the phone and raises the budget to what the phone holds with room to spare.
 
 | The city may take at most | High | Medium | Low |
 |---|---|---|---|

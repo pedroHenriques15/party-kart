@@ -5,7 +5,7 @@ import './style.css';
 import { ambienceOf } from './ambience.ts';
 import { beep, checkpointSound, cityHeard, cityIs, citySound, engines, horn, isMuted, lapSound, listen, measureAudio, played, readMeter, recordAudio, recordState, resetMeter, sfx, thud, toggleMute, unlockAudio, type Kart } from './audio.ts';
 import { autopilot } from './car/autopilot.ts';
-import { clampSteer, newCar, speedOf, stepCar, stopInput, type Car } from './car/car.ts';
+import { clampSteer, newCar, speedOf, stepCar, stopInput, trackGround, type Car } from './car/car.ts';
 import { Arena, FLAG, type ArenaFx, type CarInfo, type Rules } from './game/arena.ts';
 import { botControls, newBrain, type Brain } from './game/bot.ts';
 import { ITEMS } from './game/items.ts';
@@ -47,6 +47,7 @@ if (SCENERY) {
   Math.random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 }
 const track = buildTrack(amigos.points);
+const onTrack = trackGround(track);
 const N = track.samples.length;
 // A race ends at the latest after this long a lap (and a minute), at 60 km/h on average.
 setLapLimit(Math.ceil(track.length / 16.7));
@@ -1212,7 +1213,7 @@ function frame(now: number): void {
     attractAcc += dt;
     while (attractAcc >= DT) {
       attractAcc -= DT;
-      for (const a of attract) if (stepCar(a.car, autopilot(a.car, track, a.caution), track, DT)) a.car = newCar(track, a.car.idx);
+      for (const a of attract) if (stepCar(a.car, autopilot(a.car, track, a.caution), onTrack, DT)) a.car = newCar(track, a.car.idx);
     }
     for (const a of attract) {
       pose(a.shown.model.group, a.car.p.x, a.car.p.y, a.car.p.z, a.car.yaw, a.car.up);

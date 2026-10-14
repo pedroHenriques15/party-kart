@@ -8,21 +8,17 @@
 import { heightOn, loadWorld, type Box, type Building as MapBuilding, type Line, type Track as Course, type World as Braga } from 'braga-map';
 import * as THREE from 'three';
 import { distanceToRoad, surfacePoint, type Sample, type Track } from '../track/track.ts';
+import { makeLand, smooth } from '../world/land.ts';
 import { buildEggs, eggSpots, type Eggs } from './eggs.ts';
 import { buildSights, horizon, TOURIGALO_CLEAR } from './sights.ts';
 import { bake, box, mat } from './kit.ts';
-import { buildLevels, isDeck, mouths, nearLevels, THROAT } from './levels.ts';
+import { buildLevels, isDeck, nearLevels } from './levels.ts';
 import type { Quality } from './look.ts';
 import { bridge, buildRoad, lamps, ribbon, runs } from './road.ts';
 import { clipConvex, convexPieces, faces, shapeOf, wallTop } from './roofs.ts';
 import * as tex from './textures.ts';
 import { plantTrees, type Tree } from './trees.ts';
 import type { World } from './world.ts';
-
-const smooth = (a: number, b: number, x: number) => {
-  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
 
 // How far a point is from the road, roughly (to within 40 m), from a grid of 50 m squares over the
 // box: for keeping only what's near the track. Infinity outside the box.
@@ -98,74 +94,13 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   const group = new THREE.Group();
   const updates: ((t: number) => void)[] = [];
   const N = track.samples.length;
-  const nat = map.height;
   const far = (x: number, z: number) => heightOn(map.far, x, z);
   const near = reach(track, B);
 
-  // The Rio Este: its line, and its water level along it, well below the road where the road
-  // crosses it.
-  const river: { ax: number; az: number; bx: number; bz: number; ya: number; yb: number }[] = [];
-  for (const r of map.rivers) {
-    const pts = r.pts
-      .filter(([x, z]) => x > B.x0 - 100 && x < B.x1 + 100 && z > B.z0 - 100 && z < B.z1 + 100)
-      .map(([x, z, y]) => {
-        const { d, i } = distanceToRoad(track, x, z);
-        const s = track.samples[i];
-        return [x, z, i >= 0 && d + s.w / 2 < 30 ? Math.min(y, s.p.y - 4.5) : y];
-      });
-    for (let k = 1; k < pts.length; k++) river.push({ ax: pts[k - 1][0], az: pts[k - 1][1], bx: pts[k][0], bz: pts[k][1], ya: pts[k - 1][2], yb: pts[k][2] });
-  }
-  const HW = map.riverHalfWidth;
-  // Metres to the river's middle, and the water's height there.
-  const riverAt = (x: number, z: number) => {
-    let best = Infinity;
-    let y = 0;
-    for (const s of river) {
-      if (Math.abs(x - s.ax) > 80 && Math.abs(x - s.bx) > 80) continue;
-      const dx = s.bx - s.ax;
-      const dz = s.bz - s.az;
-      const t = Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / (dx * dx + dz * dz || 1)));
-      const d = Math.hypot(x - s.ax - dx * t, z - s.az - dz * t);
-      if (d < best) {
-        best = d;
-        y = s.ya + (s.yb - s.ya) * t;
-      }
-    }
-    return { d: best, y };
-  };
-
-  // The ground as it is, from the map (the LiDAR's, every 2 m near the route), with the river's
-  // bed cut through it. The stadium's ground is level, its pitch and stands in a bowl cut into the
-  // slope.
-  const pads = map.sights.flatMap((s) => (s.kind === 'stadium' ? [{ x: s.x, z: s.z, c: Math.cos(s.angle), s: Math.sin(s.angle), rx: s.L + s.W + 30, rz: s.W + 36, y: nat(s.x, s.z) }] : []));
-  // In front of a tunnel's mouth, and in its throat, the land is down at the tunnel's road: the
-  // LiDAR's ground slopes up there from the cutting's floor to whatever is over the tunnel, which
-  // would bury the opening (levels.ts).
-  const openings = mouths(map);
-  const land = (x: number, z: number): number => {
-    let h = nat(x, z);
-    for (const p of pads) {
-      const dx = x - p.x;
-      const dz = z - p.z;
-      const e = Math.hypot((dx * p.c + dz * p.s) / p.rx, (-dx * p.s + dz * p.c) / p.rz);
-      if (e < 1.3) h = p.y + (h - p.y) * smooth(0.9, 1.3, e);
-    }
-    for (const m of openings) {
-      const dx = x - m.x;
-      const dz = z - m.z;
-      if (Math.abs(dx) > 16 || Math.abs(dz) > 16) continue;
-      const a = dx * m.ux + dz * m.uz;
-      const b = -dx * m.uz + dz * m.ux;
-      const half = Math.max(6, m.w + 1) / 2;
-      if ((a > 0 && a < 12 && Math.abs(b) < half + 1.5) || (a > -THROAT - 2 && a <= 0 && Math.abs(b) < half + 0.5)) h = Math.min(h, m.y - 0.05 + Math.max(0, a - 6) * 0.4);
-    }
-    const r = riverAt(x, z);
-    if (r.d < HW + 12) {
-      const bed = r.y - 1.6;
-      h = Math.min(h, bed + (h - bed) * smooth(HW - 2, HW + 12, r.d));
-    }
-    return h;
-  };
+  // The land as it's drawn and driven on (land.ts): the ground as it is, from the map (the LiDAR's,
+  // every 2 m near the route), held down at the tunnels' mouths, the stadium level in its bowl, and
+  // the Rio Este's bed cut through it, its water well below the road where the road crosses it.
+  const { land, river, riverAt, HW, openings } = makeLand(map, B, track);
   const overWater = (s: Sample) => riverAt(s.p.x, s.p.z).d < HW + 8;
   const bridged = (s: Sample) => s.bridge || overWater(s);
 

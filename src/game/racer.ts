@@ -1,7 +1,7 @@
 // One car this browser drives, ours or (on the host) a bot: the handling, laps, item boxes, using
 // items, getting hit, bumping into others, slipstreams and catch-up.
 import { autopilot } from '../car/autopilot.ts';
-import { newCar, NO_INPUT, speedOf, stepCar, stopInput, type Car, type Input, type Mods } from '../car/car.ts';
+import { newCar, NO_INPUT, speedOf, stepCar, stopInput, trackGround, type Car, type Ground, type Input, type Mods } from '../car/car.ts';
 import { clamp } from '../math.ts';
 import { advance, newRun, noteSpeed, respawn, restart, type Run, type RunEvent } from '../race.ts';
 import { surfacePoint, type Track } from '../track/track.ts';
@@ -65,6 +65,8 @@ export class Racer {
   readonly name: string;
   readonly bot: boolean;
   readonly track: Track;
+  // What its car drives on: the track's road and walls (the world's with the race's walls, task 037).
+  readonly ground: Ground;
   car: Car;
   run: Run;
   item: { kind: ItemKind; uses: number } | null = null;
@@ -82,6 +84,7 @@ export class Racer {
 
   constructor(track: Track, id: string, name: string, bot: boolean, grid: number) {
     this.track = track;
+    this.ground = trackGround(track);
     this.id = id;
     this.name = name;
     this.bot = bot;
@@ -146,7 +149,7 @@ export class Racer {
     }
 
     const from = this.car.idx;
-    if (stepCar(this.car, inp, this.track, dt, mods)) {
+    if (stepCar(this.car, inp, this.ground, dt, mods)) {
       this.car = respawn(this.run, this.track, t);
       this.notes.push({ k: 'respawn' });
       return;

@@ -88,7 +88,7 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
 ## The two halves
 
 **The simulation** is pure TypeScript with no three.js and no DOM, so it runs under `node --test`:
-`src/math.ts`, `src/track/`, `src/car/`, `src/race.ts` and `src/game/`. Keep it that way. If one of
+`src/math.ts`, `src/track/`, `src/car/`, `src/world/`, `src/race.ts` and `src/game/`. Keep it that way. If one of
 these files imports `three` or touches `window`/`document`, the tests can no longer load it.
 
 **The browser** is everything else: `src/render/` (three.js), `src/session.ts` (PeerJS),
@@ -101,7 +101,8 @@ How a race runs:
   streets, planned by braga-map) into a road sampled every metre from the start line. A sample
   index is roughly metres from the line, and the lap is about 9.3 km (N ≈ 9260 samples).
 - `stepCar` (`src/car/car.ts`) is the handling. It always runs at a fixed `DT = 1/120` s, in the
-  game and in the tests alike.
+  game and in the tests alike, on a `Ground`: the race's `trackGround(track)`, or the open world's
+  `worldGround` (`src/world/ground.ts`: the land, braga-map's streets at their levels, and walls).
 - An `Arena` is one browser's view of a race: the clock, every car's `CarInfo`, the projectiles and
   hazards on the track, and positions. A `Racer` is a car this browser drives: yours, plus the bots
   if you host.

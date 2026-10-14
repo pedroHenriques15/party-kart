@@ -1,7 +1,7 @@
 import amigosPlan from 'braga-map/tracks/amigos.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { newCar, stepCar, TURBO2 } from '../src/car/car.ts';
+import { newCar, stepCar, trackGround, TURBO2 } from '../src/car/car.ts';
 import { Arena, type Rules } from '../src/game/arena.ts';
 import { botControls, newBrain, type Brain } from '../src/game/bot.ts';
 import { boxRows, itemOdds, ITEMS, rollItem, type ItemEv, type ItemKind } from '../src/game/items.ts';
@@ -181,8 +181,8 @@ test('a long drift, let go, earns a mini-turbo', () => {
   const c = newCar(track, 150, 30);
   let turbo = 0;
   // Weave gently down the Avenida, drifting all the way.
-  for (let i = 0; i < (TURBO2 + 0.3) / DT; i++) stepCar(c, { throttle: 1, brake: 0, steer: i % 60 < 30 ? 0.35 : -0.35, drift: true }, track, DT);
-  stepCar(c, { throttle: 1, brake: 0, steer: 0, drift: false }, track, DT);
+  for (let i = 0; i < (TURBO2 + 0.3) / DT; i++) stepCar(c, { throttle: 1, brake: 0, steer: i % 60 < 30 ? 0.35 : -0.35, drift: true }, trackGround(track), DT);
+  stepCar(c, { throttle: 1, brake: 0, steer: 0, drift: false }, trackGround(track), DT);
   turbo = c.turbo;
   assert.equal(turbo, 2);
   assert.ok(c.boost > 0);

@@ -12,7 +12,9 @@ change things, read [making-changes.md](making-changes.md).
 | `braga-map/tracks/amigos.js` | sim | The Volta dos Amigos: Braga's real streets, from the map the games share (the `braga-map` package) |
 | `src/track/layout.ts` | sim | The `Point` type; and `LAYOUT`, the first track (the cartoon Braga Grand Prix), kept for reference and for the tests |
 | `src/track/track.ts` | sim | `buildTrack`: the road sampled every metre. `locate`: where a point is relative to the road |
-| `src/car/car.ts` | sim | `stepCar`: the handling (grip, drift, mini-turbo, boost pads, flying, landing, walls, falling off) |
+| `src/car/car.ts` | sim | `stepCar`: the handling (grip, drift, mini-turbo, boost pads, flying, landing, walls, falling off), on a `Ground`; `trackGround`, the race's track as one |
+| `src/world/land.ts` | sim | `makeLand`: the land as it's drawn and driven on (braga-map's ground, held down at the tunnels' mouths, the stadium's bowl, the river's bed); `mouths` |
+| `src/world/ground.ts` | sim | `worldGround`: the world as a ground, for the open world: the land, every street at its level, and the walls (buildings, parapets, tunnels, trees, the area's edge) |
 | `src/car/autopilot.ts` | sim | Drives the track by itself: for the bots, the menu screens, `?autodrive` and the tests |
 | `src/race.ts` | sim | Laps, checkpoints, splits, respawning |
 | `src/game/arena.ts` | sim | `Arena`: one browser's view of a race. `FLAG`: status bits sent with positions |
@@ -76,6 +78,51 @@ drifting. A drift held with steering charges a mini-turbo: 0.8 s earns level 1, 
 letting go spends it. Gravity always pulls. Where the road falls away faster than the car can drop,
 the car flies, and it lands wherever it meets the road again. Walls push back and cost speed. Some time spent off the road and well below it means a respawn. `Mods` scale the
 top speed and acceleration, for power-ups and catch-up.
+
+**The ground.** What the car drives on is a `Ground` (`car.ts`): `under` gives the surface's normal
+and whether it's a boost pad before the car moves, and `contact`, after it moves, stands it on its
+surface (`settle`, which holds it to anything within 5 cm, so it hugs the road) or lets it fly
+(`fly`), pushes it out of walls (`bounce`), and says whether it has fallen off. The handling is the
+same on any ground. The race's is `trackGround(track)`: the car is on the road within its width and
+not far under it, walls stand at its edges, and `locate` keeps its sample (`idx`) and how far right
+of the centre line it is (`lat`).
+
+The open world's (braga-map's decision 019) is `worldGround(world, open?)` in `src/world/ground.ts`,
+built once (about 0.2 s for the Volta dos Amigos' area) from braga-map's `loadWorld`. Everything
+in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: eight cars take about
+40 µs a step on a desktop, timed in `test/ground.test.ts`.
+
+- **The floor.** At a point the candidates are the land (`land.ts`'s, as drawn), a pavement a kerb
+  (15 cm) over it, sloping down to a kerb dropped at a crossing, and every street piece off the
+  ground over the point at its height: a bridge's deck, a tunnel's road (braga-map's
+  `world.streets`). The car stands on the highest no more than a step (`STEP`, 0.3 m) over its
+  wheels, looked for from where it was if it was higher, so it lands however hard it comes down: on
+  a deck it's on the deck, under it it's on the street below, in a tunnel the land over it is its
+  roof. Streets stand on the land without the river's bed cut into it (`firm`), so one beside the
+  river, or crossing it at the ground's level, keeps its height. A piece's height inside is its
+  outline's nearest edges', and where it meets the land at grade it's eased to the land's height
+  over 10 m (the map's deck ends can be 0.4 m off the ground's). A ground pavement that runs onto a
+  piece's road gives way to it. The normal is the surface's over 3 m, about a car's length, so the
+  2 m ground doesn't shake the car.
+- **The walls** are 2D segments, each standing from a foot to a top, so a car flies over one it's
+  above and passes under one it's below: every building's outline, trimmed at the kerb where it
+  stands on a carriageway (the map's street too wide or its line off the middle, until braga-map's
+  task 026), which leaves a passage through one open; a deck's parapets and a tunnel's sides, wherever
+  a piece's edge has neither more street nor the land at its own level beside it (a tunnel's
+  no higher than 3 m, so a street over it stays clear); the concrete of the tunnels' mouths; the
+  trees' trunks, but those on a carriageway; and, given the area (`open`, braga-map's task 032), its
+  edge at every level and a barrier across each street leaving it. The car is two circles, 1.6 m
+  across and 1.9 m apart, pushed out of what they're in a few times over, and back the way it came
+  if it went through a wall in one step. The land is a wall where it would rise more than a step in
+  front of the car, or off the carriageway steeper than 35°. A car going up a kerb hops (it flies
+  until it comes down) and loses 12% of its speed across the kerb.
+- **Lost:** a car in the land, in the river, wedged between walls or out of the world counts towards
+  a respawn, and `spawn` puts it on the nearest street's carriageway at its level (in a tunnel,
+  in the tunnel), facing along the street. A car never turns over in this handling.
+- **For a race,** `ground.race(track, walls)` is the same world, sharing what was built, keeping each
+  car's `idx` and `lat` along the track and adding walls only it has (the race's, task 037). Until
+  then the race runs on `trackGround`, and `test/drive.test.ts` drives the route on the world's
+  ground wherever its line is on the real streets.
 
 **A lap.** `advance` in `race.ts` checks whether the step from sample `from` to `to` crossed the next
 checkpoint, or the line once every checkpoint is done. It returns `cp` or `lap` events with splits
@@ -359,7 +406,10 @@ GitHub Pages compresses a little less: 1.47 MB live when the script said 1.41. T
 viewpoints are `robert-smith` (184 draw calls) and `alameda-fujacal`, `imaculada-conceicao` and
 `conselheiro-lobato` (1.14 M triangles on High). braga-map 1.6.0's bridges and tunnels added 6 draw
 calls on High and Medium, 3 on Low, and up to 19 k triangles (the decks and mouths about 1.5 k, the
-rest the land's small cells round them).
+rest the land's small cells round them). braga-map 1.7.0 (2026-10-14, for the open world's ground,
+its task 034) takes the download to 6.79 MB, 2.07 MB gzipped (the tiles 1.75 MB): every street as
+surfaces and the ground every 2 m under the open world's area, which the game downloads but doesn't
+draw or drive on until the open world's tasks 035 and 036.
 
 - **Textures**, on High: the ground's painted map is 44 MB (3330 × 2600 pixels, a metre each; 22 MB
   on Medium, 11 on Low), the sun's shadows 16 MB (4 on Medium), the street plates 10.5 MB, the sky's

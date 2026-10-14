@@ -1,11 +1,13 @@
+import { loadWorld } from 'braga-map';
 import amigos from 'braga-map/tracks/amigos.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { autopilot } from '../src/car/autopilot.ts';
-import { newCar, speedOf, stepCar, stopInput, type Car, type Input } from '../src/car/car.ts';
+import { newCar, speedOf, stepCar, stopInput, trackGround, type Car, type Input } from '../src/car/car.ts';
 import { advance, newRun, noteSpeed, respawn, startGrid, type RunEvent } from '../src/race.ts';
 import { LAYOUT } from '../src/track/layout.ts';
 import { buildTrack, locate, type Track } from '../src/track/track.ts';
+import { worldGround } from '../src/world/ground.ts';
 
 // The game's track; and the first one, kept for reference, for its jump.
 const track = buildTrack(amigos.points);
@@ -23,6 +25,7 @@ interface Drive {
 
 function drive(seconds: number, pilot: (c: Car) => Input = (c) => autopilot(c, track), on: Track = track): Drive {
   const track = on;
+  const ground = trackGround(track);
   let car = newCar(track, startGrid(track));
   const run = newRun(0);
   const out: Drive = { laps: [], respawns: 0, events: [], maxAir: 0, topSpeed: 0, wallHits: 0 };
@@ -30,7 +33,7 @@ function drive(seconds: number, pilot: (c: Car) => Input = (c) => autopilot(c, t
   for (let i = 0; i < seconds / DT; i++) {
     const now = i * DT * 1000;
     const from = car.idx;
-    if (stepCar(car, pilot(car), track, DT)) {
+    if (stepCar(car, pilot(car), ground, DT)) {
       out.respawns++;
       car = respawn(run, track, now);
       continue;
@@ -80,6 +83,63 @@ test('the autopilot laps the track cleanly', () => {
   assert.ok(d.laps[1] > 170000 && d.laps[1] < 290000, `lap ${d.laps[1]} ms`);
 });
 
+test("the autopilot drives the route on the world's ground, wherever its line is on the streets", async () => {
+  // The world's ground over the open world's area: the land, every street at its level, and what
+  // stands on them (src/world/ground.ts), not the track's road and walls. The route's line leaves
+  // the real streets in two places, and the autopilot follows the line: at the Avenida da
+  // Liberdade's underpass it runs up to 11 m off the street, over the cutting, and out of the dead
+  // end it takes the made-up link (decision 010) where there's no street. Task 037 puts the line on
+  // the streets and 039 replaces the link; until then each is skipped, from 40 m before the line
+  // leaves the street there to 40 m after it's back.
+  const world = await loadWorld({ open: true });
+  const g = worldGround(world).race(track);
+  const s = track.samples;
+  const N = s.length;
+  const off = s.map((q) => {
+    const f = g.floor(q.p.x, q.p.z, q.p.y + 1);
+    return (f.kind !== 'road' && f.kind !== 'deck' && f.kind !== 'tunnel') || Math.abs(f.y - q.p.y) >= 1;
+  });
+  const skips = [[115, 615], [-570, 1340]].map(([x, z]) => {
+    const near = s.flatMap((q, i) => (off[i] && Math.hypot(q.p.x - x, q.p.z - z) < 120 ? [i] : []));
+    return [Math.min(...near) - 40, Math.max(...near) + 40];
+  });
+  assert.ok(skips.every(([a, b]) => b - a < 400), `skipped ${skips.map(([a, b]) => b - a).join(' and ')} m`);
+  const stretches: [number, number][] = [[0, skips[0][0]], [skips[0][1], skips[1][0]], [skips[1][1], N]];
+  let ms = 0;
+  let metres = 0;
+  let respawns = 0;
+  let maxAir = 0;
+  let top = 0;
+  let wallHits = 0;
+  for (const [a, b] of stretches) {
+    let car = g.place(newCar(track, a % N, 20));
+    let air = 0;
+    let t = 0;
+    let last = a;
+    while (last < b && t < (b - a) / 8 + 10) {
+      if (stepCar(car, autopilot(car, track), g, DT)) {
+        respawns++;
+        car = g.place(newCar(track, last % N, 10));
+      }
+      t += DT;
+      // How far along the stretch, from the car's sample (which wraps round at the line).
+      const at = car.idx + (car.idx < a % N - 100 ? N : 0) + Math.floor(a / N) * N;
+      if (at > last && at - last < 100) last = at;
+      air = car.grounded ? 0 : air + DT;
+      maxAir = Math.max(maxAir, air);
+      top = Math.max(top, speedOf(car));
+      if (car.wallHit > 2) wallHits++;
+    }
+    assert.ok(last >= b, `stuck at sample ${last} (${s[last % N].p.x.toFixed(0)}, ${s[last % N].p.z.toFixed(0)}), between ${a} and ${b}`);
+    ms += t * 1000;
+    metres += b - a;
+  }
+  console.log(
+    `on the world's ground: ${(metres / 1000).toFixed(2)} of ${(N / 1000).toFixed(2)} km in ${(ms / 1000).toFixed(1)} s (${((metres / ms) * 3600).toFixed(0)} km/h on average), skipping ${skips.map(([a, b]) => `${a}–${b}`).join(' and ')}; respawns ${respawns}; longest air ${maxAir.toFixed(2)} s; top ${(top * 3.6).toFixed(0)} km/h; wall hits ${wallHits}`,
+  );
+  assert.equal(respawns, 0);
+});
+
 test("the first track's jump lands on the road at any speed up to flat out", () => {
   const lip = gp.tags.find((t) => t.tag === 'lip')!.i;
   for (const kmh of [60, 100, 130, 158]) {
@@ -88,7 +148,7 @@ test("the first track's jump lands on the road at any speed up to flat out", () 
     let fell = false;
     for (let i = 0; i < 8 / DT && !fell; i++) {
       const inp = autopilot(car, gp);
-      fell = stepCar(car, { ...inp, throttle: 1, brake: 0 }, gp, DT);
+      fell = stepCar(car, { ...inp, throttle: 1, brake: 0 }, trackGround(gp), DT);
       if (!car.grounded) flew += DT;
     }
     assert.equal(fell, false, `fell off at ${kmh} km/h`);
@@ -126,7 +186,7 @@ test('stopping brakes to a standstill and stays there, without reversing', () =>
     const forward = () => car.v.x * Math.cos(car.yaw) + car.v.z * Math.sin(car.yaw);
     let wrongWay = 0;
     for (let i = 0; i < 6 / DT; i++) {
-      stepCar(car, stopInput(car), track, DT);
+      stepCar(car, stopInput(car), trackGround(track), DT);
       // Past the moment it stops, it mustn't pick up speed the other way.
       wrongWay = Math.max(wrongWay, speed > 0 ? -forward() : forward());
     }

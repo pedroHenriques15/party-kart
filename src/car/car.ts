@@ -1,5 +1,6 @@
 // Arcade handling, Trackmania-style: grippy, quick to turn, drifts when you hold Space, flies off
-// ramps and crests, and lands wherever the road is.
+// ramps and crests, and lands wherever the road is. What it drives on is a Ground: the race's track,
+// or the world (src/world/ground.ts).
 import { add, addScaled, clamp, cross, dot, len, norm, scale, sub, v3, type V } from '../math.ts';
 import { locate, surfacePoint, type Track } from '../track/track.ts';
 
@@ -16,10 +17,10 @@ const BOOST_ACC = 28;
 const BOOST_TIME = 1.2;
 const GRIP = 9;
 const DRIFT_GRIP = 1.8;
-const STICK = 0.05; // how far the road can fall away and the car still hugs it
+export const STICK = 0.05; // how far the road can fall away and the car still hugs it
 const COYOTE = 0.12; // s after leaving the ground that the car still drives as if on it
 const HALF_W = 1.0;
-const WALL_H = 1.3;
+export const WALL_H = 1.3; // a car this far over a wall's foot flies over it
 const FALL_RESPAWN = 0.9; // s off the road and well below it before a respawn
 // The drift mini-turbo: drift this long, let go, and get this much boost.
 export const TURBO1 = 0.8;
@@ -47,13 +48,26 @@ export interface Mods {
 }
 const NO_MODS: Mods = { vmax: 1, acc: 1 };
 
+// What a car drives on. It says where the car's surface is and what it has run into; the handling
+// (stepCar) is the same on any of them. The track's (trackGround) is the race's today: the road's
+// samples, walled at its edges. The world's (worldGround in src/world/ground.ts) is the land and the
+// streets at their levels, and what stands on them.
+export interface Ground {
+  // The surface under the car where it is, before it moves: its normal, and whether it's a boost pad.
+  under(c: Car): { n: V; boost: boolean };
+  // After the car's move from `from`: stands it on what it's over (settle) or lets it fly (fly),
+  // stops it at walls (bounce), and says whether it has fallen off or is stuck, which counts
+  // towards a respawn.
+  contact(c: Car, from: V, dt: number): boolean;
+}
+
 export interface Car {
   p: V;
   v: V;
   yaw: number; // heading: forward is (cos yaw, 0, sin yaw)
   up: V; // the surface's normal when grounded, for drawing
   grounded: boolean;
-  idx: number; // nearest track sample
+  idx: number; // nearest track sample, in a race
   boost: number; // s of boost left
   falling: number; // s spent fallen off
   air: number; // s since last on the ground
@@ -62,19 +76,25 @@ export interface Car {
   turbo: number; // 1 or 2 when a drift let go just now earned a mini-turbo
   wallHit: number; // speed lost against a wall this step, for sounds
   landed: number; // how hard it just landed (m/s down), 0 if it didn't
-  lat: number; // metres right of the road's centre line
-  h: number; // metres above the road
+  lat: number; // metres right of the road's centre line, in a race
+  h: number; // metres above the surface under it
 }
 
+// A car at a sample of the track, going along it.
 export function newCar(track: Track, i: number, speed = 0): Car {
   const s = track.samples[i];
+  return { ...carAt(surfacePoint(s, 0, 0.01), Math.atan2(s.t.z, s.t.x), s.n), v: scale(s.t, speed), idx: i };
+}
+
+// A car standing still at p, facing yaw, on a surface whose normal is up.
+export function carAt(p: V, yaw: number, up: V): Car {
   return {
-    p: surfacePoint(s, 0, 0.01),
-    v: scale(s.t, speed),
-    yaw: Math.atan2(s.t.z, s.t.x),
-    up: s.n,
+    p,
+    v: v3(),
+    yaw,
+    up,
     grounded: true,
-    idx: i,
+    idx: 0,
     boost: 0,
     falling: 0,
     air: 0,
@@ -97,15 +117,15 @@ export function turnRate(speed: number): number {
 }
 
 // Advances the car by dt. Returns true when it fell off and should respawn.
-export function stepCar(c: Car, inp: Input, track: Track, dt: number, mods: Mods = NO_MODS): boolean {
+export function stepCar(c: Car, inp: Input, g: Ground, dt: number, mods: Mods = NO_MODS): boolean {
   c.wallHit = 0;
   c.landed = 0;
   c.turbo = 0;
   const vmax = VMAX * mods.vmax;
   const flat = v3(Math.cos(c.yaw), 0, Math.sin(c.yaw));
-  const s0 = track.samples[c.idx];
 
   if (c.grounded || c.air < COYOTE) {
+    const s0 = g.under(c);
     const n = s0.n;
     const f = norm(sub(flat, scale(n, dot(flat, n))));
     const r = norm(cross(f, n));
@@ -151,43 +171,71 @@ export function stepCar(c: Car, inp: Input, track: Track, dt: number, mods: Mods
   }
   c.boost = Math.max(0, c.boost - dt);
 
+  const from = c.p;
   c.p = addScaled(c.p, c.v, dt);
-  const loc = locate(track, c.p, c.idx);
-  c.idx = loc.i;
-  const s = track.samples[loc.i];
-
-  if (loc.onRoad && loc.h > -2.5 && loc.h <= STICK) {
-    c.p = addScaled(c.p, s.n, -loc.h);
-    const vn = dot(c.v, s.n);
-    if (vn < 0) c.v = addScaled(c.v, s.n, -vn);
-    if (c.air > 0.3 && vn < -10) c.v = scale(c.v, 0.97); // a hard landing costs a little
-    if (c.air > 0.25) c.landed = -vn;
-    c.grounded = true;
-    c.air = 0;
-  } else {
-    c.grounded = false;
-    c.air += dt;
-  }
-
-  // The walls, where there are any and the car isn't flying over them.
-  const lim = s.w / 2 - HALF_W;
-  if (s.walls && Math.abs(loc.lateral) > lim && loc.h < WALL_H) {
-    const side = Math.sign(loc.lateral);
-    c.p = addScaled(c.p, s.r, -(loc.lateral - side * lim));
-    const out = dot(c.v, s.r) * side;
-    if (out > 0) {
-      const before = len(c.v);
-      c.v = addScaled(c.v, s.r, -side * out * 1.25);
-      c.v = scale(c.v, 1 - Math.min(0.25, out * 0.012));
-      c.wallHit = before - len(c.v);
-    }
-  }
-
-  c.lat = loc.lateral;
-  c.h = loc.h;
-  const lost = (!loc.onRoad && loc.h < -3) || loc.h < -12 || c.p.y < -40;
-  c.falling = lost ? c.falling + dt : 0;
+  c.falling = g.contact(c, from, dt) ? c.falling + dt : 0;
   return c.falling > FALL_RESPAWN;
+}
+
+// Puts a car that's h over its surface (under it if negative, and no more than STICK over it) onto
+// it, along its normal n: it stops sinking, a hard landing costs a little speed, and it notes how
+// hard it landed after a flight.
+export function settle(c: Car, n: V, h: number): void {
+  c.p = addScaled(c.p, n, -h);
+  const vn = dot(c.v, n);
+  if (vn < 0) c.v = addScaled(c.v, n, -vn);
+  if (c.air > 0.3 && vn < -10) c.v = scale(c.v, 0.97); // a hard landing costs a little
+  if (c.air > 0.25) c.landed = -vn;
+  c.grounded = true;
+  c.air = 0;
+}
+
+// Off the ground for another dt.
+export function fly(c: Car, dt: number): void {
+  c.grounded = false;
+  c.air += dt;
+}
+
+// Pushes a car d metres out of a wall whose face looks along n (towards the car), and bounces it
+// off: it loses what speed it ran into the wall with, a little more, and a share of the rest by how
+// hard it hit, all of which goes into wallHit, for sounds.
+export function bounce(c: Car, n: V, d: number): void {
+  c.p = addScaled(c.p, n, d);
+  const out = -dot(c.v, n);
+  if (out > 0) {
+    const before = len(c.v);
+    c.v = addScaled(c.v, n, out * 1.25);
+    c.v = scale(c.v, 1 - Math.min(0.25, out * 0.012));
+    c.wallHit += before - len(c.v);
+  }
+}
+
+// The race's track as a ground: the car is on the road where it's within its width and not far
+// under it, the walls stand at its edges where it has any, and it has fallen off when it's well off
+// the road and below it. The car's sample (idx) keeps it on the stretch it was on, so a road that
+// passes over another is never taken for it.
+export function trackGround(track: Track): Ground {
+  return {
+    under: (c) => track.samples[c.idx],
+    contact(c, _from, dt) {
+      const loc = locate(track, c.p, c.idx);
+      c.idx = loc.i;
+      const s = track.samples[loc.i];
+      if (loc.onRoad && loc.h > -2.5 && loc.h <= STICK) settle(c, s.n, loc.h);
+      else fly(c, dt);
+
+      // The walls, where there are any and the car isn't flying over them.
+      const lim = s.w / 2 - HALF_W;
+      if (s.walls && Math.abs(loc.lateral) > lim && loc.h < WALL_H) {
+        const side = Math.sign(loc.lateral);
+        bounce(c, scale(s.r, -side), side * loc.lateral - lim);
+      }
+
+      c.lat = loc.lateral;
+      c.h = loc.h;
+      return (!loc.onRoad && loc.h < -3) || loc.h < -12 || c.p.y < -40;
+    },
+  };
 }
 
 export const clampSteer = (x: number) => clamp(x, -1, 1);

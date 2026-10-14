@@ -7,6 +7,7 @@
 import type { Line, World as Braga } from 'braga-map';
 import * as THREE from 'three';
 import { distanceToRoad, type Sample, type Track } from '../track/track.ts';
+import { mouthShape, THROAT, type Mouth } from '../world/land.ts';
 import { mat } from './kit.ts';
 import { runs } from './road.ts';
 
@@ -16,7 +17,6 @@ const DEEP = 1.2; // a deck's depth, under the road
 const PARAPET = 1.0; // a parapet's height, over it
 const CLEAR = 3; // the least room under a deck for a pillar to stand in
 const SPAN = 24; // how far apart the pillars stand
-export const THROAT = 4.5; // how far into a tunnel its mouth's concrete reaches
 
 // Is the line drawn as a deck: a bridge the map has whose deck stands clear of the land somewhere
 // along it, and that isn't the road itself (road.ts draws the track's)? One whose deck the LiDAR
@@ -26,53 +26,6 @@ export function isDeck(l: Line, track: Track, land: Land): boolean {
   const onRoad = l.pts.filter(([x, z]) => distanceToRoad(track, x, z).d < 1).length;
   if (onRoad > l.pts.length / 2) return false;
   return l.pts.some(([x, z], k) => l.heights![k] - land(x, z) > 1.5);
-}
-
-// A tunnel's mouth: where it is, its road's height there, the way out of the tunnel, and how wide
-// its opening is.
-export interface Mouth {
-  x: number;
-  z: number;
-  y: number;
-  ux: number;
-  uz: number;
-  w: number;
-}
-
-// The tunnels' mouths: where a tunnel's end meets a street that isn't in one. Two carriageways going
-// in side by side, the same way, share one mouth as wide as both.
-export function mouths(map: Braga): Mouth[] {
-  const ends = map.lines.filter((l) => l.level !== 'tunnel').flatMap((l) => [l.pts[0], l.pts[l.pts.length - 1]]);
-  const out: Mouth[] = [];
-  for (const l of map.lines) {
-    if (l.level !== 'tunnel' || !l.heights || l.pts.length < 2) continue;
-    const n = l.pts.length;
-    for (const [k, k2] of [[0, 1], [n - 1, n - 2]]) {
-      const [x, z] = l.pts[k];
-      if (!ends.some(([ex, ez]) => Math.hypot(ex - x, ez - z) < 1.5)) continue;
-      const [px, pz] = l.pts[k2];
-      const L = Math.hypot(x - px, z - pz) || 1;
-      out.push({ x, z, y: l.heights[k], ux: (x - px) / L, uz: (z - pz) / L, w: l.w });
-    }
-  }
-  const merged: Mouth[] = [];
-  for (const m of out) {
-    const o = merged.find((q) => Math.hypot(q.x - m.x, q.z - m.z) < q.w / 2 + m.w / 2 + 6 && q.ux * m.ux + q.uz * m.uz > 0.9);
-    if (!o) {
-      merged.push({ ...m });
-      continue;
-    }
-    // One mouth across both: from the outer side of the one to the outer side of the other.
-    const b = -(m.x - o.x) * o.uz + (m.z - o.z) * o.ux;
-    const lo = Math.min(-o.w / 2, b - m.w / 2);
-    const hi = Math.max(o.w / 2, b + m.w / 2);
-    const mid = (lo + hi) / 2;
-    o.x += -o.uz * mid;
-    o.z += o.ux * mid;
-    o.w = hi - lo;
-    o.y = Math.min(o.y, m.y);
-  }
-  return merged;
 }
 
 // Is (x, z) within 25 m of a tunnel's mouth or under a deck: where the land's mesh needs its small
@@ -260,11 +213,9 @@ export function buildLevels(map: Braga, track: Track, land: Land, decks: Set<Lin
   // ---- The tunnels' mouths: where a tunnel's end meets a street that isn't in one, a wall across
   // it from its road up to the ground over the tunnel, with the opening in it: the first few metres
   // of the tunnel lined in concrete (the land in it held down at the road: city.ts), then dark. ----
-  for (const { x, z, y, ux, uz, w } of openings) {
-    const over = land(x - ux * 8, z - uz * 8);
-    const top = Math.max(over + 0.4, y + 5.6);
-    const open = Math.max(6, w + 1);
-    const half = open / 2 + 1.2;
+  for (const m of openings) {
+    const { x, z, y, ux, uz } = m;
+    const { open, half, top } = mouthShape(m, land);
     const at = (b: number, along: number, yy: number) => V(x - uz * b + ux * along, yy, z + ux * b + uz * along);
     // The two sides and the roof, THROAT deep, their faces out of the tunnel.
     for (const [b0, b1, y0, y1] of [[-half, -open / 2, y - 0.4, top], [open / 2, half, y - 0.4, top], [-open / 2, open / 2, y + 5, top]]) {

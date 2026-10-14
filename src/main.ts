@@ -1,7 +1,9 @@
 import amigos from 'braga-map/tracks/amigos.js';
+import { loadWorld } from 'braga-map';
 import * as THREE from 'three';
 import './style.css';
-import { beep, checkpointSound, engineSound, horn, isMuted, lapSound, sfx, thud, toggleMute, unlockAudio } from './audio.ts';
+import { ambienceOf } from './ambience.ts';
+import { beep, checkpointSound, cityHeard, cityIs, citySound, engines, horn, isMuted, lapSound, listen, measureAudio, played, readMeter, recordAudio, recordState, resetMeter, sfx, thud, toggleMute, unlockAudio, type Kart } from './audio.ts';
 import { autopilot } from './car/autopilot.ts';
 import { clampSteer, newCar, speedOf, stepCar, stopInput, type Car } from './car/car.ts';
 import { Arena, FLAG, type ArenaFx, type CarInfo, type Rules } from './game/arena.ts';
@@ -30,6 +32,9 @@ const AUTODRIVE = new URLSearchParams(location.search).has('autodrive');
 // at the scenery. A seventh number sets its vertical field of view, in degrees.
 const VIEW = new URLSearchParams(location.search).get('view')?.split(',').map(Number) ?? null;
 const START_AT = AUTODRIVE ? Number(new URLSearchParams(location.search).get('at')) || 0 : 0;
+// ?record=60 records the first 60 s of the next race's sound, from its countdown, and offers it as a
+// file, to judge the sound by ear (scripts/listen.mjs records the takes it's judged by).
+const RECORD = Number(new URLSearchParams(location.search).get('record')) || 0;
 // ?scenery: the city alone, built as a race builds it and seen from ?view=, with no menus, room or
 // karts, for shooting the viewpoints (scripts/shots.mjs). The textures' noise comes out the same
 // every time and nothing moves, so two shots of the same city match. What a frame costs is in
@@ -62,6 +67,9 @@ const look = new Look(renderer, scene, camera);
 let quality = stored('pk-quality', PHONE ? 'medium' : 'high') as Quality;
 const building = performance.now();
 const world = await buildCity(track, amigos, quality);
+// What's round the track, for the city's sound: from the map again, once the city is up and the menus
+// are running, so it never holds the page.
+if (!SCENERY) setTimeout(() => void loadWorld(amigos.box).then((w) => cityIs(ambienceOf(track, w, amigos))), 1500);
 const buildMs = performance.now() - building;
 scene.add(world.group);
 const stats = STATS ? new Stats(renderer, scene, buildMs, performance.now()) : null;
@@ -177,7 +185,7 @@ interface RaceCtx {
   arena: Arena;
   rules: Rules;
   me: Racer;
-  bots: { racer: Racer; brain: Brain; steer: number }[];
+  bots: { racer: Racer; brain: Brain; steer: number; throttle: number }[];
   goAt: number; // performance.now() of the green light
   endAt: number;
   acc: number;
@@ -561,7 +569,8 @@ function wire(r: Room): void {
   };
   r.onHonk = (id) => {
     const m = r.lobby.members.find((x) => x.id === id);
-    if (m) horn(driverById(m.driver).horn, 0.6);
+    const k = race?.karts.get(id);
+    if (m) horn(driverById(m.driver).horn, k ? 1 : 0.6, k?.model.group.position);
   };
   r.onBoard = () => {};
   r.onEv = (ev) => race?.arena.apply(ev);
@@ -635,7 +644,7 @@ function startRace(goIn: number, endIn: number, grid: Record<string, number>): v
     me.run.nextCp = track.checkpoints.filter((c) => c < START_AT % N).length;
   }
   const bots = r.isHost
-    ? L.members.filter((m) => m.bot).map((m) => ({ racer: new Racer(track, m.id, m.name, true, grid[m.id] ?? 0), brain: newBrain(), steer: 0 }))
+    ? L.members.filter((m) => m.bot).map((m) => ({ racer: new Racer(track, m.id, m.name, true, grid[m.id] ?? 0), brain: newBrain(), steer: 0, throttle: 0 }))
     : [];
   arena.locals = [me, ...bots.map((b) => b.racer)];
   for (const x of arena.locals) arena.cars.set(x.id, x.info());
@@ -673,6 +682,8 @@ function startRace(goIn: number, endIn: number, grid: Record<string, number>): v
   scene.add(ctx.items.group);
   arena.fx = (f) => onArenaFx(ctx, f);
   race = ctx;
+  resetMeter();
+  if (RECORD) recordAudio(RECORD);
   (document.activeElement as HTMLElement | null)?.blur();
   sideways(true);
   render();
@@ -684,11 +695,30 @@ function endRace(): void {
   hide(race.ghost);
   scene.remove(race.items.group);
   race = null;
-  engineSound(0, 0, false);
+  engines(null, [], 0);
+  citySound(null, 0);
   hudRoot.replaceChildren();
   sideways(false);
 }
 
+// The engines: yours, the others' from where they are (the bots' exact, the other players' as
+// they're drawn, 110 ms behind), your tyres and the wind; and the city round you.
+function hearKarts(r: RaceCtx, dt: number): void {
+  const c = r.me.car;
+  const others: Kart[] = [];
+  for (const [id, o] of r.arena.cars) {
+    if (id === r.me.id) continue;
+    const bot = r.bots.find((b) => b.racer.id === id);
+    const speed = Math.hypot(o.vx, o.vz);
+    others.push({ id, p: o, v: { x: o.vx, y: 0, z: o.vz }, speed, throttle: bot ? bot.throttle : speed > 2 ? 1 : 0, grounded: bot ? bot.racer.car.grounded : true });
+  }
+  const slip = Math.abs(-c.v.x * Math.sin(c.yaw) + c.v.z * Math.cos(c.yaw));
+  engines({ id: r.me.id, p: c.p, v: c.v, speed: speedOf(c), throttle: r.throttle, grounded: c.grounded, drifting: c.drifting, slip, cobble: track.samples[c.idx].surface === 'cobble' }, others, dt);
+  citySound(c.idx, dt);
+}
+
+// How close a place is to your kart, from 1 there to nothing at 120 m: how hard an explosion shakes
+// the camera.
 const near = (r: RaceCtx, p: { x: number; z: number }) => Math.max(0, 1 - Math.hypot(p.x - r.me.car.p.x, p.z - r.me.car.p.z) / 120);
 
 function onArenaFx(r: RaceCtx, f: ArenaFx): void {
@@ -699,14 +729,14 @@ function onArenaFx(r: RaceCtx, f: ArenaFx): void {
     const ev = f.ev;
     if ('owner' in ev && ev.owner !== r.me.id) {
       const c = a.cars.get(ev.owner);
-      if (c && near(r, c) > 0) sfx.throw();
+      if (c) sfx.throw(c);
     }
   } else if (f.k === 'hit') {
     const ev = f.ev;
     const where = { x: ev.x, y: ev.y, z: ev.z };
     r.items.flash(where, t, ev.blocked ? '#7fd4ff' : '#ffe14d', ev.blocked ? 1.6 : 1);
     glow.spray(where, 40, ev.blocked ? ['#7fd4ff', '#ffffff'] : ['#ffe14d', '#ffffff', '#ff4fd8'], 7, 6, 0.7);
-    if (ev.victim !== r.me.id && near(r, where) > 0) sfx.hit(near(r, where));
+    if (ev.victim !== r.me.id) sfx.hit(where);
     if (ev.victim && ev.victim !== r.me.id && !ev.blocked && ev.item) {
       r.hud.feed(`${owner(ev.item)} acertou em ${a.nameOf(ev.victim)} com ${howName(ev.how)}`);
     }
@@ -715,14 +745,14 @@ function onArenaFx(r: RaceCtx, f: ArenaFx): void {
     const where = { x: ev.x, y: ev.y, z: ev.z };
     r.items.flash(where, t, '#ffb347', 4);
     fx.spray(where, 260, ['#ffffff', '#ffe14d', '#ff7a1a', '#c8102e', '#7fd4ff'], 16, 14, 2.4);
-    sfx.boom(Math.max(0.25, near(r, where)));
+    sfx.boom(where);
     r.shake = Math.max(r.shake, near(r, where) * 1.2);
     r.hud.feed(`🚀 O foguete de ${a.nameOf(ev.owner)} apanhou ${a.nameOf(ev.victim)}!`, 'big');
   } else if (f.k === 'martelinho') {
     const ev = f.ev;
     const c = a.cars.get(ev.owner);
     if (c) r.items.wave(c, t);
-    sfx.hammer();
+    sfx.hammer(c);
     r.hud.feed(`🔨 Martelada de ${a.nameOf(ev.owner)}!`, 'big');
   }
 }
@@ -737,28 +767,28 @@ function flashSplit(r: RaceCtx, text: string, cls: string, ms = 2000): void {
 // The easter eggs along the track, when your kart passes them: the sounds, the sparkle, the word.
 function eggReact(r: RaceCtx | null, events: EggEvent[]): void {
   for (const e of events) {
-    if (e.kind === 'bark') sfx.bark();
+    if (e.kind === 'bark') sfx.bark(e.at);
     if (e.kind === 'dog') {
       if (r) horn(r.karts.get(r.me.id)!.model.driver.horn);
-      sfx.bark();
+      sfx.bark(e.at);
       r?.hud.feed('🐕 O Faísca vai atrás de ti!', 'big');
     }
     if (e.kind === 'dentist') {
-      sfx.drill();
+      sfx.drill(e.at);
       for (let k = 0; k < 50; k++) glow.add(e.at.x + (Math.random() - 0.5) * 4, e.at.y + Math.random() * 3, e.at.z + (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 6, 2 + Math.random() * 5, (Math.random() - 0.5) * 6, 0.9, k % 2 ? '#ffffff' : '#9fe3ff', -6);
       r?.hud.feed('🦷 O dentista diz: abra bem a boca!', 'big');
     }
     if (e.kind === 'supermarket') {
-      sfx.chime();
+      sfx.chime(e.at);
       r?.hud.feed('🛒 Cartão Contente: +1 ponto', 'big');
     }
     if (e.kind === 'smoke' && r) {
-      sfx.pop();
+      sfx.pop(e.at);
       r.vice = performance.now() + 15000;
       r.hud.feed('🚬🍺 Uma para o caminho, oferta do café', 'big');
     }
     if (e.kind === 'clock') {
-      sfx.alarm();
+      sfx.alarm(e.at);
       for (let k = 0; k < 60; k++) glow.add(e.at.x + (Math.random() - 0.5) * 6, e.at.y + (Math.random() - 0.5) * 5, e.at.z + (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, 2 + Math.random() * 4, (Math.random() - 0.5) * 6, 1.1, k % 2 ? '#ffe14d' : '#ffffff', -4);
       r?.hud.feed('⏰ O Vale está atrasado outra vez!', 'big');
     }
@@ -828,7 +858,7 @@ function noteForMe(r: RaceCtx, n: Note): void {
       } else if (n.kind !== 'martelinho') sfx.throw();
       break;
     case 'hit':
-      sfx.hit(1);
+      sfx.hit();
       r.shake = Math.max(r.shake, 0.8);
       flashCenter(r, HOW[n.how] ? `${HOW[n.how][1]} Levaste com ${HOW[n.how][0]} de ${n.by}!` : 'Levaste!', 'hit', 1400);
       break;
@@ -987,6 +1017,7 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
     for (const b of r.bots) {
       const bc = botControls(b.racer, b.brain, a, DT);
       b.steer = bc.steer;
+      b.throttle = bc.throttle;
       b.racer.step(a, bc, DT);
       a.cars.set(b.racer.id, b.racer.info());
     }
@@ -1015,7 +1046,7 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
     }
   }
   r.items.update(a, me.taken, now / 1000, dt);
-  engineSound(speedOf(me.car), r.throttle, true);
+  hearKarts(r, dt);
 
   // Time attack: record this lap for the ghost, and show the best one.
   const lapMs = raceMs - me.run.lapStart;
@@ -1131,6 +1162,15 @@ function chase(r: RaceCtx, dt: number): void {
   }
 }
 
+// The sounds' listener, on the camera.
+const ahead = new THREE.Vector3();
+const above = new THREE.Vector3();
+function hear(): void {
+  camera.getWorldDirection(ahead);
+  above.set(0, 1, 0).applyQuaternion(camera.quaternion);
+  listen(camera.position, ahead, above);
+}
+
 // ---- The loop ----
 
 let last = performance.now();
@@ -1165,7 +1205,7 @@ function frame(now: number): void {
     chase(race, dt);
     fitTags(race.karts.values());
     look.follow(race.me.car.p);
-    if (AUTODRIVE) (window as unknown as { __kart: object }).__kart = { idx: race.me.car.idx, lap: race.me.run.laps, fin: race.me.fin, item: race.me.item?.kind ?? null, place: race.arena.rankOf(race.me.id), cars: race.arena.cars.size, calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
+    if (AUTODRIVE) (window as unknown as { __kart: object }).__kart = { idx: race.me.car.idx, lap: race.me.run.laps, fin: race.me.fin, item: race.me.item?.kind ?? null, place: race.arena.rankOf(race.me.id), cars: race.arena.cars.size, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, audio: { ...readMeter(), record: recordState(), played, city: cityHeard } };
   } else {
     // The menus: bots lapping, the camera on one of them; in the lobby, your car on the stage.
     world.eggs.update(t, dt, null);
@@ -1205,6 +1245,7 @@ function frame(now: number): void {
       look.follow(c.p);
     }
   }
+  hear();
   fx.update(dt);
   glow.update(dt);
   smoke.update(dt);
@@ -1253,6 +1294,12 @@ function sceneryFrame(): void {
 }
 
 if (AUTODRIVE || SCENERY) (window as unknown as { __scene: THREE.Scene }).__scene = scene;
+if (AUTODRIVE) {
+  measureAudio();
+  // The sounds themselves, for scripts/listen.mjs to play the loudest of them at once, and the
+  // camera they're heard from.
+  (window as unknown as { __sound: object }).__sound = { sfx, horn, lapSound, beep, thud, engines, resetMeter, readMeter, camera };
+}
 
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyM' && !(e.target instanceof HTMLInputElement)) toggleMute();

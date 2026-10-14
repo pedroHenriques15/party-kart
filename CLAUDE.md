@@ -2,11 +2,12 @@
 
 Party Kart is a kart game played in the browser, for racing friends round Braga's real streets. It is
 TypeScript, three.js and PeerJS (WebRTC), built with Vite and served from GitHub Pages. There is no
-server and no accounts, and no asset files either: every texture is drawn on a canvas and every
-sound is synthesized. The track and the city round it come from the map of Braga the games share:
-the `braga-map` package (https://github.com/pedroHenriques15/braga-map, a sibling repo at
-`../braga-map`), data made from OpenStreetMap and DGT's LiDAR, pinned to a version tag in
-`package.json`. The README promises "nothing to maintain", so treat that as a design constraint:
+server and no accounts, and hardly an asset file: every texture is drawn on a canvas, and every
+sound is synthesized but the city's round the track, eight short CC0 recordings in `src/sounds/`
+(braga-map's decision 016 allows recordings for the engines and the city, and nothing else). The
+track and the city round it come from the map of Braga the games share: the `braga-map` package
+(https://github.com/pedroHenriques15/braga-map, a sibling repo at `../braga-map`), data made from
+OpenStreetMap and DGT's LiDAR, pinned to a version tag in `package.json`. The README promises "nothing to maintain", so treat that as a design constraint:
 don't add a backend, a build step or a dependency without a strong reason.
 
 - `README.md`: the game as a player sees it (controls, items, the track).
@@ -53,6 +54,16 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   the scenery from anywhere (the sights on the hills, say). A seventh number sets its vertical
   field of view in degrees (the race's own widens with speed). Take positions from braga-map's map
   page (`npm run map` there); heights are metres above the map's `elev0` (154 m above the sea).
+- `?record=60` records the first 60 s of the next race's sound, from its countdown, and offers it
+  as a file. Under `?autodrive`, `__kart.audio` has the loudest sample since the race began (in
+  dBFS, on the louder side and on each), how many samples clipped and which effects played, and
+  `window.__sound` the sounds themselves and the camera they're heard from, to play any of them
+  anywhere. `node scripts/listen.mjs <label>` records six takes with the autopilot (eight karts with
+  items, alone at speed, alone onto the cobbles, and 30 s at each of the Avenida da Liberdade, São
+  João da Ponte and the Picoto, for the city) into `sounds/<date>-<label>/` (ignored by
+  git), with what the game measured of them, and a page setting each beside the baseline's (the
+  latest round labelled `baseline`) and the round before's, to judge a change to the sound by ear.
+  A race needs a room, so it needs internet access. About 7 minutes.
 - `?scenery` shows the city alone from `?view=`, with no menus, room, karts or network: built as a
   race builds it, still, and the same every time (its textures' noise is seeded). The graphics are
   whatever `localStorage['pk-quality']` says. `window.__kart` has the build time, draw calls,

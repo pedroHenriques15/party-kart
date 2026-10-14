@@ -118,6 +118,10 @@ a race runs slowly, the game steps down a level by itself, as far as Low.
   shared with the games to come: the city in sections, and the tracks planned on its streets. The
   game installs it as a package.
 - `src/session.ts`: rooms. `src/hud.ts`: the race's screen. `src/main.ts`: the screens and the loop.
+- `src/audio.ts`: every sound, through one mix. The karts' engines are a race car's V8 through six
+  gears, synthesized, as is everything else but the city round the track: recordings of traffic,
+  a town, birds, woods, a river, bells, a bus and a crowd (CC0, from Freesound, listed in
+  braga-map's `docs/SOURCES.md`), in `src/sounds/`, heard by what's near (`src/ambience.ts`).
 
 How it fits together, the network messages included, is in [docs/architecture.md](docs/architecture.md).
 How to change the track, add an item or a driver, and what to watch out for is in

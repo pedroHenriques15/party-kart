@@ -23,7 +23,8 @@ change things, read [making-changes.md](making-changes.md).
 | `src/main.ts` | browser | The screens, the race loop, the cameras, and the glue between all of it |
 | `src/hud.ts` | browser | The race screen: place, lap, item slot, clock, minimap, order, feed |
 | `src/stats.ts` | browser | `?stats`: what the game costs on this screen, in a corner, for measuring it on a phone |
-| `src/audio.ts` | browser | Every sound, synthesized with Web Audio |
+| `src/audio.ts` | browser | Every sound and the mix it goes through (buses, a limiter, places): synthesized with Web Audio, but the city's, recorded (`src/sounds/`) |
+| `src/ambience.ts` | sim | What's round every 10 m of the track (traffic, town, park, woods) and where the churches, the rivers, the bus stops and the stadium are, from the map, for the city's sound |
 | `src/input.ts` | browser | The keyboard and the touch screen: held controls, plus actions counted once per press |
 | `src/render/` | browser | three.js: the look, the city round the track (`city.ts`), the road (`road.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
 
@@ -263,8 +264,9 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
 - **Few draw calls**: `mat()` shares one material per colour and settings, and `bake()` merges each
   group's static meshes into one mesh per material. Trees, lamps and item boxes are instanced. Particles
   are three pools of one `Points` each: normal, glowing and smoke.
-- **No assets**: every texture is drawn on a canvas in `textures.ts`, and every sound is an
-  oscillator or filtered noise in `audio.ts`. The city's map is numbers in a module, drawn into
+- **Hardly any assets**: every texture is drawn on a canvas in `textures.ts`, and every sound is an
+  oscillator or filtered noise in `audio.ts`, but the city's: eight CC0 recordings, 673 KB, in
+  `src/sounds/` (braga-map's decision 016). The city's map is numbers in a module, drawn into
   textures and meshes as the game loads.
 - **Karts** (`render/drivers.ts`): each `Driver` is one of the friends: a body (`kart`, `trolley`,
   `banger`, `chair`), colours and a second paint (`alt`, for a bot repeating them), extras (on the
@@ -275,6 +277,55 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   wobbling spare, Pedro's antenna light).
 - **Warm-up**: at startup `main.ts` builds every driver's kart once and calls `renderer.compile`,
   so the first race doesn't freeze while shaders compile.
+
+## Sound
+
+Every sound is in `audio.ts`, and plays through one mix. All are synthesized but the city's:
+
+- **The city round the track** is recordings (`src/sounds/`, braga-map's `docs/SOURCES.md` has
+  them), fetched once the sound is unlocked, and heard by what's near (`ambienceOf` in
+  `src/ambience.ts`, worked out from the map's world once the city is built, 0.2 s here). Four beds
+  loop in your head on the ambience bus, re-weighted every half second by what's within 150 m of
+  your kart and crossfaded over a second and a half: traffic by the streets' classes and how near,
+  the town's hum where there are houses, birds in the parks and gardens, insects and birds where
+  it's wooded. The river is heard from its nearest water within 120 m, the crowd from the stadium
+  within 400 m, the bells from the nearest church at Braga's hour and half hour and now and then
+  as you pass one, and a bus now and then pulling away from a stop you pass.
+
+- **The engines** are a race car's V8 through six gears (`revsFor`): idling at 1,200 rpm, the
+  clutch slipping at 5,000 when you pull away, shifting up at 9,000 (the power cut for a moment,
+  now and then a pop) and down below 5,200 (the revs blipped), sixth reaching 9,000 at 46 m/s, so
+  a boost runs into the limiter. Each kart's engine keeps its own gear. The sound is one wave a
+  cycle (two revolutions), its harmonics strongest where a V8 fires, four times a revolution,
+  through the exhaust's body, the intake's howl (rising with the revs, loud on the throttle) and a
+  low-pass, with the intake's rasp (noise pulsing at the firing rate) under it and the firing never
+  quite steady; off the throttle it's darker and crackles on the overrun. Yours is in your head;
+  the nearest three others within 150 m (`engines`, from `hearKarts` in `main.ts`) each have one
+  through a panner where they are, with the Doppler shift from how fast they and the camera close
+  on each other. An engine nobody's is stopped.
+- **Your tyres and the wind** are noise, filtered three ways, on the engines' bus: a scrub when the
+  tyres slide (drifting, or cornering hard), a rumble on the cobbles shaken at the rate the setts
+  go by, and wind rising with speed.
+
+- **Four buses**, each at its level: the engines, the effects, the jingles, and the ambience (the
+  city round the track). They meet in a limiter (a
+  `DynamicsCompressorNode` at −6 dB, ratio 20, 3 ms), then a trim and the mute, so a foguete going
+  off as you're hit on a lap doesn't clip.
+- **A jingle ducks the effects** for as long as it plays, so the countdown, a checkpoint, a lap and
+  the finish are heard over anything. They're one family: struck bars, in C major.
+- **A sound with a place** (others' engines, items, hits and explosions, the eggs, other players'
+  honks, the river, the bells, the buses, the crowd) goes
+  through a `PannerNode` there, and the listener is on the camera (`listen`, every frame), so it's
+  heard from the left or the right, and fainter far away: a twelfth as loud at 120 m, and not
+  played past 400 m. Your own racer's sounds have no place: they're in your head.
+- **Cheap**: one buffer of noise for every sound that needs some, and at most 24 sounds at once
+  (a jingle always plays).
+- **Judged by ear**: `?record=60` records the next race's first 60 s, from its countdown, and offers
+  them as a file. `node scripts/listen.mjs <label>` records six takes with the autopilot (eight
+  karts with items, alone at speed, alone onto the cobbles, and 30 s at three places for the city)
+  into `sounds/<day>-<label>/`, with what `__kart.audio` measured of
+  each (the loudest sample, the samples clipped, which effects played) and of the loudest sounds
+  played at once, and a page setting each take beside the baseline's.
 
 ## The city's budget
 

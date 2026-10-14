@@ -125,6 +125,11 @@ Work through the list. The ones in bold fail silently if you miss them.
      position it with `projProgress`.
    - Sounds and screen effects go in `noteForMe` (the `use` and `hit` cases) and `onArenaFx` in
      `src/main.ts`, with new sounds in `sfx` in `src/audio.ts`.
+   - A new sound plays into `out()`, on a bus: the effects' for an item, a hit or an egg; the
+     jingles' for something the race tells you (it ducks the effects while it plays); the engines'
+     or the ambience's for what goes on all the time. If it happens somewhere, anyone's item or an
+     egg, it takes that place (`at`) and is heard from there; your own racer's (`noteForMe`) has
+     none. Record the takes again (`node scripts/listen.mjs <label>`) to hear it beside the rest.
    - If it hits people, add it to `howName` in `main.ts` for the feed ("X got Y's …").
 7. **`README.md`**: add a row to the items table.
 8. **`test/race.test.ts`**: add a test in the style of the bola and pombo ones, using

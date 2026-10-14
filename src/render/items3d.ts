@@ -1,6 +1,6 @@
-// What the power-ups look like: spinning item boxes, the disco ball rolling, the paparazzi drone
-// with its flashing camera, the party bomb with its lit fuse, the wobbling pudim, and the bass
-// drop's shockwave.
+// What the power-ups look like: spinning item boxes, the Bola do Braga rolling, the pombo-correio
+// flapping to the car ahead, the foguete on its stick with its sparks, the wobbling pudim, and the
+// martelinho's ring.
 import * as THREE from 'three';
 import type { Arena } from '../game/arena.ts';
 import { projProgress, type Proj } from '../game/items.ts';
@@ -9,56 +9,101 @@ import * as tex from './textures.ts';
 
 const std = (color: string, o: Partial<THREE.MeshStandardMaterialParameters> = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.5, ...o });
 
-function discoBall(): THREE.Object3D {
+// A football in SC Braga's red and white: red patches on white, wrapped round the ball.
+let ballTex: THREE.CanvasTexture | null = null;
+function bola(): THREE.Object3D {
+  ballTex ??= tex.drawTexture(256, 128, (g) => {
+    g.fillStyle = '#f7f5f0';
+    g.fillRect(0, 0, 256, 128);
+    g.fillStyle = '#c8102e';
+    const patch = (x: number, y: number, r: number) => {
+      g.beginPath();
+      for (let k = 0; k < 5; k++) g.lineTo(x + Math.cos((k / 5) * Math.PI * 2 - Math.PI / 2) * r, y + Math.sin((k / 5) * Math.PI * 2 - Math.PI / 2) * r);
+      g.fill();
+    };
+    for (let k = 0; k < 5; k++) {
+      patch(k * 51.2 + 12, 30, 15);
+      patch(k * 51.2 + 38, 98, 15);
+    }
+    g.fillRect(0, 0, 256, 6);
+    g.fillRect(0, 122, 256, 6);
+  });
   const g = new THREE.Group();
-  const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.62, 2), std('#eef2f8', { metalness: 1, roughness: 0.08, flatShading: true, emissive: '#3a3f4a' }));
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.62, 24, 16), std('#ffffff', { map: ballTex, roughness: 0.35 }));
   ball.castShadow = true;
   g.add(ball);
   return g;
 }
 
-function drone(): THREE.Object3D {
+// A grey pigeon, its neck green and purple, a message rolled on its leg; +x is its beak.
+function pombo(): THREE.Object3D {
   const g = new THREE.Group();
-  g.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.25, 0.7), std('#1d1e22', { metalness: 0.4 })));
-  for (const [x, z] of [
-    [0.55, 0.55],
-    [-0.55, 0.55],
-    [0.55, -0.55],
-    [-0.55, -0.55],
-  ]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.06, 0.08), std('#2a2a2e'));
-    arm.position.set(x / 2, 0, z / 2);
-    arm.rotation.y = Math.atan2(-z, x);
-    g.add(arm);
-    const rotor = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.02, 16), std('#9aa3ad', { transparent: true, opacity: 0.45 }));
-    rotor.position.set(x, 0.1, z);
-    rotor.name = 'rotor';
-    g.add(rotor);
+  const grey = std('#8d95a3', { roughness: 0.8 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12), grey);
+  body.scale.set(1.35, 0.85, 0.85);
+  body.castShadow = true;
+  g.add(body);
+  const neck = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), std('#4f7f6a', { roughness: 0.4, metalness: 0.3, emissive: '#2a1a3a' }));
+  neck.position.set(0.38, 0.16, 0);
+  g.add(neck);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), grey);
+  head.position.set(0.56, 0.3, 0);
+  g.add(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.16, 6), std('#3a3438'));
+  beak.rotation.z = -Math.PI / 2;
+  beak.position.set(0.74, 0.28, 0);
+  g.add(beak);
+  for (const z of [-0.1, 0.1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), std('#ff7a1a', { emissive: '#7a2a00' }));
+    eye.position.set(0.64, 0.34, z);
+    g.add(eye);
   }
-  const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.25, 14), std('#111'));
-  lens.rotation.z = Math.PI / 2;
-  lens.position.set(0.4, -0.15, 0);
-  g.add(lens);
-  const flash = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }));
-  flash.position.set(0.5, 0.05, 0.2);
-  flash.name = 'flash';
-  g.add(flash);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, 0.3), std('#5d6470', { roughness: 0.8 }));
+  tail.position.set(-0.6, 0.02, 0);
+  tail.rotation.z = 0.15;
+  g.add(tail);
+  const note = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.22, 8), std('#f4efe2'));
+  note.position.set(0.05, -0.38, 0.1);
+  note.rotation.x = Math.PI / 2;
+  g.add(note);
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Group();
+    const feathers = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.05, 0.75), std('#a9b0bc', { roughness: 0.8 }));
+    feathers.position.set(-0.05, 0, side * 0.38);
+    wing.add(feathers);
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.04, 0.3), std('#3d4250', { roughness: 0.8 }));
+    tip.position.set(-0.12, 0, side * 0.86);
+    wing.add(tip);
+    wing.position.set(0, 0.15, side * 0.2);
+    wing.name = side < 0 ? 'wingL' : 'wingR';
+    g.add(wing);
+  }
   return g;
 }
 
-function bomb(): THREE.Object3D {
+// A festival rocket: a red paper tube with a cone, on its long stick, sparks spitting from the back.
+function foguete(): THREE.Object3D {
   const g = new THREE.Group();
-  const b = new THREE.Mesh(new THREE.SphereGeometry(0.9, 20, 14), std('#ff4fd8', { roughness: 0.3, emissive: '#3a0a30' }));
-  b.castShadow = true;
-  g.add(b);
-  const band = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.08, 8, 28), std('#ffe14d', { metalness: 0.8, roughness: 0.3 }));
-  band.rotation.x = Math.PI / 2;
-  g.add(band);
-  const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 6), std('#5a4630'));
-  fuse.position.y = 1.05;
-  g.add(fuse);
-  const spark = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), new THREE.MeshBasicMaterial({ color: '#ffd04d', toneMapped: false }));
-  spark.position.y = 1.35;
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 1.3, 16), std('#c8102e', { roughness: 0.7 }));
+  tube.rotation.z = -Math.PI / 2;
+  tube.castShadow = true;
+  g.add(tube);
+  for (const x of [-0.45, 0.45]) {
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 0.08, 16), std('#ffe14d', { roughness: 0.5 }));
+    band.rotation.z = -Math.PI / 2;
+    band.position.x = x;
+    g.add(band);
+  }
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.5, 16), std('#f4efe2', { roughness: 0.7 }));
+  cone.rotation.z = -Math.PI / 2;
+  cone.position.x = 0.9;
+  g.add(cone);
+  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.6, 6), std('#b88a52', { roughness: 0.9 }));
+  stick.rotation.z = -Math.PI / 2;
+  stick.position.set(-1.5, -0.2, 0);
+  g.add(stick);
+  const spark = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), new THREE.MeshBasicMaterial({ color: '#ffd04d', toneMapped: false }));
+  spark.position.x = -0.75;
   spark.name = 'flash';
   g.add(spark);
   return g;
@@ -120,7 +165,7 @@ export class ItemsView {
     const live = new Set<string>();
     for (const p of arena.projs.values()) {
       live.add(p.id);
-      const o = this.thing(p.id, () => (p.kind === 'disco' ? discoBall() : p.kind === 'drone' ? drone() : bomb()));
+      const o = this.thing(p.id, () => (p.kind === 'bola' ? bola() : p.kind === 'pombo' ? pombo() : foguete()));
       this.placeProj(o, p, time, t, dt);
     }
     for (const h of arena.hazards.values()) {
@@ -176,34 +221,38 @@ export class ItemsView {
     const f = P - Math.floor(P);
     const a = this.track.samples[i0];
     const b = this.track.samples[(i0 + 1) % N];
-    const lift = p.kind === 'disco' ? 0.64 : p.kind === 'drone' ? 2.6 + Math.sin(t * 5) * 0.2 : 5.5 + Math.sin(t * 3) * 0.4;
+    const lift = p.kind === 'bola' ? 0.64 : p.kind === 'pombo' ? 2.6 + Math.sin(t * 5) * 0.2 : 5.5 + Math.sin(t * 3) * 0.4;
     const pa = surfacePoint(a, p.lat, lift);
     const pb = surfacePoint(b, p.lat, lift);
     o.position.set(pa.x + (pb.x - pa.x) * f, pa.y + (pb.y - pa.y) * f, pa.z + (pb.z - pa.z) * f);
     const yaw = -Math.atan2(a.t.z, a.t.x) + (p.v < 0 ? Math.PI : 0);
-    if (p.kind === 'disco') {
-      o.rotation.set(0, yaw, 0);
-      o.children[0].rotation.z -= (p.v / 0.62) * dt;
-    } else {
-      o.rotation.set(0, yaw, 0);
-      o.traverse((c) => {
-        if (c.name === 'rotor') c.rotation.y += dt * 40;
-      });
+    o.rotation.set(0, yaw, 0);
+    if (p.kind === 'bola') o.children[0].rotation.z -= (p.v / 0.62) * dt;
+    // The pigeon's wings beat; the rocket's sparks flicker.
+    const flap = Math.sin(t * 16) * 0.7;
+    const l = o.getObjectByName('wingL');
+    const r = o.getObjectByName('wingR');
+    if (l && r) {
+      l.rotation.x = flap;
+      r.rotation.x = -flap;
     }
     const flash = o.getObjectByName('flash');
-    if (flash) flash.visible = Math.sin(t * (p.kind === 'drone' ? 9 : 25)) > 0;
+    if (flash) {
+      flash.visible = Math.sin(t * 25) > -0.3;
+      flash.scale.setScalar(0.7 + Math.random() * 0.8);
+    }
   }
 
-  // The bass drop's ring, from where it was dropped.
+  // The martelinho's ring, from where it was swung.
   wave(at: { x: number; y: number; z: number }, t: number): void {
-    const mesh = new THREE.Mesh(new THREE.TorusGeometry(1, 0.25, 8, 48), new THREE.MeshBasicMaterial({ color: '#b26bff', transparent: true, opacity: 0.7, toneMapped: false, depthWrite: false }));
+    const mesh = new THREE.Mesh(new THREE.TorusGeometry(1, 0.25, 8, 48), new THREE.MeshBasicMaterial({ color: '#ffd04d', transparent: true, opacity: 0.7, toneMapped: false, depthWrite: false }));
     mesh.rotation.x = Math.PI / 2;
     mesh.position.set(at.x, at.y + 1, at.z);
     this.group.add(mesh);
     this.waves.push({ mesh, t0: t });
   }
 
-  // A flash where something hit, or the party bomb went off.
+  // A flash where something hit, or the rocket burst.
   flash(at: { x: number; y: number; z: number }, t: number, color: string, size = 1): void {
     const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 16, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1, toneMapped: false, depthWrite: false }));
     mesh.position.set(at.x, at.y + 1, at.z);

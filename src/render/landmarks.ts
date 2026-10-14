@@ -1,12 +1,11 @@
 // Braga, as cartoon: the Praça da República's fountain and the Arcada, the old town's houses, the
 // Sé, the Arco da Porta Nova, Bom Jesus's church, stairway and funicular, the quarry stadium with
-// its roof cables and the rock at one end. And the party: a stage, a disco ball, balloons.
+// its roof cables and the rock at one end. And at the start: a stage, and balloons.
 import * as THREE from 'three';
 import type { Tag } from '../track/layout.ts';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
 import { RIVER_HALF_W } from '../track/layout.ts';
 import { SPOTS } from './braga.ts';
-import { buildDriverFigure, DRIVERS } from './drivers.ts';
 import { bake, mat as kitMat } from './kit.ts';
 import * as tex from './textures.ts';
 import { riverDistance } from './world.ts';
@@ -100,7 +99,7 @@ export function buildLandmarks(track: Track, ground: Ground): { group: THREE.Gro
     onGround(arc, i - 10, -62, Math.PI);
   }
 
-  // ---- The party at the start: the stage, a giant P. Kiddy, a disco ball over the Avenida. ----
+  // ---- The stage at the start, where the lobby shows your car. ----
   {
     const stage = new THREE.Group();
     stage.add(box(24, 1.6, 12, DARK, 0, 0, 0));
@@ -113,35 +112,13 @@ export function buildLandmarks(track: Track, ground: Ground): { group: THREE.Gro
       }
     }
     stage.add(box(6, 1.2, 2, mat('#222'), 0, 1.6, -1));
-    const big = buildDriverFigure(DRIVERS[0]);
-    big.scale.setScalar(4);
-    big.position.set(0, 1.6, -3);
-    big.rotation.y = Math.PI / 2;
-    stage.add(big);
-    const signTex = tex.sign("P. KIDDY'S WHITE PARTY", 'all night long · Braga', '#fbfbf8', '#111');
+    const signTex = tex.sign('BRAGA GRAND PRIX', 'Pista antiga', '#fbfbf8', '#1d4f9c');
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(22, 4), new THREE.MeshBasicMaterial({ map: signTex }));
     sign.position.set(0, 12, -3.5);
     stage.add(sign);
     onGround(stage, 40, 26, Math.PI);
-    // The big P. Kiddy looks at the road; the lobby shows your car at the front of the stage.
-    stage.updateMatrixWorld(true);
-    big.lookAt(at(track, 40, 0).pos);
-    big.rotateY(-Math.PI / 2);
     const front = at(track, 40, 22).pos;
     stageSpot.set(front.x, ground(front.x, front.z) + 1.6, front.z);
-
-    const f = at(track, 90, 0, 14);
-    const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(2.6, 2), mat('#e9eef5', { metalness: 0.9, roughness: 0.12, flatShading: true, emissive: '#3a3f4a' }));
-    ball.position.copy(f.pos);
-    ball.userData.moves = true;
-    g.add(ball);
-    const wireMat = new THREE.LineBasicMaterial({ color: '#333' });
-    const poleL = at(track, 90, -14);
-    const poleR = at(track, 90, 14);
-    for (const p of [poleL, poleR]) g.add(place(box(0.5, 18, 0.5, DARK), p.pos.x, p.pos.y, p.pos.z, 0));
-    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([poleL.pos.clone().setY(18), f.pos.clone().setY(18), poleR.pos.clone().setY(18)]), wireMat));
-    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([f.pos.clone().setY(18), f.pos]), wireMat));
-    updates.push((t) => (ball.rotation.y = t * 0.8));
   }
 
   // ---- Balloons along the Avenida and at the gates. ----
@@ -164,7 +141,7 @@ export function buildLandmarks(track: Track, ground: Ground): { group: THREE.Gro
     pts.forEach((p, k) => {
       m.makeScale(1, 1.2, 1).setPosition(p);
       balloons.setMatrixAt(k, m);
-      balloons.setColorAt(k, col.set(k % 3 === 0 ? '#d4af37' : k % 3 === 1 ? '#ffffff' : '#f2f2f2'));
+      balloons.setColorAt(k, col.set(k % 3 === 0 ? '#1d4f9c' : k % 3 === 1 ? '#ffffff' : '#c8102e'));
     });
     g.add(balloons);
   }
@@ -371,7 +348,7 @@ export function buildLandmarks(track: Track, ground: Ground): { group: THREE.Gro
     goal.add(box(0.15, 0.15, 7.5, post, 0, 2.44, 0));
     goal.position.set(-len / 2 + 6, 0, 0);
     stadium.add(goal);
-    const ad = new THREE.Mesh(new THREE.PlaneGeometry(len, 1.4), new THREE.MeshBasicMaterial({ map: tex.sign('BRAGA ♥ P. KIDDY  ·  MAKE KARTING GREAT AGAIN  ·  22 AVERAGE: EXACTLY OK', '', '#c8102e', '#ffffff', 2048, 96) }));
+    const ad = new THREE.Mesh(new THREE.PlaneGeometry(len, 1.4), new THREE.MeshBasicMaterial({ map: tex.sign('BRAGA  ·  CIDADE DOS ARCEBISPOS  ·  BRAGA', '', '#c8102e', '#ffffff', 2048, 96) }));
     ad.position.set(0, 0.8, 13.6);
     ad.rotation.y = Math.PI;
     stadium.add(ad);
@@ -405,11 +382,11 @@ export function buildLandmarks(track: Track, ground: Ground): { group: THREE.Gro
 
   // ---- Billboards. ----
   const boards: [number, number, string, string][] = [
-    [160, 1, 'MAKE KARTING GREAT AGAIN', 'Donald Trunk 2028'],
-    [620, -1, 'LIL PAST', 'Back to the Future Tour'],
-    [1000, 1, 'GUCCI PAIN ICE CREAM', 'now melting at Bom Jesus'],
-    [1700, -1, '22 AVERAGE', 'the most okay album of the year'],
-    [2200, 1, 'LIL BABYFACE', 'nap time is for losers'],
+    [160, 1, 'BRACARA AUGUSTA', 'desde 16 a.C.'],
+    [620, -1, 'PUDIM ABADE DE PRISCOS', 'o doce do Minho'],
+    [1000, 1, 'BOM JESUS DO MONTE', 'Património Mundial'],
+    [1700, -1, 'SÃO JOÃO DE BRAGA', '23 e 24 de junho'],
+    [2200, 1, 'ROMA PORTUGUESA', 'a cidade dos arcebispos'],
   ];
   for (const [i, side, text, sub] of boards) {
     const bb = new THREE.Group();

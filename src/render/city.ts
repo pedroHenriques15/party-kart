@@ -3,17 +3,16 @@
 // really is, meeting the road as it does, and what's on it painted onto the ground; every building
 // near the track on its own ground, with its floors and its roof, and none on the road; trees; the
 // Rio Este and its bridges; zebra crossings, traffic lights and bus stops; the street names; the
-// party at the start; the sights (sights.ts); and the friends' easter eggs (eggs.ts). The road
-// itself is road.ts.
+// granite plinth with Braga's arms at the start; the sights (sights.ts); and the friends' easter
+// eggs on their houses (eggs.ts). The road itself is road.ts.
 import { heightOn, loadWorld, type Box, type Building as MapBuilding, type Track as Course, type World as Braga } from 'braga-map';
 import * as THREE from 'three';
 import { distanceToRoad, surfacePoint, type Sample, type Track } from '../track/track.ts';
-import { buildDriverFigure, DRIVERS } from './drivers.ts';
 import { buildEggs, eggSpots, type Eggs } from './eggs.ts';
 import { buildSights, horizon } from './sights.ts';
 import { bake, box, mat } from './kit.ts';
 import type { Quality } from './look.ts';
-import { bridge, buildRoad, lamps, ribbon, runs, stringLights } from './road.ts';
+import { bridge, buildRoad, lamps, ribbon, runs } from './road.ts';
 import * as tex from './textures.ts';
 import { plantTrees, type Tree } from './trees.ts';
 import type { World } from './world.ts';
@@ -447,7 +446,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   // ---- The road, its bridges, the lamps along it: baked together at the end, being many small
   // meshes. (The land, the hills and the buildings are a mesh each already.) ----
   const statics = new THREE.Group();
-  const road = buildRoad(track, overWater, { start: tex.sign("P. KIDDY'S WHITE PARTY", 'VOLTA DOS AMIGOS'), checkpoint: tex.sign('CHECKPOINT', '', '#111318', '#ffe14d', 1024, 160) }, edges);
+  const road = buildRoad(track, overWater, { start: tex.sign('VOLTA DOS AMIGOS', 'BRAGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('CHECKPOINT', '', '#111318', '#ffe14d', 1024, 160) }, edges);
   statics.add(road.group);
   updates.push(road.update);
   for (const [a, b] of runs(track, overWater)) {
@@ -455,24 +454,37 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
     statics.add(bridge(track, a, b, riverAt(mid.p.x, mid.p.z).y, HW));
   }
   group.add(lamps(track, ground, (s) => !bridged(s), 34));
-  group.add(stringLights(track, [[N - 140, N + 150]]));
 
-  // ---- The party at the start, where the lobby shows your car; and the eggs. ----
+  // ---- The plinth at the start, where the lobby shows your car; and the eggs. ----
   const all = nearBuildings(map, track, near);
   const buildingsNear = (x: number, z: number, r: number) => {
     let n = 0;
     for (const b of all) if (Math.abs(b.cx - x) < r + 30 && Math.abs(b.cz - z) < r + 30 && b.pts.some(([px, pz]) => Math.hypot(px - x, pz - z) < r)) n++;
     return n;
   };
-  const party = partyStage(track, ground, buildingsNear);
-  statics.add(party.group);
-  updates.push(party.update);
+  const plinth = startPlinth(track, ground, buildingsNear);
+  statics.add(plinth.group);
+  // The top of the building at (x, z), or of the nearest one within 12 m, with its roof.
+  const roofAt = (x: number, z: number) => {
+    let best: { x: number; y: number; z: number } | null = null;
+    let bd = 12;
+    for (const b of all) {
+      if (Math.abs(b.cx - x) > 60 || Math.abs(b.cz - z) > 60) continue;
+      const d = inside(b.pts, x, z) ? 0 : Math.min(...b.pts.map(([px, pz], k) => segDist(x, z, px, pz, ...b.pts[(k + 1) % b.pts.length])));
+      if (d >= bd) continue;
+      bd = d;
+      const r = rectangle(b.pts);
+      const ridge = b.roof !== 0 && r.fill > 0.72 && r.W > 2 ? (r.W + 0.4) * 0.52 : 0;
+      best = { x: b.cx, y: b.y + b.h + ridge, z: b.cz };
+    }
+    return best;
+  };
   const spots = eggSpots(track, course.eggs);
-  const eggs = buildEggs(track, ground, spots);
+  const eggs = buildEggs(track, ground, spots, roofAt);
   group.add(bake(eggs.group));
 
-  // ---- Buildings, clear of the party and the eggs. ----
-  const keepOut = [party.clear, ...spots.map((s) => s.clear)];
+  // ---- Buildings, clear of the plinth and the eggs. ----
+  const keepOut = [plinth.clear, ...spots.map((s) => s.clear)];
   const list = all.filter((b) => !keepOut.some((k) => b.pts.some(([x, z]) => Math.hypot(x - k.x, z - k.z) < k.r) || Math.hypot(b.cx - k.x, b.cz - k.z) < k.r));
   group.add(buildBuildings(list));
 
@@ -493,6 +505,8 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
       }
       if (k++ % every) continue;
       if (riverAt(x, z).d < HW + 3) continue;
+      // None on the plinth or in the eggs' ground.
+      if (keepOut.some((c) => Math.hypot(x - c.x, z - c.z) < c.r)) continue;
       trees.push({
         kind: pine ? 'pine' : 'round',
         x,
@@ -512,14 +526,8 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   updates.push(furniture.update);
 
   // ---- The sights: Bom Jesus and the Sameiro on the hills, the cross on the Picoto, the stadium,
-  // the Altice Forum, Makro and the Tourigalo's bull. ----
-  // The bull looks at the karts going by.
-  const sights = buildSights(
-    map.sights.map((s) => (s.kind === 'tourigalo' ? { ...s, face: faceRoad(track, s.x, s.z) } : s)),
-    track,
-    ground,
-    far,
-  );
+  // the Altice Forum, Makro and the Tourigalo. ----
+  const sights = buildSights(map.sights, track, ground, far);
   group.add(sights.group);
   updates.push(sights.update);
 
@@ -532,8 +540,8 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
     group,
     update: (t) => updates.forEach((u) => u(t)),
     ground,
-    stage: party.stage,
-    stageAt: party.at,
+    stage: plinth.stage,
+    stageAt: plinth.at,
     eggs,
   };
 }
@@ -655,11 +663,24 @@ function nearBuildings(map: Braga, track: Track, near: (x: number, z: number) =>
   return out;
 }
 
-// Which way, from (x, z), the nearest point of the road is.
-function faceRoad(track: Track, x: number, z: number): number {
-  let best = track.samples[0];
-  for (const s of track.samples) if (Math.hypot(s.p.x - x, s.p.z - z) < Math.hypot(best.p.x - x, best.p.z - z)) best = s;
-  return Math.atan2(best.p.z - z, best.p.x - x);
+// Is (x, z) inside the outline?
+function inside(pts: [number, number][], x: number, z: number): boolean {
+  let c = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [ax, az] = pts[i];
+    const [bx, bz] = pts[j];
+    if (az > z !== bz > z && x < ((bx - ax) * (z - az)) / (bz - az) + ax) c = !c;
+  }
+  return c;
+}
+
+// How far (x, z) is from the segment from (ax, az) to (bx, bz).
+function segDist(x: number, z: number, ax: number, az: number, bx: number, bz: number): number {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const L = dx * dx + dz * dz;
+  const t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0;
+  return Math.hypot(ax + dx * t - x, az + dz * t - z);
 }
 
 // Geometry being gathered for one material: positions, normals, uvs and colours.
@@ -864,12 +885,12 @@ function buildBuildings(list: Building[]): THREE.Group {
   return g;
 }
 
-// ---- The party at the start ----
+// ---- The start ----
 
-// The stage beside the road just past the line, on whichever side has room: the giant P. Kiddy,
-// the disco ball over the road. `crowded` counts the buildings near a spot.
-function partyStage(track: Track, ground: (x: number, z: number) => number, crowded: (x: number, z: number, r: number) => number) {
-  const N = track.samples.length;
+// A granite plinth beside the road just past the line, on whichever side has room, where the lobby
+// shows your car; behind it a granite wall with Braga's arms and the race's name on azulejos.
+// `crowded` counts the buildings near a spot.
+function startPlinth(track: Track, ground: (x: number, z: number) => number, crowded: (x: number, z: number, r: number) => number) {
   let best = { i: 40, side: 1, score: Infinity };
   for (let i = 25; i < 140; i += 15) {
     for (const side of [-1, 1]) {
@@ -890,56 +911,34 @@ function partyStage(track: Track, ground: (x: number, z: number) => number, crow
   const s = track.samples[best.i];
   const lateral = best.side * (s.w / 2 + 10);
   const g = new THREE.Group();
-  const stage = new THREE.Group();
-  const DARK = mat('#26262b');
-  stage.add(box(24, 1.6, 12, DARK, 0, 0, 0));
-  for (const x of [-10, 10]) {
-    stage.add(box(3, 7, 3, mat('#111'), x, 1.6, -2));
-    for (const y of [3, 6]) {
-      const cone = new THREE.Mesh(new THREE.CircleGeometry(1, 20), mat('#444'));
-      cone.position.set(x, 1.6 + y, -0.45);
-      stage.add(cone);
-    }
+  const granite = mat('#a49d90', { roughness: 0.85 });
+  const dark = mat('#8c857a', { roughness: 0.9 });
+  const plinth = new THREE.Group();
+  // Two steps up to the plinth's top, 1.2 m up, where the car stands at the front.
+  plinth.add(box(16, 0.6, 11, dark, 0, -0.6, 0), box(14, 1.2, 9, granite, 0, 0, 0), box(14.4, 0.12, 9.4, dark, 0, 1.1, 0));
+  // The wall at the back, its cornice, and the finials on its ends.
+  plinth.add(box(13, 7, 1, granite, 0, 1.2, -4), box(13.6, 0.4, 1.3, dark, 0, 8.2, -4));
+  for (const x of [-6.3, 6.3]) {
+    plinth.add(box(0.9, 0.9, 0.9, dark, x, 8.6, -4));
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.45, 14, 10), granite);
+    ball.position.set(x, 9.95, -4);
+    plinth.add(ball);
   }
-  stage.add(box(6, 1.2, 2, mat('#222'), 0, 1.6, -1));
-  const big = buildDriverFigure(DRIVERS[0]);
-  big.scale.setScalar(4);
-  big.position.set(0, 1.6, -3);
-  stage.add(big);
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(22, 4), new THREE.MeshBasicMaterial({ map: tex.sign("P. KIDDY'S WHITE PARTY", 'Volta dos Amigos · Braga', '#fbfbf8', '#111') }));
-  sign.position.set(0, 12, -3.5);
-  stage.add(sign);
+  const arms = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 4.25), new THREE.MeshStandardMaterial({ map: tex.bragaArms(), transparent: true, roughness: 0.6 }));
+  arms.position.set(0, 5.6, -3.49);
+  plinth.add(arms);
+  const name = new THREE.Mesh(new THREE.PlaneGeometry(10, 1.6), new THREE.MeshStandardMaterial({ map: tex.sign('VOLTA DOS AMIGOS', 'Braga', '#f4f7fb', '#1d4f9c', 1024, 164, '#1d4f9c'), roughness: 0.3 }));
+  name.position.set(0, 2.35, -3.49);
+  plinth.add(name);
   // Its front (+z) faces the road.
   const at = surfacePoint(s, lateral, 0);
-  stage.position.set(at.x, ground(at.x, at.z), at.z);
-  stage.rotation.y = -Math.atan2(s.t.z, s.t.x) + (best.side > 0 ? Math.PI : 0);
-  g.add(stage);
-  stage.updateMatrixWorld(true);
-  const centre = surfacePoint(s, 0, 0);
-  big.lookAt(centre.x, centre.y + 4, centre.z);
-  big.rotateY(-Math.PI / 2);
-  const front = surfacePoint(s, best.side * (s.w / 2 + 5), 0);
-  const spot = new THREE.Vector3(front.x, ground(front.x, front.z) + 1.6, front.z);
-
-  // The disco ball over the road, hung between two masts.
-  const f = surfacePoint(track.samples[(best.i + 50) % N], 0, 14);
-  const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(2.6, 2), mat('#e9eef5', { metalness: 0.9, roughness: 0.12, flatShading: true, emissive: '#3a3f4a' }));
-  ball.position.set(f.x, f.y, f.z);
-  ball.userData.moves = true;
-  g.add(ball);
-  const s2 = track.samples[(best.i + 50) % N];
-  const top: THREE.Vector3[] = [];
-  for (const side of [-1, 1]) {
-    const p = surfacePoint(s2, side * (s2.w / 2 + 2), 0);
-    const y0 = ground(p.x, p.z);
-    g.add(box(0.5, f.y + 4 - y0, 0.5, DARK, p.x, y0, p.z));
-    top.push(new THREE.Vector3(p.x, f.y + 4, p.z));
-  }
-  g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([top[0], new THREE.Vector3(f.x, f.y + 4, f.z), top[1]]), new THREE.LineBasicMaterial({ color: '#333' })));
-  g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(f.x, f.y + 4, f.z), ball.position]), new THREE.LineBasicMaterial({ color: '#333' })));
+  plinth.position.set(at.x, ground(at.x, at.z), at.z);
+  plinth.rotation.y = -Math.atan2(s.t.z, s.t.x) + (best.side > 0 ? Math.PI : 0);
+  g.add(plinth);
+  const front = surfacePoint(s, best.side * (s.w / 2 + 7), 0);
+  const spot = new THREE.Vector3(front.x, ground(at.x, at.z) + 1.2, front.z);
   return {
     group: g,
-    update: (t: number) => (ball.rotation.y = t * 0.8),
     stage: spot,
     at: best.i,
     clear: { x: at.x, z: at.z, r: 16 },

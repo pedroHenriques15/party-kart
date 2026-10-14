@@ -7,17 +7,17 @@ import { advance, newRun, noteSpeed, respawn, restart, type Run, type RunEvent }
 import { surfacePoint, type Track } from '../track/track.ts';
 import { FLAG, type Arena, type CarInfo } from './arena.ts';
 import {
-  BOMB_SPEED,
+  BALL_BACK,
+  BALL_SPEED,
   BOOM_RADIUS,
-  DISCO_BACK,
-  DISCO_SPEED,
-  DRONE_SPEED,
   GOLD_TIME,
   ITEMS,
   loopDelta,
+  PIGEON_SPEED,
   placeFraction,
   projProgress,
   rollItem,
+  ROCKET_SPEED,
   SHRINK_TIME,
   SPIN_TIME,
   type ItemEv,
@@ -172,10 +172,10 @@ export class Racer {
       this.boxes(a);
       if (this.roll > 0) {
         this.roll -= dt;
-        if (this.roll <= 0 && this.rollKind === 'shield') {
-          // The bodyguard goes on at once, so the slot is free for the next box.
+        if (this.roll <= 0 && this.rollKind === 'guarda') {
+          // The umbrella opens at once, so the slot is free for the next box.
           this.shield = true;
-          this.notes.push({ k: 'use', kind: 'shield' });
+          this.notes.push({ k: 'use', kind: 'guarda' });
         } else if (this.roll <= 0 && this.rollKind) {
           this.item = { kind: this.rollKind, uses: ITEMS[this.rollKind].uses };
           this.notes.push({ k: 'item', kind: this.rollKind });
@@ -203,7 +203,7 @@ export class Racer {
       if (!this.item && this.roll <= 0) {
         const place = placeFraction(a.rankOf(this.id), a.cars.size);
         let kind = rollItem(place);
-        while (kind === 'shield' && this.shield) kind = rollItem(place);
+        while (kind === 'guarda' && this.shield) kind = rollItem(place);
         this.roll = ROLL_TIME;
         this.rollKind = kind;
       }
@@ -216,36 +216,36 @@ export class Racer {
     const c = this.car;
     const t = a.t;
     const P = this.P;
-    const throwDisco = (backwards: boolean) =>
-      a.emit({ k: 'proj', id: this.nextId(), kind: 'disco', owner: this.id, t0: t, p0: P + (backwards ? -3 : 3), lat: clamp(c.lat, -5, 5), v: backwards ? DISCO_BACK : Math.max(50, speedOf(c) + DISCO_SPEED) });
+    const kickBall = (backwards: boolean) =>
+      a.emit({ k: 'proj', id: this.nextId(), kind: 'bola', owner: this.id, t0: t, p0: P + (backwards ? -3 : 3), lat: clamp(c.lat, -5, 5), v: backwards ? BALL_BACK : Math.max(50, speedOf(c) + BALL_SPEED) });
     switch (kind) {
-      case 'champagne':
-      case 'champagne3':
+      case 'cafe':
+      case 'cafe3':
         c.boost = Math.max(c.boost, 1.6);
         break;
       case 'pudim':
         a.emit({ k: 'haz', id: this.nextId(), kind: 'pudim', owner: this.id, t0: t, idx: (c.idx - 4 + this.track.samples.length) % this.track.samples.length, lat: c.lat });
         break;
-      case 'disco':
-        throwDisco(back);
+      case 'bola':
+        kickBall(back);
         break;
-      case 'drone': {
+      case 'pombo': {
         const target = a.ahead(this.id);
-        if (target && target.fin === null) a.emit({ k: 'proj', id: this.nextId(), kind: 'drone', owner: this.id, t0: t, p0: P + 2, lat: 0, v: DRONE_SPEED, target: target.id });
-        else throwDisco(false);
+        if (target && target.fin === null) a.emit({ k: 'proj', id: this.nextId(), kind: 'pombo', owner: this.id, t0: t, p0: P + 2, lat: 0, v: PIGEON_SPEED, target: target.id });
+        else kickBall(false);
         break;
       }
-      case 'bomb':
-        a.emit({ k: 'proj', id: this.nextId(), kind: 'bomb', owner: this.id, t0: t, p0: P + 2, lat: 0, v: BOMB_SPEED });
+      case 'foguete':
+        a.emit({ k: 'proj', id: this.nextId(), kind: 'foguete', owner: this.id, t0: t, p0: P + 2, lat: 0, v: ROCKET_SPEED });
         break;
-      case 'gold':
+      case 'filigrana':
         this.gold = GOLD_TIME;
         c.boost = Math.max(c.boost, 0.8);
         break;
-      case 'bass':
-        a.emit({ k: 'bass', id: this.nextId(), owner: this.id, t0: t, p0: P });
+      case 'martelinho':
+        a.emit({ k: 'martelinho', id: this.nextId(), owner: this.id, t0: t, p0: P });
         break;
-      case 'shield':
+      case 'guarda':
         this.shield = true;
         break;
     }
@@ -254,7 +254,7 @@ export class Racer {
     if (item.uses <= 0) this.item = null;
   }
 
-  // Taking a hit: a gold car smashes the item, a bodyguard blocks it, otherwise you spin.
+  // Taking a hit: a gold car smashes the item, an umbrella keeps it off, otherwise you spin.
   private hit(a: Arena, item: string, by: string, how: string, launch = false): void {
     const c = this.car;
     const base = { k: 'hit' as const, id: this.nextId(), item, x: c.p.x, y: c.p.y, z: c.p.z, how };
@@ -290,14 +290,14 @@ export class Racer {
       const age = t - p.t0;
       if (p.owner === this.id && age < (p.v < 0 ? 1500 : 700)) continue;
       const at = projProgress(p, t);
-      if (p.kind === 'disco') {
-        if (Math.abs(loopDelta(at, P, N)) < 2.2 && Math.abs(p.lat - c.lat) < 1.9 && c.h < 1.6) this.hit(a, p.id, a.nameOf(p.owner), 'disco');
-      } else if (p.kind === 'drone') {
-        if (p.target === this.id && at >= P - 1) this.hit(a, p.id, a.nameOf(p.owner), 'drone');
-      } else if (p.kind === 'bomb') {
+      if (p.kind === 'bola') {
+        if (Math.abs(loopDelta(at, P, N)) < 2.2 && Math.abs(p.lat - c.lat) < 1.9 && c.h < 1.6) this.hit(a, p.id, a.nameOf(p.owner), 'bola');
+      } else if (p.kind === 'pombo') {
+        if (p.target === this.id && at >= P - 1) this.hit(a, p.id, a.nameOf(p.owner), 'pombo');
+      } else if (p.kind === 'foguete') {
         if (p.owner !== this.id && a.leader()?.id === this.id && at >= P - 1) {
           a.emit({ k: 'boom', id: this.nextId(), owner: p.owner, victim: this.id, x: c.p.x, y: c.p.y, z: c.p.z });
-          this.hit(a, p.id, a.nameOf(p.owner), 'bomb', true);
+          this.hit(a, p.id, a.nameOf(p.owner), 'foguete', true);
         }
       }
       if (this.spin > 0) return;
@@ -316,10 +316,10 @@ export class Racer {
   onBoom(a: Arena, ev: Extract<ItemEv, { k: 'boom' }>): void {
     if (ev.victim === this.id || ev.owner === this.id || this.spin > 0) return;
     const c = this.car;
-    if (Math.hypot(ev.x - c.p.x, ev.z - c.p.z) < BOOM_RADIUS) this.hit(a, '', a.nameOf(ev.owner), 'bomb', true);
+    if (Math.hypot(ev.x - c.p.x, ev.z - c.p.z) < BOOM_RADIUS) this.hit(a, '', a.nameOf(ev.owner), 'foguete', true);
   }
 
-  onBass(a: Arena, ev: Extract<ItemEv, { k: 'bass' }>): void {
+  onHammer(a: Arena, ev: Extract<ItemEv, { k: 'martelinho' }>): void {
     if (ev.owner === this.id || this.fin !== null || this.P <= ev.p0 || this.gold > 0) return;
     if (this.shield) {
       this.shield = false;
@@ -355,7 +355,7 @@ export class Racer {
           c.v.z -= nz * vn * 0.8;
           this.notes.push({ k: 'bump', strength: -vn });
         }
-        if (o.flags & FLAG.gold && this.gold <= 0 && this.spin <= 0) this.hit(a, '', o.name, 'gold');
+        if (o.flags & FLAG.gold && this.gold <= 0 && this.spin <= 0) this.hit(a, '', o.name, 'filigrana');
       }
       // In the slipstream: up to 30 m behind someone going the same way, close to their line. It's
       // strongest within 8 m.

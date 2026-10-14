@@ -31,7 +31,7 @@ export interface CarInfo {
 export type ArenaFx =
   | { k: 'hit'; ev: Extract<ItemEv, { k: 'hit' }> }
   | { k: 'boom'; ev: Extract<ItemEv, { k: 'boom' }> }
-  | { k: 'bass'; ev: Extract<ItemEv, { k: 'bass' }> }
+  | { k: 'martelinho'; ev: Extract<ItemEv, { k: 'martelinho' }> }
   | { k: 'thrown'; ev: ItemEv };
 
 export class Arena {
@@ -83,9 +83,9 @@ export class Arena {
         for (const r of this.locals) r.onBoom(this, ev);
         this.fx({ k: 'boom', ev });
         break;
-      case 'bass':
-        for (const r of this.locals) r.onBass(this, ev);
-        this.fx({ k: 'bass', ev });
+      case 'martelinho':
+        for (const r of this.locals) r.onHammer(this, ev);
+        this.fx({ k: 'martelinho', ev });
         break;
     }
   }

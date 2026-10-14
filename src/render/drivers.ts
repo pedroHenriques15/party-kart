@@ -1,33 +1,33 @@
-// The drivers: cartoon bobbleheads, known by their props, their hair and their cars. Parody names;
-// every face is the same friendly cartoon face.
+// The drivers: the five friends the Volta dos Amigos goes past, as cartoon bobbleheads, each in a
+// car that's a joke about them. Every face is the same friendly cartoon face.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import * as tex from './textures.ts';
 import { windStreak } from './textures.ts';
 
-export type Body = 'kart' | 'limo' | 'stroller' | 'vintage' | 'van';
+export type Body = 'kart' | 'trolley' | 'banger' | 'chair';
 export type Extra =
-  | 'shades'
-  | 'chain'
-  | 'disco'
-  | 'swoop'
-  | 'tie'
-  | 'flag'
-  | 'cone'
-  | 'gem'
-  | 'spikes'
-  | 'braids'
-  | 'cactus'
-  | 'dagger'
-  | 'teacup'
-  | 'beanie'
-  | 'bonnet'
-  | 'pacifier'
-  | 'tophat'
-  | 'monocle'
-  | 'mustache'
-  | 'cape'
-  | 'fangs';
-export type Trail = 'confetti' | 'money' | 'gas' | 'flame' | 'bubbles' | 'sparkle' | 'smoke' | null;
+  // On the driver.
+  | 'hair'
+  | 'glasses'
+  | 'headset'
+  | 'cap'
+  | 'capback'
+  | 'nightcap'
+  | 'watch'
+  | 'mask'
+  | 'headmirror'
+  // On the car.
+  | 'laptop'
+  | 'antenna'
+  | 'neon'
+  | 'groceries'
+  | 'alarm'
+  | 'hourglass'
+  | 'clockwheels'
+  | 'toothbrush'
+  | 'tooth';
+export type Trail = 'bits' | 'receipts' | 'smoke' | 'sparkle' | 'foam' | null;
 
 export interface Driver {
   id: string;
@@ -36,6 +36,7 @@ export interface Driver {
   body: Body;
   color: string;
   trim: string;
+  alt: { color: string; trim: string }; // the second paint, for a bot repeating the driver
   skin: string;
   outfit: string;
   extras: Extra[];
@@ -43,19 +44,22 @@ export interface Driver {
   horn: number[]; // notes, in Hz
 }
 
+// In the order the Volta dos Amigos passes their houses.
 export const DRIVERS: Driver[] = [
-  { id: 'kiddy', name: 'P. Kiddy', tagline: 'Host of the White Party', body: 'kart', color: '#f7f7f4', trim: '#d4af37', skin: '#7a4b2a', outfit: '#ffffff', extras: ['shades', 'chain', 'disco'], trail: 'confetti', horn: [523, 659, 784, 1047] },
-  { id: 'trunk', name: 'Donald Trunk', tagline: 'Makes karting great again', body: 'limo', color: '#d4af37', trim: '#b22234', skin: '#f2b48a', outfit: '#1f2a4d', extras: ['swoop', 'tie', 'flag'], trail: 'money', horn: [392, 392, 523] },
-  { id: 'gucci', name: 'Gucci Pain', tagline: 'Ice cold, slightly melting', body: 'kart', color: '#1e5b3a', trim: '#b3202a', skin: '#5a3825', outfit: '#151515', extras: ['cone', 'chain', 'shades'], trail: 'sparkle', horn: [330, 440, 330] },
-  { id: 'woozy', name: 'Lil Woozy Vert', tagline: 'Bought a planet, lost the keys', body: 'kart', color: '#7b2ff7', trim: '#ff4fd8', skin: '#6b4228', outfit: '#ff4fd8', extras: ['gem', 'spikes', 'chain'], trail: 'sparkle', horn: [880, 1175, 880, 1175] },
-  { id: 'trav', name: 'Trav Scotch', tagline: 'Straight up from the cactus', body: 'kart', color: '#4f7d3a', trim: '#c2a26b', skin: '#5c3b24', outfit: '#6b5b45', extras: ['braids', 'cactus'], trail: 'flame', horn: [220, 277, 330] },
-  { id: 'average', name: '22 Average', tagline: 'Exactly one more than 21', body: 'van', color: '#cbbd9b', trim: '#8a8a8a', skin: '#3d2618', outfit: '#2b2b2b', extras: ['dagger', 'teacup', 'beanie'], trail: null, horn: [440, 440] },
-  { id: 'baby', name: 'Lil Babyface', tagline: 'Nap time is for losers', body: 'stroller', color: '#9fd3ff', trim: '#ffffff', skin: '#6a4329', outfit: '#ffd1e8', extras: ['bonnet', 'pacifier'], trail: 'bubbles', horn: [1047, 1319, 1568] },
-  { id: 'past', name: 'Lil Past', tagline: 'Was fast. Once.', body: 'vintage', color: '#6b4f2a', trim: '#e8dcc0', skin: '#4e3220', outfit: '#2a2a2a', extras: ['tophat', 'monocle', 'mustache'], trail: 'smoke', horn: [196, 247, 196] },
-  { id: 'farty', name: 'Playboi Farty', tagline: 'Leaves a trail', body: 'kart', color: '#141414', trim: '#a5ff3a', skin: '#5b3a24', outfit: '#3b0d0d', extras: ['cape', 'fangs'], trail: 'gas', horn: [110, 98, 82] },
+  { id: 'pedro', name: 'Pedro', tagline: 'Have you tried turning it off and on again?', body: 'kart', color: '#16181d', trim: '#22d3ee', alt: { color: '#eef1f5', trim: '#7c3aed' }, skin: '#e2a98a', outfit: '#2b2f36', extras: ['hair', 'glasses', 'headset', 'laptop', 'antenna', 'neon'], trail: 'bits', horn: [988, 1319, 1760] },
+  { id: 'joel', name: 'Joel', tagline: "Open wide! This won't hurt a bit.", body: 'chair', color: '#f4f6f5', trim: '#6fd6c1', alt: { color: '#6fd6c1', trim: '#f4f6f5' }, skin: '#dba383', outfit: '#ffffff', extras: ['hair', 'mask', 'headmirror', 'toothbrush', 'tooth'], trail: 'foam', horn: [2093, 2217, 2093, 2349] },
+  { id: 'joelf', name: 'Joel F.', tagline: 'Next customer, please!', body: 'trolley', color: '#00843d', trim: '#f39200', alt: { color: '#f39200', trim: '#00843d' }, skin: '#d99c7c', outfit: '#ffffff', extras: ['cap', 'groceries'], trail: 'receipts', horn: [784, 659, 523] },
+  { id: 'capelas', name: 'Capelas', tagline: 'For sale, for parts. Make an offer.', body: 'banger', color: '#9b4a3c', trim: '#8a8f96', alt: { color: '#5f7d8c', trim: '#8a8f96' }, skin: '#d8a07f', outfit: '#3d4a5c', extras: ['capback'], trail: 'smoke', horn: [180, 160, 140, 110] },
+  { id: 'vale', name: 'Vale', tagline: 'Five minutes away. Since forever.', body: 'kart', color: '#1f3b73', trim: '#e0b94a', alt: { color: '#7a1f2b', trim: '#e0b94a' }, skin: '#e0a585', outfit: '#9fb8e6', extras: ['nightcap', 'watch', 'alarm', 'hourglass', 'clockwheels'], trail: 'sparkle', horn: [1568, 1760, 1568, 1760, 1568, 1760] },
 ];
 
-export const driverById = (id: string) => DRIVERS.find((d) => d.id === id) ?? DRIVERS[0];
+// Past five karts, bots drive the same cars again in their second paint: "Pedro II".
+export const repeatOf = (id: string) => `${id}-2`;
+
+export function driverById(id: string): Driver {
+  const d = DRIVERS.find((x) => x.id === id.replace(/-2$/, '')) ?? DRIVERS[0];
+  return id.endsWith('-2') && d.id !== id ? { ...d, id, name: `${d.name} II`, color: d.alt.color, trim: d.alt.trim } : d;
+}
 
 // Materials are shared between parts and karts (same colour and settings, same material), so
 // parts merge into few meshes. The body's paint is each kart's own: gold plating changes it.
@@ -77,6 +81,12 @@ const sharedPaint = (color: string, metal: number) => {
   if (!paints.has(key)) paints.set(key, paint(color, metal));
   return paints.get(key)!;
 };
+// Materials with a picture on them, made once and shared.
+const pictures = new Map<string, THREE.Material>();
+const picture = (key: string, make: () => THREE.Material) => {
+  if (!pictures.has(key)) pictures.set(key, make());
+  return pictures.get(key)!;
+};
 
 // Collects shapes and merges those sharing a material into one mesh: a kart is a handful of draw
 // calls, not a hundred.
@@ -97,6 +107,12 @@ class Parts {
     const len = Math.max(0.01, dir.length() - 2 * r);
     this.q.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
     this.put(new THREE.CapsuleGeometry(r, len, 4, 10), mat, this.m.compose(a.clone().add(b).multiplyScalar(0.5), this.q, new THREE.Vector3(1, 1, 1)));
+  }
+
+  // A flat slab from a to b in the side view (x forward, y up), `w` across and `thick` deep.
+  slab(a: [number, number], b: [number, number], w: number, thick: number, mat: THREE.Material, z = 0): void {
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    this.add(new THREE.BoxGeometry(len, thick, w), mat, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, z], [0, 0, Math.atan2(b[1] - a[1], b[0] - a[0])]);
   }
 
   private put(geo: THREE.BufferGeometry, mat: THREE.Material, m: THREE.Matrix4): void {
@@ -132,7 +148,8 @@ export function buildDriverFigure(d: Driver, hands: THREE.Vector3 = V(0.62, 0.62
   const outfit = std(d.outfit, { roughness: 0.75 });
   const black = std('#151515', { roughness: 0.4 });
   const white = std('#ffffff', { roughness: 0.3 });
-  const gold = std('#e0b94a', { metalness: 1, roughness: 0.22 });
+  const brass = std('#e0b94a', { metalness: 1, roughness: 0.22 });
+  const chrome = std('#e8ecf1', { metalness: 1, roughness: 0.15 });
   const mouth = std('#6b1f24', { roughness: 0.6 });
 
   body.add(new THREE.CapsuleGeometry(0.3, 0.32, 6, 14), outfit, [0, 0.48, 0], [0, 0, 0], [1, 1, 1.15]);
@@ -158,81 +175,62 @@ export function buildDriverFigure(d: Driver, hands: THREE.Vector3 = V(0.62, 0.62
   face.add(new THREE.SphereGeometry(0.085, 12, 8), skinDark, [0.56, -0.03, 0]);
   face.add(new THREE.TorusGeometry(0.15, 0.032, 8, 20, Math.PI), mouth, [0.5, -0.17, 0], [0, Math.PI / 2, Math.PI]);
 
+  // A cap: the crown in one colour, the peak in another, pointing forward (or back).
+  const cap = (crown: THREE.Material, peak: THREE.Material, back: boolean) => {
+    face.add(new THREE.SphereGeometry(0.585, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2.3), crown, [0, 0.1, 0]);
+    face.add(new THREE.BoxGeometry(0.5, 0.04, 0.62), peak, [back ? -0.62 : 0.62, 0.24, 0], [0, 0, back ? 0.12 : -0.12]);
+    face.add(new THREE.SphereGeometry(0.05, 8, 6), peak, [0, 0.69, 0]);
+  };
   for (const e of d.extras) {
     switch (e) {
-      case 'shades':
-        face.add(new THREE.BoxGeometry(0.08, 0.17, 0.64), std('#0b0b0d', { metalness: 0.6, roughness: 0.12 }), [0.53, 0.12, 0]);
+      case 'hair':
+        face.add(new THREE.SphereGeometry(0.575, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2.6), std('#3b2a20', { roughness: 0.9 }), [-0.05, 0.08, 0]);
         break;
-      case 'chain':
-        body.add(new THREE.TorusGeometry(0.32, 0.05, 10, 28), gold, [0.05, 0.66, 0], [Math.PI / 2, 0.45, 0]);
-        body.add(new THREE.CylinderGeometry(0.13, 0.13, 0.05, 18), gold, [0.34, 0.5, 0], [0, 0, Math.PI / 2]);
-        break;
-      case 'swoop': {
-        const hair = std('#f3d36b', { roughness: 0.85 });
-        face.add(new THREE.SphereGeometry(0.6, 22, 12, 0, Math.PI * 2, 0, Math.PI / 2.2), hair, [-0.05, 0.12, 0], [0, 0, 0], [1.15, 0.75, 1.08]);
-        face.add(new THREE.SphereGeometry(0.28, 14, 8), hair, [0.42, 0.42, 0.12], [0, 0, 0], [1.4, 0.5, 1.5]);
-        break;
-      }
-      case 'tie':
-        body.add(new THREE.BoxGeometry(0.04, 0.55, 0.13), std('#c8102e'), [0.31, 0.42, 0], [0, 0, 0.12]);
-        break;
-      case 'cone':
-        face.add(new THREE.ConeGeometry(0.06, 0.16, 8), std('#d9a066'), [0.48, -0.1, 0.33], [0, 0, Math.PI]);
-        face.add(new THREE.SphereGeometry(0.06, 8, 6), std('#9be7ff'), [0.48, 0, 0.33]);
-        break;
-      case 'gem':
-        face.add(new THREE.OctahedronGeometry(0.09), std('#ff4fd8', { metalness: 0.6, roughness: 0.05, emissive: '#7a1f68' }), [0.53, 0.33, 0]);
-        break;
-      case 'spikes':
-        for (let k = 0; k < 11; k++) {
-          const a = (k / 11) * Math.PI * 2;
-          face.add(new THREE.ConeGeometry(0.09, 0.6, 7), std(k % 2 ? '#ff4fd8' : '#3be8c4'), [Math.cos(a) * 0.3 - 0.05, 0.55, Math.sin(a) * 0.3], [Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5]);
+      case 'glasses':
+        // Square frames, a bridge, and the arms back to the ears.
+        for (const s of [-1, 1]) {
+          face.add(new THREE.TorusGeometry(0.12, 0.022, 6, 4), black, [0.6, 0.1, s * 0.19], [0, Math.PI / 2, Math.PI / 4]);
+          face.add(new THREE.BoxGeometry(0.42, 0.025, 0.025), black, [0.38, 0.13, s * 0.33], [0, s * 0.35, 0]);
         }
+        face.add(new THREE.BoxGeometry(0.03, 0.025, 0.12), black, [0.62, 0.14, 0]);
         break;
-      case 'braids': {
-        const hair = std('#2a1a10', { roughness: 0.9 });
-        face.add(new THREE.SphereGeometry(0.57, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2.5), hair, [-0.04, 0.06, 0]);
-        for (let k = 0; k < 12; k++) {
-          const a = Math.PI * 0.5 + (k / 11) * Math.PI;
-          face.add(new THREE.CapsuleGeometry(0.045, 0.62, 3, 6), hair, [Math.cos(a) * 0.5, -0.12, Math.sin(a) * 0.5]);
-        }
-        break;
-      }
-      case 'dagger':
-        face.add(new THREE.BoxGeometry(0.02, 0.2, 0.035), std('#2b2b2b'), [0.55, 0.36, 0.05]);
-        break;
-      case 'beanie':
-        face.add(new THREE.SphereGeometry(0.58, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2.4), std('#5f6b3a', { roughness: 0.95 }), [0, 0.12, 0]);
-        face.add(new THREE.TorusGeometry(0.5, 0.06, 8, 24), std('#4d5730', { roughness: 0.95 }), [0, 0.2, 0], [Math.PI / 2, 0, 0]);
-        break;
-      case 'bonnet':
-        face.add(new THREE.SphereGeometry(0.63, 20, 12, 0, Math.PI, 0, Math.PI), std('#bfe3ff'), [-0.08, 0.05, 0], [0, Math.PI / 2, 0]);
-        break;
-      case 'pacifier':
-        face.add(new THREE.CylinderGeometry(0.13, 0.13, 0.04, 18), std('#ff8fc7'), [0.57, -0.17, 0], [0, 0, Math.PI / 2]);
-        face.add(new THREE.TorusGeometry(0.07, 0.02, 6, 14), std('#ff8fc7'), [0.61, -0.17, 0], [0, Math.PI / 2, 0]);
-        break;
-      case 'tophat':
-        face.add(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 22), black, [0, 0.42, 0]);
-        face.add(new THREE.CylinderGeometry(0.32, 0.32, 0.62, 22), black, [0, 0.74, 0]);
-        face.add(new THREE.CylinderGeometry(0.325, 0.325, 0.1, 22), std('#7a1f1f'), [0, 0.5, 0]);
-        break;
-      case 'monocle':
-        face.add(new THREE.TorusGeometry(0.09, 0.015, 6, 16), gold, [0.58, 0.1, 0.19], [0, Math.PI / 2, 0]);
-        break;
-      case 'mustache':
-        for (const s of [-1, 1]) face.add(new THREE.SphereGeometry(0.1, 10, 6), std('#1d1d1d'), [0.53, -0.08, s * 0.1], [0, 0, 0], [0.6, 0.45, 1.3]);
-        break;
-      case 'fangs':
-        for (const s of [-1, 1]) face.add(new THREE.ConeGeometry(0.025, 0.08, 6), white, [0.55, -0.24, s * 0.06], [0, 0, Math.PI]);
-        face.add(new THREE.SphereGeometry(0.565, 18, 10, 0, Math.PI * 2, 0, Math.PI / 3), black, [-0.03, 0.1, 0]);
-        break;
-      case 'cape': {
-        const cape = std('#5c0b12', { side: THREE.DoubleSide });
-        body.add(new THREE.ConeGeometry(0.58, 1.05, 14, 1, true), cape, [-0.25, 0.42, 0]);
-        body.add(new THREE.CylinderGeometry(0.46, 0.3, 0.35, 14, 1, true), cape, [-0.05, 0.92, 0]);
+      case 'headset': {
+        const dark = std('#25272c', { roughness: 0.45 });
+        face.add(new THREE.TorusGeometry(0.6, 0.045, 8, 24, Math.PI), dark, [0, 0.02, 0], [0, Math.PI / 2, 0]);
+        for (const s of [-1, 1]) face.add(new THREE.CylinderGeometry(0.18, 0.18, 0.12, 18), dark, [0, 0, s * 0.58], [Math.PI / 2, 0, 0]);
+        face.limb(V(0.05, -0.08, -0.62), V(0.5, -0.2, -0.3), 0.022, dark);
+        face.add(new THREE.SphereGeometry(0.055, 10, 8), std('#22d3ee', { emissive: '#0b6f80' }), [0.52, -0.2, -0.28]);
         break;
       }
+      case 'cap':
+        cap(std(d.color, { roughness: 0.8 }), std(d.trim, { roughness: 0.7 }), false);
+        break;
+      case 'capback':
+        cap(std('#5b6168', { roughness: 0.9 }), std('#3d4249', { roughness: 0.9 }), true);
+        break;
+      case 'nightcap': {
+        // Floppy, striped, flopping back, with a bobble on the end.
+        const cloth = std(d.outfit, { roughness: 0.95 });
+        face.add(new THREE.TorusGeometry(0.52, 0.08, 8, 24), std('#ffffff', { roughness: 0.95 }), [0, 0.22, 0], [Math.PI / 2, 0, 0]);
+        face.add(new THREE.ConeGeometry(0.52, 1.1, 18), cloth, [-0.15, 0.68, 0], [0, 0, 0.6]);
+        face.add(new THREE.SphereGeometry(0.13, 10, 8), std('#ffffff', { roughness: 0.95 }), [-0.47, 1.12, 0]);
+        break;
+      }
+      case 'watch':
+        // A big wristwatch on the right wrist, held where it can be looked at.
+        body.add(new THREE.CylinderGeometry(0.15, 0.15, 0.06, 18), brass, [hands.x - 0.12, hands.y + 0.1, hands.z], [0.3, 0, 0]);
+        body.add(new THREE.CylinderGeometry(0.12, 0.12, 0.065, 18), white, [hands.x - 0.12, hands.y + 0.105, hands.z], [0.3, 0, 0]);
+        break;
+      case 'mask':
+        face.add(new THREE.SphereGeometry(0.3, 16, 12), std('#a8d8ea', { roughness: 0.9 }), [0.45, -0.12, 0], [0, 0, 0], [0.4, 0.62, 1.05]);
+        for (const s of [-1, 1]) face.add(new THREE.TorusGeometry(0.1, 0.012, 4, 12), std('#e6f3f8'), [0.2, -0.02, s * 0.52], [0, 0, 0]);
+        break;
+      case 'headmirror':
+        // The band round the head, and the round mirror over one eye.
+        face.add(new THREE.TorusGeometry(0.565, 0.03, 6, 28), std('#2a2a2e'), [0, 0.28, 0], [Math.PI / 2, 0, 0]);
+        face.add(new THREE.CylinderGeometry(0.17, 0.17, 0.03, 22), chrome, [0.55, 0.42, 0.14], [0, 0, Math.PI / 2 - 0.35]);
+        face.add(new THREE.CylinderGeometry(0.035, 0.035, 0.035, 10), black, [0.565, 0.425, 0.14], [0, 0, Math.PI / 2 - 0.35]);
+        break;
       default:
         break;
     }
@@ -256,16 +254,21 @@ function tyre(r: number, w: number): THREE.BufferGeometry {
   return new THREE.LatheGeometry(pts, 24).rotateX(Math.PI / 2);
 }
 
-function wheel(r: number, w: number, rimMat: THREE.Material, spokes = 5): THREE.Group {
+// A wheel; `face` puts a picture on its hubs (Vale's clock faces).
+function wheel(r: number, w: number, rimMat: THREE.Material, spokes = 5, face?: THREE.Material): THREE.Group {
   const g = new THREE.Group();
   const p = new Parts();
   const tyreMat = std('#1b1b1d', { roughness: 0.92 });
   p.add(tyre(r, w), tyreMat, [0, 0, 0]);
   p.add(new THREE.CylinderGeometry(r * 0.6, r * 0.6, w * 0.8, 20), rimMat, [0, 0, 0], [Math.PI / 2, 0, 0]);
   p.add(new THREE.CylinderGeometry(r * 0.16, r * 0.16, w * 0.95, 10), std('#2a2a2e'), [0, 0, 0], [Math.PI / 2, 0, 0]);
-  for (let k = 0; k < spokes; k++) {
-    const a = (k / spokes) * Math.PI * 2;
-    for (const s of [-1, 1]) p.add(new THREE.BoxGeometry(r * 0.12, r * 0.95, 0.03), std('#2a2a2e'), [Math.cos(a) * r * 0.3, Math.sin(a) * r * 0.3, (s * w * 0.8) / 2], [0, 0, a - Math.PI / 2]);
+  if (face) {
+    for (const s of [-1, 1]) p.add(new THREE.CircleGeometry(r * 0.58, 24), face, [0, 0, s * (w * 0.4 + 0.01)], [0, s < 0 ? Math.PI : 0, 0]);
+  } else {
+    for (let k = 0; k < spokes; k++) {
+      const a = (k / spokes) * Math.PI * 2;
+      for (const s of [-1, 1]) p.add(new THREE.BoxGeometry(r * 0.12, r * 0.95, 0.03), std('#2a2a2e'), [Math.cos(a) * r * 0.3, Math.sin(a) * r * 0.3, (s * w * 0.8) / 2], [0, 0, a - Math.PI / 2]);
+    }
   }
   p.into(g);
   return g;
@@ -288,6 +291,38 @@ function smooth(pts: [number, number][], n = 6): [number, number][] {
   return curve.getPoints(pts.length * n).map((p) => [p.x, p.y]);
 }
 
+// A quad through four corners, its picture repeating every `cell` metres (the trolley's wire).
+function quad(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, cell: number): THREE.BufferGeometry {
+  const u = a.distanceTo(b) / cell;
+  const v = a.distanceTo(d) / cell;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([a, b, c, a, c, d].flatMap((p) => p.toArray()), 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, u, 0, u, v, 0, 0, u, v, 0, v], 2));
+  g.computeVertexNormals();
+  return g;
+}
+
+// A clock's face, shared by every clock on a car.
+const clockFace = () => picture('clock', () => new THREE.MeshStandardMaterial({ map: tex.clockFace(), roughness: 0.4 }));
+
+// A clock's hands, from the middle of its face, turning about z.
+function clockHands(size: number, color = '#1b1b1d'): { group: THREE.Group; hour: THREE.Object3D; minute: THREE.Object3D } {
+  const group = new THREE.Group();
+  const m = std(color, { roughness: 0.4 });
+  const hand = (len: number, w: number) => {
+    const pivot = new THREE.Group();
+    const h = new THREE.Mesh(new THREE.BoxGeometry(0.02, len, w), m);
+    h.position.y = len / 2 - 0.02;
+    pivot.add(h);
+    group.add(pivot);
+    return pivot;
+  };
+  const hour = hand(size * 0.5, size * 0.09);
+  const minute = hand(size * 0.8, size * 0.06);
+  group.add(new THREE.Mesh(new THREE.SphereGeometry(size * 0.07, 10, 8), std('#c8102e')));
+  return { group, hour, minute };
+}
+
 export interface KartModel {
   group: THREE.Group;
   driver: Driver;
@@ -296,6 +331,9 @@ export interface KartModel {
   // vice: the café's easter egg is on, a cigarette and a beer for the driver.
   update: (speed: number, steer: number, dt: number, grounded: boolean, flags: number, vice?: boolean) => void;
 }
+
+// Where Joel sits in his chair.
+const CHAIR_SEAT = V(-0.15, 0.95, 0);
 
 const GOLD = 1;
 const SHIELD = 2;
@@ -312,13 +350,16 @@ export function buildKart(d: Driver): KartModel {
   const body = new THREE.Group(); // tilts and spins
   group.add(body);
   const p = new Parts();
-  const isGold = d.body === 'limo';
-  const shell = paint(d.color, isGold ? 0.95 : 0.25);
+  // Capelas's paint is faded and dull; everyone else's is glossy.
+  const shell: THREE.MeshStandardMaterial = d.body === 'banger' ? new THREE.MeshStandardMaterial({ color: d.color, roughness: 0.85, metalness: 0.05 }) : paint(d.color, 0.25);
   const trim = sharedPaint(d.trim, 0.4);
   const dark = std('#1d1e22', { roughness: 0.5, metalness: 0.3 });
   const chrome = std('#e8ecf1', { metalness: 1, roughness: 0.15 });
+  const brass = std('#e0b94a', { metalness: 1, roughness: 0.2 });
   const lamp = std('#fffbe0', { emissive: '#fff3b0', emissiveIntensity: 1.5 });
-  const rim = isGold || d.extras.includes('chain') ? std('#e0b94a', { metalness: 1, roughness: 0.2 }) : chrome;
+  const rim = d.extras.includes('clockwheels') ? brass : chrome;
+  // What moves on the car besides the wheels: run every frame with the time and the speed.
+  const moving: ((t: number, speed: number) => void)[] = [];
 
   let front = { x: 1.15, r: 0.36, w: 0.3, z: 0.95 };
   let rear = { x: -1.15, r: 0.42, w: 0.42, z: 1.0 };
@@ -326,70 +367,165 @@ export function buildKart(d: Driver): KartModel {
   let wheelSpokes = 5;
   let exhaust: THREE.Vector3[] = [V(-1.85, 0.72, -0.25), V(-1.85, 0.72, 0.25)];
   let steeringWheel = true;
+  let hold = V(0.62, 0.6, 0.24); // where the hands are, from the seat
 
   switch (d.body) {
-    case 'limo': {
-      p.add(profile(smooth([[2.4, 0.3], [2.35, 0.6], [1.0, 0.74], [0.8, 0.62], [-1.9, 0.62], [-2.3, 0.78], [-2.45, 0.45], [-2.3, 0.24], [2.3, 0.22]]), 1.6), shell, [0, 0, 0]);
-      p.add(new THREE.BoxGeometry(4.7, 0.05, 1.66), chrome, [0, 0.5, 0]);
-      p.add(new THREE.ConeGeometry(0.08, 0.25, 8), chrome, [2.15, 0.85, 0]);
-      p.add(new THREE.BoxGeometry(0.6, 0.45, 1.3), std('#5a1414', { roughness: 0.8 }), [-0.95, 0.75, 0]);
-      for (const s of [-1, 1]) p.add(new THREE.CircleGeometry(0.13, 16), lamp, [2.42, 0.45, s * 0.5], [0, Math.PI / 2, 0]);
-      front = { x: 1.65, r: 0.4, w: 0.34, z: 0.95 };
-      rear = { x: -1.6, r: 0.4, w: 0.36, z: 0.95 };
-      seat = V(-0.35, 0.55, 0);
-      exhaust = [V(-2.45, 0.35, 0.5)];
-      wheelSpokes = 7;
-      break;
-    }
-    case 'van': {
-      p.add(profile(smooth([[1.65, 0.3], [1.65, 0.95], [1.3, 1.08], [-1.5, 1.08], [-1.68, 0.9], [-1.68, 0.3], [-1.5, 0.22], [1.5, 0.22]], 4), 1.9, 0.1), shell, [0, 0, 0]);
-      p.add(new THREE.BoxGeometry(3.4, 0.12, 1.96), std('#8c8370'), [0, 0.45, 0]);
-      // A windscreen frame, the glass faint blue.
-      p.add(new THREE.BoxGeometry(0.06, 0.55, 1.8), std('#bfe3ff', { transparent: true, opacity: 0.35, roughness: 0.05 }), [0.75, 1.35, 0]);
-      for (const s of [-1, 1]) p.add(new THREE.BoxGeometry(0.08, 0.6, 0.08), dark, [0.75, 1.36, s * 0.92]);
-      for (const s of [-1, 1]) p.add(new THREE.CircleGeometry(0.15, 16), lamp, [1.71, 0.7, s * 0.65], [0, Math.PI / 2, 0]);
-      front = { x: 1.1, r: 0.4, w: 0.34, z: 0.98 };
-      rear = { x: -1.1, r: 0.4, w: 0.34, z: 0.98 };
-      seat = V(0.05, 0.62, -0.42);
-      exhaust = [V(-1.75, 0.3, 0.6)];
-      steeringWheel = false;
-      break;
-    }
-    case 'stroller': {
-      const pram = std(d.color, { roughness: 0.6, side: THREE.DoubleSide });
-      p.add(new THREE.SphereGeometry(1, 28, 14, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), pram, [0, 1.1, 0], [0, 0, 0], [1.45, 0.75, 0.88]);
-      p.add(new THREE.TorusGeometry(1, 0.06, 8, 32), std('#ffffff'), [0, 1.1, 0], [Math.PI / 2, 0, 0], [1.45, 0.88, 1]);
-      p.add(new THREE.SphereGeometry(0.95, 22, 12, Math.PI, Math.PI, 0, Math.PI / 2), std('#ffffff', { side: THREE.DoubleSide }), [-0.4, 1.1, 0], [0, 0, 0], [0.9, 0.95, 0.92]);
+    case 'trolley': {
+      // Joel F.'s: a supermarket trolley in Mercadona's green and orange. The basket is wire,
+      // wider at the top and the back; he sits in it, on the shopping.
+      const wire = picture(`wire${d.color}`, () => {
+        const t = tex.drawTexture(32, 32, (g) => {
+          g.clearRect(0, 0, 32, 32);
+          g.fillStyle = '#ffffff';
+          g.fillRect(0, 0, 32, 4);
+          g.fillRect(0, 0, 4, 32);
+        });
+        return new THREE.MeshStandardMaterial({ color: d.color, map: t, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.45, metalness: 0.3 });
+      });
+      const [bx0, bx1, by, bw] = [-0.95, 1.0, 0.55, 0.48];
+      const [tx0, tx1, ty, tw] = [-1.35, 1.35, 1.45, 0.66];
+      const c = {
+        bl: [V(bx0, by, -bw), V(bx0, by, bw)],
+        br: [V(bx1, by, -bw), V(bx1, by, bw)],
+        tl: [V(tx0, ty, -tw), V(tx0, ty, tw)],
+        tr: [V(tx1, ty, -tw), V(tx1, ty, tw)],
+      };
+      p.add(quad(c.bl[0], c.br[0], c.tr[0], c.tl[0], 0.13), wire, [0, 0, 0]);
+      p.add(quad(c.bl[1], c.br[1], c.tr[1], c.tl[1], 0.13), wire, [0, 0, 0]);
+      p.add(quad(c.br[0], c.br[1], c.tr[1], c.tr[0], 0.13), wire, [0, 0, 0]);
+      p.add(quad(c.bl[0], c.bl[1], c.tl[1], c.tl[0], 0.13), wire, [0, 0, 0]);
+      p.add(quad(c.bl[0], c.br[0], c.br[1], c.bl[1], 0.13), wire, [0, 0, 0]);
+      // The frame round the basket's edges, in the trolley's paint (gold under the filigrana).
+      for (const [a, b] of [[c.bl[0], c.br[0]], [c.bl[1], c.br[1]], [c.tl[0], c.tr[0]], [c.tl[1], c.tr[1]], [c.tl[0], c.tl[1]], [c.tr[0], c.tr[1]], [c.bl[0], c.tl[0]], [c.bl[1], c.tl[1]], [c.br[0], c.tr[0]], [c.br[1], c.tr[1]]]) p.limb(a, b, 0.035, shell);
+      // The chassis: two rails, the rack under the basket, the legs.
       for (const s of [-1, 1]) {
-        p.add(new THREE.BoxGeometry(2.6, 0.06, 0.06), chrome, [0, 0.55, s * 0.68]);
-        p.limb(V(-1.2, 0.6, s * 0.6), V(-1.65, 1.75, s * 0.6), 0.04, chrome);
+        p.limb(V(-1.2, 0.28, s * 0.42), V(1.05, 0.28, s * 0.42), 0.04, shell);
+        p.limb(V(bx0, by, s * bw), V(-1.05, 0.28, s * 0.42), 0.035, shell);
+        p.limb(V(bx1, by, s * bw), V(0.95, 0.28, s * 0.42), 0.035, shell);
+        // The handle's posts, back from the top.
+        p.limb(V(tx0, ty, s * tw), V(-1.62, 1.72, s * 0.6), 0.04, shell);
       }
-      p.add(new THREE.CylinderGeometry(0.05, 0.05, 1.3, 10), chrome, [-1.65, 1.75, 0], [Math.PI / 2, 0, 0]);
-      front = { x: 1.05, r: 0.55, w: 0.12, z: 0.85 };
-      rear = { x: -1.0, r: 0.6, w: 0.12, z: 0.85 };
-      seat = V(0.1, 0.62, 0);
-      wheelSpokes = 10;
+      p.add(new THREE.BoxGeometry(1.9, 0.03, 0.8), wire, [-0.1, 0.32, 0]);
+      p.add(new THREE.CylinderGeometry(0.065, 0.065, 1.32, 14), trim, [-1.64, 1.74, 0], [Math.PI / 2, 0, 0]);
+      // Mercadona's name on the front.
+      const plate = picture('mercadona', () => new THREE.MeshBasicMaterial({ map: tex.sign('MERCADONA', '', '#ffffff', '#00843d', 512, 112, '#f39200') }));
+      p.add(new THREE.PlaneGeometry(0.95, 0.21), plate, [1.29, 1.22, 0], [0, Math.PI / 2, -0.32]);
+      front = { x: 0.95, r: 0.2, w: 0.12, z: 0.45 };
+      rear = { x: -0.95, r: 0.2, w: 0.12, z: 0.45 };
+      seat = V(0.0, 0.6, 0);
+      hold = V(0.55, 0.75, 0.42);
+      wheelSpokes = 4;
       exhaust = [];
       steeringWheel = false;
       break;
     }
-    case 'vintage': {
-      p.add(profile(smooth([[1.95, 0.55], [1.95, 1.12], [1.75, 1.22], [0.55, 1.22], [0.35, 0.9], [-1.1, 0.9], [-1.55, 0.95], [-1.65, 0.7], [-1.6, 0.55]], 5), 1.15), shell, [0, 0, 0]);
-      p.add(new THREE.BoxGeometry(0.08, 0.62, 0.9), chrome, [1.97, 0.88, 0]);
-      for (let k = -3; k <= 3; k++) p.add(new THREE.BoxGeometry(0.1, 0.55, 0.03), dark, [1.98, 0.88, k * 0.11]);
-      for (const s of [-1, 1]) {
-        p.add(new THREE.CylinderGeometry(0.62, 0.62, 0.42, 20, 1, false, 0, Math.PI), std('#1a1a1a', { side: THREE.DoubleSide }), [1.25, 0.5, s * 0.85], [Math.PI / 2, 0, 0]);
-        p.add(new THREE.CylinderGeometry(0.62, 0.62, 0.42, 20, 1, false, 0, Math.PI), std('#1a1a1a', { side: THREE.DoubleSide }), [-1.2, 0.5, s * 0.85], [Math.PI / 2, 0, 0]);
-        p.add(new THREE.BoxGeometry(1.4, 0.05, 0.35), std('#1a1a1a'), [0.02, 0.48, s * 0.82]);
-        p.add(new THREE.SphereGeometry(0.17, 14, 10), lamp, [1.9, 1.25, s * 0.55]);
-        p.add(new THREE.CylinderGeometry(0.19, 0.19, 0.12, 14), chrome, [1.85, 1.25, s * 0.55], [0, 0, Math.PI / 2]);
-      }
-      p.add(new THREE.TorusGeometry(0.42, 0.13, 10, 22), std('#1b1b1d'), [-1.85, 0.95, 0], [0, Math.PI / 2, 0]);
-      front = { x: 1.25, r: 0.5, w: 0.2, z: 0.85 };
-      rear = { x: -1.2, r: 0.5, w: 0.2, z: 0.85 };
-      seat = V(-0.35, 0.82, 0);
-      wheelSpokes = 12;
-      exhaust = [V(-1.75, 0.45, -0.45)];
+    case 'banger': {
+      // Capelas's: a boxy old hatchback ready to be sold for parts. Its roof's already gone; the
+      // paint is faded and rusting, a door is in grey primer, the windscreen's cracked, the front
+      // bumper hangs off and swings, a headlight's smashed and a rear light taped up.
+      p.add(profile(smooth([[1.95, 0.32], [1.98, 0.62], [1.8, 0.8], [0.55, 0.88], [0.4, 0.95], [-1.55, 0.98], [-1.9, 0.92], [-1.95, 0.55], [-1.9, 0.3], [1.7, 0.24]], 3), 1.55, 0.06), shell, [0, 0, 0]);
+      const rust = std('#7a3d1c', { roughness: 1 });
+      for (const [x, y, w, h, s] of [[1.3, 0.45, 0.35, 0.2, 1], [-1.4, 0.42, 0.42, 0.24, 1], [-0.9, 0.78, 0.3, 0.12, -1], [1.5, 0.6, 0.26, 0.16, -1], [0.2, 0.32, 0.5, 0.1, -1], [-1.75, 0.7, 0.2, 0.3, -1]]) p.add(new THREE.BoxGeometry(w, h, 0.02), rust, [x, y, s * 0.79]);
+      p.add(new THREE.BoxGeometry(0.55, 0.02, 0.4), rust, [1.25, 0.86, 0.25], [0, 0, 0.06]);
+      // The door from a scrapyard, in primer, and the gaps round it.
+      p.add(new THREE.BoxGeometry(1.0, 0.52, 0.02), trim, [-0.25, 0.6, 0.79]);
+      p.add(new THREE.BoxGeometry(0.6, 0.025, 0.025), dark, [-1.15, 0.72, -0.79]);
+      // The windscreen's frame, and its glass with a crack across it.
+      for (const s of [-1, 1]) p.limb(V(0.5, 0.92, s * 0.72), V(0.15, 1.5, s * 0.72), 0.04, dark);
+      p.limb(V(0.15, 1.5, -0.72), V(0.15, 1.5, 0.72), 0.04, dark);
+      const glass = picture('cracked', () => {
+        const t = tex.drawTexture(
+          256,
+          128,
+          (g) => {
+            g.fillStyle = 'rgba(190, 220, 235, 0.3)';
+            g.fillRect(0, 0, 256, 128);
+            g.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+            g.lineWidth = 2;
+            for (let k = 0; k < 11; k++) {
+              const a = (k / 11) * Math.PI * 2 + 0.3;
+              g.beginPath();
+              g.moveTo(170, 50);
+              let [x, y] = [170, 50];
+              for (let j = 0; j < 4; j++) {
+                x += Math.cos(a + (j % 2 ? 0.25 : -0.2)) * 28;
+                y += Math.sin(a + (j % 2 ? 0.25 : -0.2)) * 28;
+                g.lineTo(x, y);
+              }
+              g.stroke();
+            }
+            g.beginPath();
+            g.arc(170, 50, 14, 0, Math.PI * 2);
+            g.stroke();
+          },
+          false,
+        );
+        return new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, roughness: 0.05, side: THREE.DoubleSide });
+      });
+      p.add(new THREE.PlaneGeometry(1.42, 0.68).rotateY(Math.PI / 2).rotateZ(0.54), glass, [0.33, 1.21, 0]);
+      // The grille, one headlight lit and one smashed, the rear lights (one taped), the back bumper.
+      p.add(new THREE.BoxGeometry(0.05, 0.22, 0.8), dark, [1.99, 0.5, 0]);
+      p.add(new THREE.CircleGeometry(0.12, 14), lamp, [1.99, 0.6, -0.55], [0, Math.PI / 2, 0]);
+      p.add(new THREE.CircleGeometry(0.12, 14), std('#3a3a3a', { roughness: 0.3 }), [1.99, 0.6, 0.55], [0, Math.PI / 2, 0]);
+      for (const s of [-1, 1]) p.add(new THREE.BoxGeometry(0.03, 0.22, 0.26), std('#a01818', { emissive: '#3a0000' }), [-1.96, 0.7, s * 0.58]);
+      for (const a of [-0.7, 0.7]) p.add(new THREE.BoxGeometry(0.03, 0.06, 0.38), std('#c9ccd1', { roughness: 0.6, metalness: 0.4 }), [-1.98, 0.7, 0.58], [a, 0, 0]);
+      p.add(new THREE.BoxGeometry(0.16, 0.16, 1.5), dark, [-1.96, 0.3, 0]);
+      // "For sale, for parts", on the back and the side, and the spare tyre on the back seat.
+      const forSale = picture('forsale', () => new THREE.MeshBasicMaterial({ map: tex.sign('VENDE-SE', 'PARA PEÇAS · 9XX XXX XXX', '#ffffff', '#c8102e', 512, 256, '#c8102e') }));
+      p.add(new THREE.PlaneGeometry(0.6, 0.3), forSale, [-1.97, 0.95, -0.2], [0, -Math.PI / 2, 0]);
+      p.add(new THREE.PlaneGeometry(0.6, 0.3), forSale, [-1.2, 1.12, 0.79], [0, 0, 0]);
+      p.add(new THREE.PlaneGeometry(0.6, 0.3), forSale, [-1.2, 1.12, -0.79], [0, Math.PI, 0]);
+      p.add(tyre(0.36, 0.22), std('#1b1b1d', { roughness: 0.92 }), [-1.3, 1.08, 0.3], [Math.PI / 2, 0, 0.15]);
+      // The tailpipe, tied up with wire.
+      p.add(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 8), std('#55504a', { roughness: 0.9 }), [-1.85, 0.2, -0.45], [0, 0, Math.PI / 2 - 0.15]);
+      // The front bumper, hanging off by one end and swinging as he goes.
+      const bumper = new THREE.Group();
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 1.5), dark);
+      bar.position.z = 0.75;
+      bar.castShadow = true;
+      bumper.add(bar);
+      bumper.position.set(2.0, 0.3, -0.75);
+      body.add(bumper);
+      moving.push((t, speed) => (bumper.rotation.x = 0.22 + Math.sin(t * 9) * 0.07 * Math.min(1, speed / 8)));
+      front = { x: 1.25, r: 0.36, w: 0.26, z: 0.78 };
+      rear = { x: -1.25, r: 0.36, w: 0.26, z: 0.78 };
+      seat = V(-0.35, 0.55, 0);
+      exhaust = [V(-2.1, 0.2, -0.45)];
+      break;
+    }
+    case 'chair': {
+      // Joel's: his dentist's chair on wheels. The base and the frame are its paint, the cushions
+      // the mint upholstery; the lamp on its arm over his head, the spittoon on one side and the
+      // tray of instruments on the other.
+      const cushion = std(d.trim, { roughness: 0.6 });
+      const white = std('#fbfbf8', { roughness: 0.3 });
+      p.add(profile([[1.35, 0.25], [1.35, 0.47], [-1.35, 0.47], [-1.35, 0.25]], 1.25, 0.08), shell, [0, 0, 0]);
+      p.add(new THREE.CylinderGeometry(0.22, 0.28, 0.4, 18), chrome, [-0.05, 0.65, 0]);
+      p.slab([1.35, 0.82], [0.3, 0.95], 0.7, 0.16, cushion);
+      p.slab([0.3, 0.95], [-0.38, 0.95], 0.82, 0.22, cushion);
+      p.slab([-0.38, 0.95], [-0.95, 1.75], 0.76, 0.18, cushion);
+      p.slab([-0.95, 1.75], [-1.08, 2.02], 0.42, 0.14, cushion);
+      p.slab([0.35, 0.78], [-0.4, 0.78], 0.86, 0.12, shell);
+      for (const s of [-1, 1]) p.add(new THREE.BoxGeometry(0.7, 0.07, 0.12), shell, [0.0, 1.18, s * 0.47]);
+      // The lamp: a post at the back, an arm over the top, the light looking down at the patient.
+      p.limb(V(-1.25, 0.47, -0.55), V(-1.25, 2.55, -0.55), 0.05, white);
+      p.limb(V(-1.25, 2.55, -0.55), V(0.15, 2.65, -0.15), 0.045, white);
+      p.add(new THREE.BoxGeometry(0.5, 0.16, 0.32), std('#5b6168', { roughness: 0.4 }), [0.3, 2.55, -0.05], [0, 0, -0.3]);
+      p.add(new THREE.PlaneGeometry(0.42, 0.26), lamp, [0.3, 2.465, -0.05], [Math.PI / 2, 0, 0.3]);
+      // The spittoon on the left, the tray and its drills on the right.
+      p.limb(V(0.6, 0.47, -0.62), V(0.6, 1.05, -0.62), 0.05, white);
+      p.add(new THREE.SphereGeometry(0.17, 14, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), std('#fbfbf8', { roughness: 0.3, side: THREE.DoubleSide }), [0.6, 1.2, -0.62]);
+      p.add(new THREE.CylinderGeometry(0.05, 0.04, 0.12, 10), std('#bff3e6', { roughness: 0.3 }), [0.75, 1.2, -0.75]);
+      p.limb(V(0.25, 0.47, 0.64), V(0.25, 1.2, 0.64), 0.04, white);
+      p.add(new THREE.BoxGeometry(0.55, 0.04, 0.36), white, [0.45, 1.24, 0.66]);
+      for (const z of [0.56, 0.66, 0.76]) p.add(new THREE.CylinderGeometry(0.025, 0.02, 0.32, 8), chrome, [0.48, 1.29, z], [0, 0, Math.PI / 2]);
+      // A steering column up from the base: it's a car now.
+      p.limb(V(1.0, 0.47, 0), V(CHAIR_SEAT.x + 0.78, CHAIR_SEAT.y + 0.42, 0), 0.04, chrome);
+      front = { x: 1.0, r: 0.26, w: 0.16, z: 0.56 };
+      rear = { x: -1.0, r: 0.26, w: 0.16, z: 0.56 };
+      seat = CHAIR_SEAT.clone();
+      wheelSpokes = 6;
+      exhaust = [V(-1.4, 0.36, 0.4)];
       break;
     }
     default: {
@@ -418,30 +554,170 @@ export function buildKart(d: Driver): KartModel {
   }
 
   // Props on the car.
-  if (d.extras.includes('disco')) {
-    p.add(new THREE.CylinderGeometry(0.02, 0.02, 1.2, 4), chrome, [-1.45, 1.6, 0.6]);
-    p.add(new THREE.IcosahedronGeometry(0.22, 1), std('#e9eef5', { metalness: 1, roughness: 0.08, flatShading: true }), [-1.45, 2.25, 0.6]);
+  const has = (e: Extra) => d.extras.includes(e);
+  if (has('laptop')) {
+    // Pedro's laptop, open on the nose, code on its screen and a glowing logo on its lid.
+    const screen = picture('code', () => {
+      const t = tex.drawTexture(
+        256,
+        160,
+        (g) => {
+          g.fillStyle = '#0d1117';
+          g.fillRect(0, 0, 256, 160);
+          const colors = ['#79c0ff', '#ff7b72', '#d2a8ff', '#7ee787', '#e6edf3'];
+          for (let y = 12, k = 0; y < 150; y += 12, k++) {
+            let x = 10 + ((k * 7) % 4) * 12;
+            for (let w = 0; w < 3 + (k % 3); w++) {
+              const len = 14 + ((k * 13 + w * 29) % 40);
+              g.fillStyle = colors[(k + w) % colors.length];
+              g.fillRect(x, y, len, 5);
+              x += len + 8;
+            }
+          }
+        },
+        false,
+      );
+      return new THREE.MeshBasicMaterial({ map: t, toneMapped: false });
+    });
+    const alu = std('#9aa3ad', { metalness: 0.8, roughness: 0.3 });
+    p.add(new THREE.BoxGeometry(0.5, 0.035, 0.72), alu, [0.92, 0.72, 0], [0, 0, -0.05]);
+    p.add(new THREE.BoxGeometry(0.03, 0.46, 0.72), alu, [1.16, 0.95, 0], [0, 0, -0.25]);
+    p.add(new THREE.PlaneGeometry(0.64, 0.4).rotateY(-Math.PI / 2).rotateZ(-0.25), screen, [1.14, 0.95, 0]);
+    p.add(new THREE.CircleGeometry(0.06, 16), std(d.trim, { emissive: d.trim, emissiveIntensity: 1.2 }), [1.185, 0.96, 0], [0, Math.PI / 2, -0.25]);
   }
-  if (d.extras.includes('flag')) {
-    p.add(new THREE.CylinderGeometry(0.02, 0.02, 1.4, 4), chrome, [-2.1, 1.3, 0.6]);
-    for (let k = 0; k < 5; k++) p.add(new THREE.BoxGeometry(0.6, 0.08, 0.02), std(k % 2 ? '#ffffff' : '#c8102e'), [-2.4, 1.95 - k * 0.08, 0.6]);
-    p.add(new THREE.BoxGeometry(0.25, 0.2, 0.025), std('#1f3a8a'), [-2.23, 1.89, 0.6]);
+  if (has('neon')) {
+    // The underglow, and a lit strip along each side.
+    const glow = picture(`glow${d.trim}`, () => {
+      const t = tex.drawTexture(
+        64,
+        64,
+        (g) => {
+          const grad = g.createRadialGradient(32, 32, 4, 32, 32, 32);
+          grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+          grad.addColorStop(1, 'rgba(255,255,255,0)');
+          g.fillStyle = grad;
+          g.fillRect(0, 0, 64, 64);
+        },
+        false,
+      );
+      return new THREE.MeshBasicMaterial({ color: d.trim, map: t, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    });
+    const under = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 2.6).rotateX(-Math.PI / 2), glow);
+    under.position.y = 0.04;
+    group.add(under);
+    for (const s of [-1, 1]) p.add(new THREE.BoxGeometry(1.5, 0.05, 0.03), std(d.trim, { emissive: d.trim, emissiveIntensity: 2 }), [0.05, 0.2, s * 1.0]);
   }
-  if (d.extras.includes('cactus')) {
-    const g = std('#3f8f3a', { roughness: 0.8 });
-    p.add(new THREE.CapsuleGeometry(0.16, 0.7, 6, 10), g, [1.25, 1.1, 0]);
-    p.limb(V(1.25, 1.15, 0.05), V(1.25, 1.45, 0.38), 0.08, g);
-    p.limb(V(1.25, 1.0, -0.05), V(1.25, 1.3, -0.35), 0.08, g);
+  if (has('antenna')) {
+    // A Wi-Fi antenna at the back, its light blinking.
+    p.add(new THREE.CylinderGeometry(0.02, 0.03, 1.0, 6), dark, [-1.55, 1.8, -0.6]);
+    p.add(new THREE.BoxGeometry(0.3, 0.08, 0.2), dark, [-1.55, 1.35, -0.6]);
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshBasicMaterial({ color: d.trim, toneMapped: false }));
+    led.position.set(-1.55, 2.33, -0.6);
+    body.add(led);
+    moving.push((t) => (led.visible = Math.sin(t * 7) > -0.2));
   }
-  if (d.extras.includes('teacup')) {
-    p.add(new THREE.CylinderGeometry(0.16, 0.12, 0.18, 16), std('#ffffff'), [1.0, 1.17, 0.55]);
-    p.add(new THREE.TorusGeometry(0.07, 0.02, 6, 12), std('#ffffff'), [1.0, 1.17, 0.73]);
+  if (has('groceries')) {
+    // The shopping round him: paper bags, a leek, a baguette, oranges, a pack of water.
+    const paper = std('#c79a63', { roughness: 0.95 });
+    p.add(new THREE.BoxGeometry(0.42, 0.5, 0.34), paper, [0.72, 0.82, 0.28]);
+    p.add(new THREE.BoxGeometry(0.4, 0.46, 0.32), paper, [0.7, 0.8, -0.3], [0, 0.2, 0]);
+    p.add(new THREE.CylinderGeometry(0.05, 0.05, 0.75, 10), std('#f2f0e6', { roughness: 0.7 }), [0.9, 1.15, 0.32], [0.2, 0, -0.35]);
+    p.add(new THREE.ConeGeometry(0.09, 0.6, 8), std('#3f8f3a', { roughness: 0.8 }), [1.07, 1.62, 0.4], [0.2, 0, -0.35]);
+    p.add(new THREE.CapsuleGeometry(0.07, 0.75, 4, 10), std('#d9a35b', { roughness: 0.85 }), [0.62, 1.2, -0.32], [0.3, 0, 0.6]);
+    for (const [x, z] of [[-0.75, 0.3], [-0.85, 0.12], [-0.68, 0.1]]) p.add(new THREE.SphereGeometry(0.11, 12, 8), std('#ff8c1a', { roughness: 0.7 }), [x, 0.72, z]);
+    p.add(new THREE.BoxGeometry(0.36, 0.36, 0.5), std('#bfe3ff', { roughness: 0.2, transparent: true, opacity: 0.8 }), [-0.75, 0.8, -0.3]);
+  }
+  if (has('alarm')) {
+    // Vale's alarm clock, as big as a wing, on the back where everyone behind him can see it:
+    // its hands racing round and its bells shaking. He's late.
+    const clock = new THREE.Group();
+    const red = std('#c8102e', { roughness: 0.35, metalness: 0.3 });
+    const caseMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.32, 32).rotateZ(Math.PI / 2), red);
+    caseMesh.castShadow = true;
+    clock.add(caseMesh);
+    for (const s of [-1, 1]) {
+      const faceMesh = new THREE.Mesh(new THREE.CircleGeometry(0.47, 32), clockFace());
+      faceMesh.position.x = s * 0.165;
+      faceMesh.rotation.y = s * (Math.PI / 2);
+      clock.add(faceMesh);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.045, 8, 32).rotateY(Math.PI / 2), brass);
+      ring.position.x = s * 0.165;
+      clock.add(ring);
+    }
+    for (const s of [-1, 1]) {
+      const bell = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), brass);
+      bell.position.set(0, 0.6, s * 0.3);
+      bell.rotation.x = s * 0.6;
+      clock.add(bell);
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.25, 8), brass);
+      leg.position.set(0, -0.58, s * 0.3);
+      leg.rotation.x = -s * 0.5;
+      clock.add(leg);
+    }
+    const clapper = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.06), brass);
+    clapper.position.y = 0.7;
+    clock.add(clapper);
+    const back = clockHands(0.47);
+    back.group.position.x = -0.18;
+    back.group.rotation.y = -Math.PI / 2;
+    clock.add(back.group);
+    const ahead = clockHands(0.47);
+    ahead.group.position.x = 0.18;
+    ahead.group.rotation.y = Math.PI / 2;
+    clock.add(ahead.group);
+    clock.position.set(-1.4, 1.95, 0);
+    body.add(clock);
+    moving.push((t) => {
+      for (const h of [back, ahead]) {
+        h.minute.rotation.z = -t * 9;
+        h.hour.rotation.z = -t * 0.75;
+      }
+      clock.rotation.x = Math.sin(t * 46) * 0.05;
+      clapper.rotation.x = Math.sin(t * 46) * 0.6;
+    });
+  }
+  if (has('hourglass')) {
+    // An hourglass on the nose, turning over and over.
+    const glassMat = std('#d8eef8', { roughness: 0.05, transparent: true, opacity: 0.45 });
+    const sand = std('#e8c36a', { roughness: 0.9 });
+    const hg = new THREE.Group();
+    for (const s of [-1, 1]) {
+      const bulb = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.26, 14), glassMat);
+      bulb.position.y = s * 0.13;
+      bulb.rotation.x = s > 0 ? Math.PI : 0;
+      hg.add(bulb);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.04, 14), std('#6b4a2a', { roughness: 0.7 }));
+      cap.position.y = s * 0.28;
+      hg.add(cap);
+    }
+    const heap = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.12, 12), sand);
+    heap.position.y = -0.2;
+    hg.add(heap);
+    hg.position.set(1.25, 0.95, 0);
+    body.add(hg);
+    moving.push((t) => (hg.rotation.z = Math.floor(t / 2.5) * Math.PI + Math.min(1, (t % 2.5) / 0.4) * Math.PI));
+  }
+  if (has('toothbrush')) {
+    // A giant toothbrush across the back for a spoiler, on two posts, toothpaste on its bristles.
+    const handle = std('#2b78d4', { roughness: 0.35 });
+    for (const s of [-1, 1]) p.limb(V(-1.3, 0.47, s * 0.45), V(-1.42, 1.15, s * 0.45), 0.04, handle);
+    p.add(new THREE.CapsuleGeometry(0.08, 1.8, 4, 10), handle, [-1.42, 1.22, 0], [Math.PI / 2, 0, 0]);
+    p.add(new THREE.BoxGeometry(0.2, 0.08, 0.42), handle, [-1.42, 1.3, 0.75]);
+    for (let k = 0; k < 6; k++) p.add(new THREE.BoxGeometry(0.16, 0.24, 0.05), std('#ffffff', { roughness: 0.6 }), [-1.42, 1.45, 0.58 + k * 0.07]);
+    p.add(new THREE.CapsuleGeometry(0.07, 0.3, 4, 8), std('#7fdcc8', { roughness: 0.5 }), [-1.42, 1.6, 0.76], [Math.PI / 2, 0, 0]);
+  }
+  if (has('tooth')) {
+    // A molar on the nose, smiling.
+    const enamel = std('#fbfbf6', { roughness: 0.22, metalness: 0.05 });
+    p.add(new THREE.BoxGeometry(0.4, 0.3, 0.42), enamel, [1.18, 0.66, 0]);
+    for (const [x, z] of [[-0.1, -0.11], [0.1, -0.11], [-0.1, 0.11], [0.1, 0.11]]) p.add(new THREE.SphereGeometry(0.13, 12, 8), enamel, [1.18 + x, 0.82, z]);
+    for (const z of [-0.1, 0.1]) p.add(new THREE.SphereGeometry(0.03, 8, 6), std('#1b1b1d'), [1.385, 0.7, z]);
+    p.add(new THREE.TorusGeometry(0.08, 0.015, 6, 12, Math.PI), std('#d23b5a'), [1.385, 0.62, 0], [0, Math.PI / 2, Math.PI]);
   }
   p.into(body);
 
-  const fig = buildDriverFigure(d, V(steeringWheel ? 0.62 : 0.45, steeringWheel ? 0.6 : 0.5, 0.24));
+  const fig = buildDriverFigure(d, hold);
   fig.position.copy(seat);
-  fig.scale.setScalar(d.body === 'stroller' ? 0.95 : 1);
   body.add(fig);
 
   // Exhaust flames, shown when boosting.
@@ -455,14 +731,56 @@ export function buildKart(d: Driver): KartModel {
     return f;
   });
 
-  // The bodyguard's bubble.
-  const bubble = new THREE.Mesh(
-    new THREE.SphereGeometry(2.3, 28, 18),
-    new THREE.MeshStandardMaterial({ color: '#7fd4ff', emissive: '#2a8fd9', emissiveIntensity: 0.6, transparent: true, opacity: 0.18, depthWrite: false, roughness: 0.1 }),
-  );
-  bubble.position.y = 1.1;
-  bubble.visible = false;
-  group.add(bubble);
+  // The guarda-chuva: open over the driver while it lasts, blue and white like the street plates.
+  const umbrella = new THREE.Group();
+  {
+    const geo = new THREE.ConeGeometry(1.7, 0.6, 8, 1, true).toNonIndexed();
+    const pos = geo.getAttribute('position');
+    const col: number[] = [];
+    const c = new THREE.Color();
+    for (let k = 0; k < pos.count; k += 3) {
+      const x = (pos.getX(k) + pos.getX(k + 1) + pos.getX(k + 2)) / 3;
+      const z = (pos.getZ(k) + pos.getZ(k + 1) + pos.getZ(k + 2)) / 3;
+      const panel = Math.floor(((Math.atan2(z, x) + Math.PI) / (Math.PI * 2)) * 8);
+      c.set(panel % 2 ? '#ffffff' : '#1d4f9c');
+      for (let j = 0; j < 3; j++) col.push(c.r, c.g, c.b);
+    }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const canopy = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.6 }));
+    canopy.position.y = 0.3;
+    canopy.castShadow = true;
+    umbrella.add(canopy);
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.5, 8), dark);
+    stick.position.y = -0.4;
+    umbrella.add(stick);
+    const crook = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.03, 6, 12, Math.PI), std('#6b3a1f'));
+    crook.position.set(0.1, -1.15, 0);
+    crook.rotation.z = Math.PI;
+    umbrella.add(crook);
+  }
+  umbrella.position.set(seat.x, seat.y + 2.9, 0);
+  umbrella.visible = false;
+  body.add(umbrella);
+
+  // The martelinho: a squeaky plastic hammer that bonks the driver on the head as they shrink.
+  const hammer = new THREE.Group();
+  {
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.1, 8), std('#ffd23f', { roughness: 0.4 }));
+    handle.position.z = -0.55;
+    handle.rotation.x = Math.PI / 2;
+    hammer.add(handle);
+    const headMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.6, 16), std('#e63946', { roughness: 0.35 }));
+    headMesh.position.set(0, 0, -1.1);
+    hammer.add(headMesh);
+    for (const s of [-1, 1]) {
+      const end = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.08, 16), std('#ffd23f', { roughness: 0.4 }));
+      end.position.set(0, s * 0.3, -1.1);
+      hammer.add(end);
+    }
+  }
+  hammer.position.set(seat.x, seat.y + 1.28 + 0.55 + 0.3, 1.1);
+  hammer.visible = false;
+  body.add(hammer);
 
   // The slipstream's wind: streaks of air running back past the kart, round its sides and over it.
   windTex ??= windStreak();
@@ -485,14 +803,23 @@ export function buildKart(d: Driver): KartModel {
   });
   let wind = 0;
 
-  // Wheels: the front ones on pivots to steer.
+  // Wheels: the front ones on pivots to steer. Capelas's front right is the thin grey spare,
+  // wobbling, and his back left has lost its hubcap.
   const wheels: THREE.Group[] = [];
   const pivots: THREE.Group[] = [];
+  let wobbly: THREE.Group | null = null;
+  const faces = has('clockwheels') ? clockFace() : undefined;
   for (const wd of [front, rear]) {
     for (const s of [-1, 1]) {
+      const spare = d.body === 'banger' && wd === front && s > 0;
+      const bare = d.body === 'banger' && wd === rear && s < 0;
       const pivot = new THREE.Group();
       pivot.position.set(wd.x, wd.r, s * wd.z);
-      const w = wheel(wd.r, wd.w, rim, wheelSpokes);
+      const w = wheel(spare ? wd.r * 0.92 : wd.r, spare ? wd.w * 0.55 : wd.w, spare ? std('#6b6f75', { roughness: 0.6 }) : bare ? std('#3a3d42', { roughness: 0.7 }) : rim, wheelSpokes, faces);
+      if (spare) {
+        w.position.y = -wd.r * 0.08;
+        wobbly = w;
+      }
       pivot.add(w);
       body.add(pivot);
       wheels.push(w);
@@ -535,7 +862,7 @@ export function buildKart(d: Driver): KartModel {
   beer.visible = false;
   fig.add(beer);
   // Raised beside the head on the right, and tipped towards the mouth for a swig.
-  const hold = { x: 0.25, y: 1.12, z: 0.85, a: -0.15 };
+  const raised = { x: 0.25, y: 1.12, z: 0.85, a: -0.15 };
   const swig = { x: 0.5, y: 1.3, z: 0.55, a: -1.1 };
 
   const baseColor = shell.color.clone();
@@ -546,6 +873,8 @@ export function buildKart(d: Driver): KartModel {
   let lastSpeed = 0;
   let scale = 1;
   let t = 0;
+  let bonk = 0; // seconds left of the martelinho's swing
+  let wasShrunk = false;
   return {
     group,
     driver: d,
@@ -555,6 +884,8 @@ export function buildKart(d: Driver): KartModel {
       t += dt;
       for (const w of wheels) w.rotation.z -= (speed / 0.42) * dt;
       for (const pv of pivots) pv.rotation.y = -steer * 0.45;
+      if (wobbly) wobbly.rotation.x = Math.sin(t * 23) * 0.09 * Math.min(1, speed / 5);
+      for (const m of moving) m(t, speed);
       // The bobblehead: a spring kicked by acceleration and bumps.
       const acc = (speed - lastSpeed) / Math.max(dt, 1e-3);
       lastSpeed = speed;
@@ -563,20 +894,33 @@ export function buildKart(d: Driver): KartModel {
       head.rotation.z = Math.max(-0.5, Math.min(0.5, bob));
       head.rotation.x = -steer * 0.15;
       body.rotation.x = steer * 0.05 * Math.min(1, speed / 20);
+      // Capelas's car rattles as it goes.
+      if (d.body === 'banger') body.position.y = (Math.random() - 0.5) * 0.04 * Math.min(1, speed / 10);
       // Spinning out: two quick turns.
       if (flags & SPIN) spin += dt * 13;
       else spin = spin % (Math.PI * 2) > 0.05 ? spin + Math.min(dt * 13, Math.PI * 2 - (spin % (Math.PI * 2))) : 0;
       body.rotation.y = spin;
-      const want = flags & SHRINK ? 0.55 : 1;
+      const shrunk = !!(flags & SHRINK);
+      if (shrunk && !wasShrunk) bonk = 0.7;
+      wasShrunk = shrunk;
+      const want = shrunk ? 0.55 : 1;
       scale += (want - scale) * Math.min(1, dt * 6);
       group.scale.setScalar(scale);
-      // Gold plating.
+      // The martelinho: up, down on the head (which squashes), and gone.
+      bonk = Math.max(0, bonk - dt);
+      hammer.visible = bonk > 0;
+      if (bonk > 0) {
+        const u = 0.7 - bonk;
+        hammer.rotation.x = u < 0.15 ? 0.3 + (u / 0.15) * 1.0 : u < 0.3 ? 1.3 * (1 - (u - 0.15) / 0.15) : 0;
+        head.scale.set(1, u >= 0.3 && u < 0.5 ? 0.72 : 1, 1);
+      } else head.scale.set(1, 1, 1);
+      // Gold plating: the filigrana.
       const gold = !!(flags & GOLD);
       shell.color.lerp(gold ? new THREE.Color('#ffd34d') : baseColor, Math.min(1, dt * 8));
       shell.metalness = gold ? 1 : baseMetal;
       shell.emissive.set(gold ? '#5a3c00' : '#000000');
-      bubble.visible = !!(flags & SHIELD);
-      if (bubble.visible) bubble.scale.setScalar(1 + Math.sin(t * 6) * 0.03);
+      umbrella.visible = !!(flags & SHIELD);
+      if (umbrella.visible) umbrella.rotation.y += dt * 0.8;
       for (const f of flames) {
         f.visible = !!(flags & BOOST);
         if (f.visible) f.scale.set(1, 0.8 + Math.random() * 0.6, 1);
@@ -586,8 +930,8 @@ export function buildKart(d: Driver): KartModel {
         // A swig every few seconds: the bottle up to the mouth and tipped, then back down.
         const p = (t % 3.4) / 3.4;
         const w = p < 0.32 ? Math.sin((p / 0.32) * Math.PI) : 0;
-        beer.position.set(hold.x + (swig.x - hold.x) * w, hold.y + (swig.y - hold.y) * w, hold.z + (swig.z - hold.z) * w);
-        beer.rotation.x = hold.a + (swig.a - hold.a) * w;
+        beer.position.set(raised.x + (swig.x - raised.x) * w, raised.y + (swig.y - raised.y) * w, raised.z + (swig.z - raised.z) * w);
+        beer.rotation.x = raised.a + (swig.a - raised.a) * w;
         ember.scale.setScalar(0.8 + Math.random() * 0.5);
         // And a tipsy sway of the head.
         head.rotation.x += Math.sin(t * 2.6) * 0.18;
@@ -603,3 +947,4 @@ export function buildKart(d: Driver): KartModel {
     },
   };
 }
+

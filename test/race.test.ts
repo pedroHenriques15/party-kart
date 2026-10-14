@@ -60,8 +60,8 @@ const cruise = (r: Racer): Controls => ({ ...NO_CONTROLS, throttle: 1, steer: 0 
 test('item odds: the leader gets small stuff, the back the big guns', () => {
   const front = itemOdds(0);
   const back = itemOdds(1);
-  for (const k of ['bomb', 'bass', 'gold', 'drone'] as ItemKind[]) assert.equal(front[k] ?? 0, 0, `leader can get ${k}`);
-  assert.ok((back.bomb ?? 0) > 0 && (back.gold ?? 0) > 0);
+  for (const k of ['foguete', 'martelinho', 'filigrana', 'pombo'] as ItemKind[]) assert.equal(front[k] ?? 0, 0, `leader can get ${k}`);
+  assert.ok((back.foguete ?? 0) > 0 && (back.filigrana ?? 0) > 0);
   assert.equal(back.pudim ?? 0, 0);
   const rand = seeded(3);
   const seen = new Set<ItemKind>();
@@ -90,13 +90,13 @@ test('progress counts laps, and is negative on the grid', () => {
   assert.equal(r.P, 2 * N + 100);
 });
 
-test('a disco ball rolls ahead and spins the car in front; a bodyguard blocks one', () => {
+test('a bola rolls ahead and spins the car in front; a guarda-chuva keeps one off', () => {
   for (const shielded of [false, true]) {
     const me = at('me', 150, 30);
     const them = at('them', 190, 0);
     them.shield = shielded;
     const { a, events } = arena(RACE, [me, them]);
-    me.item = { kind: 'disco', uses: 1 };
+    me.item = { kind: 'bola', uses: 1 };
     tick(a, [me, them], (r) => (r === me ? { ...cruise(r), use: true } : NO_CONTROLS));
     assert.equal(events.filter((e) => e.k === 'proj').length, 1);
     for (let i = 0; i < 240; i++) tick(a, [me, them], (r) => (r === me ? NO_CONTROLS : NO_CONTROLS));
@@ -109,27 +109,27 @@ test('a disco ball rolls ahead and spins the car in front; a bodyguard blocks on
   }
 });
 
-test('a bodyguard goes on as soon as you get it, and leaves the slot free for the next box', () => {
+test('a guarda-chuva opens as soon as you get it, and leaves the slot free for the next box', () => {
   const box = boxRows(track)[0];
   const me = at('me', box.i - 50, 20, box.lat);
   const { a } = arena(RACE, [me]);
   me.roll = DT / 2;
-  me.rollKind = 'shield';
+  me.rollKind = 'guarda';
   tick(a, [me], cruise);
   assert.ok(me.shield, 'on at once');
   assert.equal(me.item, null, 'the slot is free');
-  assert.ok(me.notes.some((n) => n.k === 'use' && n.kind === 'shield'));
+  assert.ok(me.notes.some((n) => n.k === 'use' && n.kind === 'guarda'));
   const held = () => me.item; // read afresh: the assertions above narrowed me.item to null
   for (let i = 0; i < 6 / DT && !held(); i++) tick(a, [me], cruise);
   const got = held();
   assert.ok(got, 'picked up another item');
-  assert.notEqual(got.kind, 'shield', 'and not a second bodyguard');
+  assert.notEqual(got.kind, 'guarda', 'and not a second umbrella');
   tick(a, [me], (r) => ({ ...cruise(r), use: true }));
-  assert.ok(me.notes.some((n) => n.k === 'use' && n.kind !== 'shield'), 'and used it');
-  assert.ok(me.shield, 'with the bodyguard still on');
+  assert.ok(me.notes.some((n) => n.k === 'use' && n.kind !== 'guarda'), 'and used it');
+  assert.ok(me.shield, 'with the umbrella still open');
 });
 
-test('gold plating smashes what it meets', () => {
+test('the filigrana smashes what it meets', () => {
   const me = at('me', 150, 0);
   const { a, events } = arena(RACE, [me]);
   me.gold = 5;
@@ -141,36 +141,36 @@ test('gold plating smashes what it meets', () => {
   assert.equal(a.hazards.size, 0);
 });
 
-test('the paparazzi drone finds the car ahead; the party bomb finds the leader and catches those near', () => {
+test('the pombo-correio finds the car ahead; the foguete finds the leader and catches those near', () => {
   const back = at('back', 100, 0);
   const mid = at('mid', 400, 0);
   const lead = at('lead', 700, 0);
   const near = at('near', 694, 0, 3);
   const all = [back, mid, lead, near];
   const { a, events } = arena(RACE, all);
-  back.item = { kind: 'drone', uses: 1 };
+  back.item = { kind: 'pombo', uses: 1 };
   tick(a, all, (r) => (r === back ? { ...NO_CONTROLS, use: true } : NO_CONTROLS));
-  const drone = events.find((e) => e.k === 'proj');
-  assert.ok(drone && drone.k === 'proj' && drone.target === 'mid');
+  const pigeon = events.find((e) => e.k === 'proj');
+  assert.ok(pigeon && pigeon.k === 'proj' && pigeon.target === 'mid');
   for (let i = 0; i < 600 && mid.spin === 0; i++) tick(a, all, () => NO_CONTROLS);
-  assert.ok(mid.spin > 0, 'the drone got the car ahead');
+  assert.ok(mid.spin > 0, 'the pigeon got the car ahead');
 
-  back.item = { kind: 'bomb', uses: 1 };
+  back.item = { kind: 'foguete', uses: 1 };
   tick(a, all, (r) => (r === back ? { ...NO_CONTROLS, use: true } : NO_CONTROLS));
   for (let i = 0; i < 1200 && lead.spin === 0; i++) tick(a, all, () => NO_CONTROLS);
-  assert.ok(lead.spin > 0, 'the bomb got the leader');
+  assert.ok(lead.spin > 0, 'the rocket got the leader');
   assert.ok(events.some((e) => e.k === 'boom'));
   assert.ok(near.spin > 0, 'and the car beside them');
   assert.equal(back.spin, 0);
 });
 
-test('the bass drop shrinks only those ahead', () => {
+test('the martelinho shrinks only those ahead', () => {
   const back = at('back', 100, 0);
   const behind = at('behind', 60, 0);
   const ahead = at('ahead', 500, 0);
   const all = [back, behind, ahead];
   const { a } = arena(RACE, all);
-  back.item = { kind: 'bass', uses: 1 };
+  back.item = { kind: 'martelinho', uses: 1 };
   tick(a, all, (r) => (r === back ? { ...NO_CONTROLS, use: true } : NO_CONTROLS));
   assert.ok(ahead.shrink > 0);
   assert.equal(behind.shrink, 0);

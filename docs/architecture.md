@@ -93,8 +93,8 @@ then everyone else by `P`.
 
 **Item boxes are per player.** Every `Racer` keeps its own `taken` map, so a box you take disappears
 only for you. It comes back 2.5 s later. What you get depends on your place: `itemOdds` blends from
-`FRONT` (pudim, disco, champagne, shield) through `MIDDLE` to `BACK` (triple champagne, drone, gold,
-bomb, bass).
+`FRONT` (pudim, bola, café, guarda-chuva) through `MIDDLE` to `BACK` (três cafés, pombo-correio,
+filigrana, foguete, martelinho).
 
 ## The network
 
@@ -151,11 +151,11 @@ and applies them itself.
 
 | `k` | Made by | What every browser does |
 |---|---|---|
-| `proj` | the thrower | Adds a disco ball, drone or bomb. Its position at any time is `projProgress(p, t) = p0 + v·(t − t0)` |
+| `proj` | the thrower | Adds a bola, pombo or foguete. Its position at any time is `projProgress(p, t) = p0 + v·(t − t0)` |
 | `haz` | the thrower | Adds a pudim at a sample and lateral offset |
-| `bass` | the user | Each browser's own cars that are ahead of `p0` shrink, unless gold or shielded |
+| `martelinho` | the user | Each browser's own cars that are ahead of `p0` shrink, unless gold or under a guarda-chuva |
 | `hit` | **the victim's browser** | Removes the item, then shows the hit, or the block if `blocked` (a gold car smashing it has `victim: null`) |
-| `boom` | the leader the bomb reached | Each browser's own cars within 12 m of it spin too |
+| `boom` | the leader the foguete reached | Each browser's own cars within 12 m of it spin too |
 
 The browser of the car that gets hit decides the hit, against the projectile's deterministic
 position. So what you see is what happened to you. Nobody sends projectile positions, and a hit
@@ -240,20 +240,22 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     nearly fills it (flat otherwise). Churches get a tower. They're seven meshes in all, one per material.
   - Then the trees (`plantTrees`, plain crowns in 800 m tiles), the Rio Este and its bridges,
     lamps, zebra crossings, traffic lights and bus stops (`streetFurniture`), a blue-and-white
-    plate for each street, brown signs to landmarks, the party at the start (where the lobby shows
-    your car), and the easter eggs (`eggs.ts`).
+    plate for each street, brown signs to landmarks, the granite plinth with Braga's arms at the
+    start (where the lobby shows your car), and the easter eggs on the friends' houses (`eggs.ts`).
+    Neither buildings nor trees stand on the plinth or in an egg's ground.
   - The sights (`sights.ts`): Bom Jesus and its Escadório and the Sameiro on the hills, at twice
     their size so they show from the track; the cross on the Picoto; the Estádio 1.º de Maio with
     its track, terraces, covered stand and floodlights; Makro's and the Altice Forum's signs; and
-    the Tourigalo's bull.
+    the Tourigalo, a black bull with a rooster's head on its lawn, head to the west, with its
+    restaurant's sign behind.
 - **The road** (`render/road.ts`), the same for any track: the ribbon (asphalt, or granite setts),
   the white lines painted on it as each stretch's `lanes` says, and beyond its edges, as `kerbs`
   says, granite kerbs with calçada pavements behind them, central reservations, or nothing. Each
   side meets the ground as its `edges` (from `city.ts`) say: a pavement slopes from the kerb to
   meet the ground at its back (12% up at most, 5% down), and past that a granite retaining wall
   goes up to the ground where it's higher and a skirt down to it where it's lower; a bridge over a
-  road gets a deck. Parapets on the bridges, the party's banners at the start, boost pads,
-  the start line and gates, string lights and lamps.
+  road gets a deck. Parapets on the bridges, the barriers at the start, boost pads,
+  the start line and gates, string lights (the first track's) and lamps.
 - **The first track's world** (`render/world.ts`, with `landmarks.ts`, `braga.ts` and
   `buildTrees`) is kept for reference, and nothing builds it.
 - **Few draw calls**: `mat()` shares one material per colour and settings, and `bake()` merges each
@@ -262,10 +264,13 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
 - **No assets**: every texture is drawn on a canvas in `textures.ts`, and every sound is an
   oscillator or filtered noise in `audio.ts`. The city's map is numbers in a module, drawn into
   textures and meshes as the game loads.
-- **Karts** (`render/drivers.ts`): each `Driver` is a body (`kart`, `limo`, `stroller`, `vintage`,
-  `van`), colours, extras (hats, props), a trail and a horn. `buildKart` builds the model. Its
+- **Karts** (`render/drivers.ts`): each `Driver` is one of the friends: a body (`kart`, `trolley`,
+  `banger`, `chair`), colours and a second paint (`alt`, for a bot repeating them), extras (on the
+  driver and on the car), a trail and a horn. `buildKart` builds the model. Its
   `update(speed, steer, dt, grounded, flags)` animates wheels, steering, tilt, spinning out, the
-  shrink, gold paint, the shield bubble and the exhaust flames on a boost.
+  shrink and the martelinho's bonk, the filigrana's gold paint, the guarda-chuva, the exhaust
+  flames on a boost, and what moves on the car (Vale's clock and hourglass, Capelas's bumper and
+  wobbling spare, Pedro's antenna light).
 - **Warm-up**: at startup `main.ts` builds every driver's kart once and calls `renderer.compile`,
   so the first race doesn't freeze while shaders compile.
 

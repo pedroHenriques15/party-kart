@@ -1,5 +1,5 @@
 // The road itself, whatever the track: its surfaces and the lines painted on it, the kerbs and
-// pavements and central reservations beside it, the skirts under its edges, the party's banners
+// pavements and central reservations beside it, the skirts under its edges, the barriers
 // at the start, boost pads, the start line and gates, bridges, and the lights along it.
 import * as THREE from 'three';
 import { surfacePoint, type Sample, type Track } from '../track/track.ts';
@@ -269,7 +269,7 @@ export function buildRoad(track: Track, overWater: (s: Sample) => boolean, signs
     }
   }
 
-  // The party's barriers, white with its name, along the kerbs at the start.
+  // The barriers along the kerbs at the start, white and blue with the race's name.
   const wallMat = new THREE.MeshStandardMaterial({ map: tex.banner(), side: THREE.DoubleSide, roughness: 0.6 });
   for (const [a, b] of runs(track, (_s, i) => i < 160 || i > N - 160)) {
     for (const side of [-1, 1]) group.add(new THREE.Mesh(wall(track, a, b, (s) => side * (s.w / 2 + 0.4), 0.15, 1.3, 8), wallMat));
@@ -348,7 +348,7 @@ export function halos(points: THREE.Vector3[], colors: string[], size: number): 
   );
 }
 
-// Strings of party lights across the road, pole to pole, on stretches [from, to].
+// Strings of lights across the road, pole to pole, on stretches [from, to].
 export function stringLights(track: Track, stretches: [number, number][]): THREE.Group {
   const g = new THREE.Group();
   const N = track.samples.length;
@@ -421,7 +421,7 @@ export function lamps(track: Track, ground: (x: number, z: number) => number, wh
 }
 
 const GATE_PILLAR = new THREE.MeshStandardMaterial({ color: '#f4f2ec', roughness: 0.5 });
-const GATE_GOLD = new THREE.MeshStandardMaterial({ color: '#d4af37', roughness: 0.25, metalness: 1 });
+const GATE_FINIAL = new THREE.MeshStandardMaterial({ color: '#a49d90', roughness: 0.85 });
 
 // Two pillars and a sign across the road.
 export function gate(track: Track, i: number, sign: THREE.Texture, height: number): THREE.Group {
@@ -433,7 +433,8 @@ export function gate(track: Track, i: number, sign: THREE.Texture, height: numbe
     p.position.set(0, (height + 1.6) / 2, (side * span) / 2);
     p.castShadow = true;
     g.add(p);
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 8), GATE_GOLD);
+    // A granite ball on top, as on Braga's gateposts.
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 8), GATE_FINIAL);
     cap.position.set(0, height + 2.1, (side * span) / 2);
     g.add(cap);
   }

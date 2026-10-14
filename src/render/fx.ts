@@ -1,4 +1,4 @@
-// Particles: each driver's trail (confetti, money, gas, flames…), confetti for a lap, drift
+// Particles: each driver's trail (bits, receipts, smoke, foam…), confetti for a lap, drift
 // sparks, tyre smoke, dust, and the bits that fly when something's hit. A few pools, each one
 // draw call: a normal one, a glowing one for sparks, a big soft one for smoke.
 import * as THREE from 'three';
@@ -22,13 +22,11 @@ interface P {
 }
 
 const STYLE: Record<Exclude<Trail, null>, { colors: string[]; grav: number; life: number; spread: number; up: number; rate: number }> = {
-  confetti: { colors: ['#ffffff', '#d4af37', '#f5e6a8'], grav: -3, life: 1.4, spread: 2, up: 2, rate: 30 },
-  money: { colors: ['#3d9a50', '#7ed38d', '#2f7a3f'], grav: -2, life: 1.6, spread: 1.6, up: 2.5, rate: 18 },
-  gas: { colors: ['#a5ff3a', '#7bd12a', '#c8ff8a'], grav: 0.6, life: 1.6, spread: 0.6, up: 0.5, rate: 26 },
-  flame: { colors: ['#ff7a1a', '#ffd04d', '#ff3d1a'], grav: 1, life: 0.35, spread: 0.5, up: 0.4, rate: 60 },
-  bubbles: { colors: ['#d8f1ff', '#ffffff', '#ffd1e8'], grav: 0.8, life: 1.8, spread: 0.8, up: 1, rate: 14 },
-  sparkle: { colors: ['#ff4fd8', '#3be8c4', '#ffffff', '#ffe14d'], grav: -1, life: 0.8, spread: 1.2, up: 1.5, rate: 24 },
-  smoke: { colors: ['#9a9a9a', '#bdbdbd', '#7a7a7a'], grav: 0.7, life: 1.4, spread: 0.5, up: 0.6, rate: 20 },
+  bits: { colors: ['#22d3ee', '#4ade80', '#a5f3fc'], grav: 0, life: 0.9, spread: 0.8, up: 0.6, rate: 30 },
+  receipts: { colors: ['#fbfaf5', '#f1efe6', '#e6e2d4'], grav: -1.5, life: 1.6, spread: 1.4, up: 2, rate: 12 },
+  smoke: { colors: ['#2b2b2b', '#3d3d3d', '#1f1f1f'], grav: 0.7, life: 1.6, spread: 0.5, up: 0.6, rate: 26 },
+  sparkle: { colors: ['#e0b94a', '#fff3c4', '#ffffff'], grav: -1, life: 0.8, spread: 1.2, up: 1.5, rate: 24 },
+  foam: { colors: ['#ffffff', '#bff3e6', '#7fdcc8'], grav: 0.8, life: 1.8, spread: 0.8, up: 1, rate: 14 },
 };
 
 function dot(): THREE.CanvasTexture {
@@ -91,8 +89,7 @@ export class Particles {
   trail(key: string, kind: Trail, at: THREE.Vector3, back: THREE.Vector3, speed: number, boosting: boolean, dt: number): void {
     if (!kind) return;
     const s = STYLE[kind];
-    if (kind === 'flame' && !boosting && speed < 30) return;
-    const rate = s.rate * (kind === 'gas' || kind === 'smoke' ? 0.5 + Math.min(1, speed / 30) : Math.min(1, speed / 15));
+    const rate = s.rate * (kind === 'smoke' ? 0.5 + Math.min(1, speed / 30) : Math.min(1, speed / 15)) * (boosting ? 1.6 : 1);
     let n = (this.carry.get(key) ?? 0) + rate * dt;
     while (n >= 1) {
       n--;
@@ -101,9 +98,9 @@ export class Particles {
         at.x + back.x * 2 + r() * 0.5,
         at.y + 0.8 + Math.random() * 0.4,
         at.z + back.z * 2 + r() * 0.5,
-        back.x * (kind === 'flame' ? 8 : 1) + r(),
+        back.x + r(),
         s.up * Math.random(),
-        back.z * (kind === 'flame' ? 8 : 1) + r(),
+        back.z + r(),
         s.life * (0.7 + Math.random() * 0.6),
         s.colors[Math.floor(Math.random() * s.colors.length)],
         s.grav,

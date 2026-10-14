@@ -350,7 +350,7 @@ function homeScreen(): HTMLElement {
     'div',
     { class: 'panel home' },
     h('h1', {}, 'Party Kart', h('span', {}, '.')),
-    h('p', { class: 'tag' }, "P. Kiddy's White Party · the Volta dos Amigos, round Braga's real streets. Race your friends, throw things at them."),
+    h('p', { class: 'tag' }, "The Volta dos Amigos, round Braga's real streets, past the friends' houses. Race your friends, throw things at them."),
     h('label', {}, 'Your name', name),
     h('label', {}, 'Your driver'),
     grid,
@@ -606,7 +606,7 @@ function render(): void {
   else ui.replaceChildren(lobbyScreen(room));
 }
 
-// The lobby's showroom: your car turning slowly on the party stage.
+// The lobby's showroom: your car turning slowly on the plinth at the start.
 let showroomCar: Shown | null = null;
 function showroom(driverId: string): void {
   if (showroomCar?.driver === driverId) return;
@@ -711,21 +711,21 @@ function onArenaFx(r: RaceCtx, f: ArenaFx): void {
   } else if (f.k === 'boom') {
     const ev = f.ev;
     const where = { x: ev.x, y: ev.y, z: ev.z };
-    r.items.flash(where, t, '#ff4fd8', 4);
-    fx.spray(where, 260, ['#ffffff', '#d4af37', '#ffe14d', '#ff4fd8', '#3be8c4'], 16, 14, 2.4);
+    r.items.flash(where, t, '#ffb347', 4);
+    fx.spray(where, 260, ['#ffffff', '#ffe14d', '#ff7a1a', '#c8102e', '#7fd4ff'], 16, 14, 2.4);
     sfx.boom(Math.max(0.25, near(r, where)));
     r.shake = Math.max(r.shake, near(r, where) * 1.2);
-    r.hud.feed(`💣 ${a.nameOf(ev.owner)}'s party bomb blew up ${a.nameOf(ev.victim)}!`, 'big');
-  } else if (f.k === 'bass') {
+    r.hud.feed(`🚀 ${a.nameOf(ev.owner)}'s foguete got ${a.nameOf(ev.victim)}!`, 'big');
+  } else if (f.k === 'martelinho') {
     const ev = f.ev;
     const c = a.cars.get(ev.owner);
     if (c) r.items.wave(c, t);
-    sfx.bass();
-    r.hud.feed(`🔊 ${a.nameOf(ev.owner)} dropped the bass!`, 'big');
+    sfx.hammer();
+    r.hud.feed(`🔨 ${a.nameOf(ev.owner)}'s martelinho: bonk!`, 'big');
   }
 }
 
-const howName = (how: string) => ({ disco: 'disco ball 🪩', drone: 'paparazzi drone 📸', bomb: 'party bomb 💣', pudim: 'pudim 🍮', gold: 'gold plating 👑' })[how] ?? how;
+const howName = (how: string) => ({ bola: 'bola ⚽', pombo: 'pombo-correio 🕊️', foguete: 'foguete 🚀', pudim: 'pudim 🍮', filigrana: 'filigrana ✨' })[how] ?? how;
 
 function flashSplit(r: RaceCtx, text: string, cls: string, ms = 2000): void {
   r.split = { text, cls, until: performance.now() + ms };
@@ -752,6 +752,11 @@ function eggReact(r: RaceCtx | null, events: EggEvent[]): void {
       sfx.pop();
       r.vice = performance.now() + 15000;
       r.hud.feed('🚬🍺 One for the road, from the café', 'big');
+    }
+    if (e.kind === 'clock') {
+      sfx.alarm();
+      for (let k = 0; k < 60; k++) glow.add(e.at.x + (Math.random() - 0.5) * 6, e.at.y + (Math.random() - 0.5) * 5, e.at.z + (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, 2 + Math.random() * 4, (Math.random() - 0.5) * 6, 1.1, k % 2 ? '#ffe14d' : '#ffffff', -4);
+      r?.hud.feed("⏰ Vale's late again!", 'big');
     }
   }
 }
@@ -809,26 +814,26 @@ function noteForMe(r: RaceCtx, n: Note): void {
       sfx.got();
       break;
     case 'use':
-      if (n.kind === 'champagne' || n.kind === 'champagne3') {
+      if (n.kind === 'cafe' || n.kind === 'cafe3') {
         sfx.pop();
-        fx.spray(me.car.p, 50, ['#fff8e0', '#ffe9a8', '#ffffff'], 4, 7, 0.9);
-      } else if (n.kind === 'gold') sfx.got();
-      else if (n.kind === 'shield') {
+        fx.spray(me.car.p, 50, ['#6f4a2e', '#c8a27a', '#f3e6d0'], 4, 7, 0.9);
+      } else if (n.kind === 'filigrana') sfx.got();
+      else if (n.kind === 'guarda') {
         sfx.shield();
-        flashSplit(r, '🛡️ Bodyguard on: it blocks the next hit', 'faster', 1600);
-      } else if (n.kind !== 'bass') sfx.throw();
+        flashSplit(r, '☂️ Guarda-chuva open: it keeps off the next hit', 'faster', 1600);
+      } else if (n.kind !== 'martelinho') sfx.throw();
       break;
     case 'hit':
       sfx.hit(1);
       r.shake = Math.max(r.shake, 0.8);
-      flashCenter(r, n.how === 'gold' ? 'Knocked by gold!' : `${n.by}'s ${howName(n.how)}!`, 'hit', 1400);
+      flashCenter(r, n.how === 'filigrana' ? 'Knocked by the filigrana!' : `${n.by}'s ${howName(n.how)}!`, 'hit', 1400);
       break;
     case 'blocked':
       sfx.shield();
-      flashSplit(r, '🛡️ Bodyguard blocked it!', 'faster');
+      flashSplit(r, '☂️ The guarda-chuva kept it off!', 'faster');
       break;
     case 'shrunk':
-      flashCenter(r, `🔊 ${n.by} dropped the bass!`, 'hit', 1600);
+      flashCenter(r, `🔨 Bonk! ${n.by}'s martelinho`, 'hit', 1600);
       r.shake = Math.max(r.shake, 0.5);
       break;
     case 'bump':
@@ -1176,10 +1181,12 @@ function frame(now: number): void {
       showroomCar.model.group.position.copy(p);
       showroomCar.model.group.rotation.set(0, t * 0.6, 0);
       showroomCar.model.update(0, Math.sin(t) * 0.5, dt, true, 0);
-      const toCam = new THREE.Vector3(-s.r.x, 0, -s.r.z).multiplyScalar(7.5).addScaledVector(new THREE.Vector3(s.t.x, 0, s.t.z), -1.5);
-      camera.position.set(p.x + toCam.x, p.y + 2.6, p.z + toCam.z);
-      const aim = new THREE.Vector3(s.t.x, 0, s.t.z).multiplyScalar(2.4);
-      camera.lookAt(p.x + aim.x, p.y + 1.1, p.z + aim.z);
+      // From the road's side, so the plinth's wall with Braga's arms is behind the car, and the car
+      // on the right of the screen, clear of the menus.
+      const toRoad = new THREE.Vector3(s.p.x - p.x, 0, s.p.z - p.z).normalize();
+      const right = new THREE.Vector3().crossVectors(toRoad, new THREE.Vector3(0, -1, 0));
+      camera.position.set(p.x + toRoad.x * 7.5 + right.x * 1.5, p.y + 2.6, p.z + toRoad.z * 7.5 + right.z * 1.5);
+      camera.lookAt(p.x - right.x * 2.4, p.y + 1.1, p.z - right.z * 2.4);
       look.follow(p);
     } else if (attract[0]) {
       const c = attract[0].car;

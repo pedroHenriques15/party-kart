@@ -1,8 +1,8 @@
 # Party Kart
 
-P. Kiddy's White Party · the Volta dos Amigos, round Braga's real streets. A kart game to race your friends in the browser,
-on a keyboard or a phone, with power-ups and bots. A throwaway game: no server, no accounts,
-nothing to maintain. All names are parodies, and all faces are cartoons.
+The Volta dos Amigos, round Braga's real streets and past the friends' houses. A kart game to race
+your friends in the browser, on a keyboard or a phone, with power-ups and bots. A throwaway game: no
+server, no accounts, nothing to maintain. The drivers are the friends, and all faces are cartoons.
 
 ## Playing
 
@@ -40,14 +40,14 @@ The power-ups, from the **?** boxes. The further behind you are, the better what
 
 | | |
 |---|---|
-| 🍾 Champagne (×1 or ×3) | A burst of speed |
+| ☕ Café (×1, or três cafés) | A burst of speed |
 | 🍮 Pudim Abade de Priscos | Dropped behind you; whoever hits it spins |
-| 🪩 Disco ball | Rolls ahead (or back); spins whoever it meets |
-| 📸 Paparazzi drone | Flies to the car ahead of you |
-| 💣 Party bomb | Goes for the leader, and catches anyone close |
-| 👑 Gold plating | Faster, untouchable; spins whoever you touch |
-| 🔊 Bass drop | Shrinks everyone ahead of you |
-| 🛡️ Bodyguard | On as soon as you get it, and blocks the next hit. Your item slot stays free for the next box |
+| ⚽ Bola do Braga | Rolls ahead (or back); spins whoever it meets |
+| 🕊️ Pombo-correio | Flies to the car ahead of you |
+| 🚀 Foguete | Goes for the leader, and catches anyone close |
+| ✨ Filigrana | Gold all over: faster, untouchable; spins whoever you touch |
+| 🔨 Martelinho | Bonks everyone ahead of you down to size |
+| ☂️ Guarda-chuva | Open as soon as you get it, and keeps off the next hit. Your item slot stays free for the next box |
 
 Also: get right behind a car and its **slipstream** builds up over a second or so and pulls you
 along, harder the closer you are, and when you pull out to pass the extra speed wears off over a
@@ -63,7 +63,7 @@ beside them. From the line on the Rua do Fujacal, west as its traffic goes, roun
 Imaculada Conceição, down the Avenida da Liberdade and over the Rio Este at São João da Ponte; up
 past the Largo da Devesa to the slopes of the Picoto; up the Avenida 31 de Janeiro and the Avenida
 João XXI and back down the Rua Bernardo Sequeira, then Lamaçães's avenues and roundabouts, past
-Makro and the Tourigalo's bull; back west round the Picoto by the Picoto Adventure Park, and down
+Makro and the Tourigalo; back west round the Picoto by the Picoto Adventure Park, and down
 the Avenida Doutor Viriato Amaral Nunes past the Estádio 1.º de Maio and the Altice Forum; through a
 new link into what was the dead end of the Rua Nova do Couteiro, over the river again, and home
 along the Rua Conselheiro Lobato.
@@ -73,13 +73,18 @@ painted white, their zebra crossings, traffic lights and bus stops, calçada pav
 granite kerbs, central reservations where the avenues have them, and granite setts where the
 street is cobbled. A blue-and-white plate names each street as you turn into it. Bom Jesus and the
 Sameiro stand on the hills to the east, drawn twice their size so you can find them, and the cross
-on top of the Picoto. Look out for a dog, a dentist, a supermarket and a café.
+on top of the Picoto. By the Avenida Doutor António Alves Palha's roundabout stands the Tourigalo, the
+black bull with a rooster's head, on its lawn. Each friend's house has its joke on it: a dog, a
+dentist, a supermarket, a café, and an alarm clock.
 
 The first track, the cartoon Braga Grand Prix (the Avenida, the Sé, the switchbacks of Bom Jesus
 and the jump), is kept in the code for reference, but the game doesn't race it any more.
 
-The drivers: P. Kiddy (the host), Donald Trunk, Gucci Pain, Lil Woozy Vert, Trav Scotch,
-22 Average, Lil Babyface, Lil Past and Playboi Farty.
+The drivers are the five friends, each in a car that's a joke about them: Pedro's tech kart (a laptop
+on the nose, a Wi-Fi antenna, neon underneath), Joel's dentist's chair, Joel F.'s Mercadona trolley,
+Capelas's car for sale for parts (rusty, roofless, its bumper hanging off), and Vale's kart with a
+giant alarm clock on the back, because he's always late. With more than five on the grid, the bots
+drive the same cars again in a second paint ("Pedro II").
 
 **Graphics**: High, Medium or Low, on the first screen and in the lobby. Phones start on Medium. If
 a race runs slowly, the game steps down a level by itself, as far as Low.
@@ -89,7 +94,7 @@ a race runs slowly, the game steps down a level by itself, as far as Low.
 - Everyone drives their own car in their own browser, so there's no lag on your own driving.
   Whoever creates the room is the host: their browser drives the bots, relays where everyone is
   (15 times a second) and what they throw, keeps the order and the clock.
-- What's thrown is deterministic: a disco ball is where it started, how fast and when, so every
+- What's thrown is deterministic: a bola is where it started, how fast and when, so every
   browser draws it in the same place without sending positions. A hit is decided by the one
   who gets hit, in their own browser, and told to the others: what you see is what happened.
 - Players connect over WebRTC, through [PeerJS](https://peerjs.com/)'s free public server, which

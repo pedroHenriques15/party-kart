@@ -2,11 +2,11 @@
 // where everyone is and what they throw, drives the bots, keeps the leaderboard and the clock.
 import Peer, { type DataConnection } from 'peerjs';
 import type { ItemEv } from './game/items.ts';
-import { DRIVERS } from './render/drivers.ts';
+import { driverById, DRIVERS, repeatOf } from './render/drivers.ts';
 
 // Builds see each other's rooms only while this matches: pk30 is the Volta dos Amigos by the rules
 // of the road, one-way streets the way they go.
-const PREFIX = 'partykart-pk30-';
+const PREFIX = 'partykart-pk31-';
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 export const HOST_ID = 'host';
 export const MAX_RACERS = 8;
@@ -177,12 +177,12 @@ function cleanEv(from: string, ev: ItemEv): ItemEv | null {
   const n = (v: unknown) => num(v, -1e7, 1e7);
   switch (ev.k) {
     case 'proj':
-      if (!['disco', 'drone', 'bomb'].includes(ev.kind)) return null;
+      if (!['bola', 'pombo', 'foguete'].includes(ev.kind)) return null;
       return { k: 'proj', id, kind: ev.kind, owner: from, t0: n(ev.t0), p0: n(ev.p0), lat: num(ev.lat, -20, 20), v: num(ev.v, -200, 200), target: ev.target === undefined ? undefined : str(ev.target) };
     case 'haz':
       return { k: 'haz', id, kind: 'pudim', owner: from, t0: n(ev.t0), idx: num(ev.idx, 0, 1e5) | 0, lat: num(ev.lat, -20, 20) };
-    case 'bass':
-      return { k: 'bass', id, owner: from, t0: n(ev.t0), p0: n(ev.p0) };
+    case 'martelinho':
+      return { k: 'martelinho', id, owner: from, t0: n(ev.t0), p0: n(ev.p0) };
     case 'hit':
       return { k: 'hit', id, item: str(ev.item), victim: ev.victim === null ? null : from, blocked: !!ev.blocked, how: str(ev.how, 16), x: n(ev.x), y: n(ev.y), z: n(ev.z) };
     case 'boom':
@@ -284,13 +284,14 @@ export class HostRoom implements Room {
     return this.lobby.members.filter((m) => !m.bot);
   }
 
-  // The bots take the drivers nobody picked, up to the number asked for and the grid's size.
+  // The bots take the drivers nobody picked, then the same cars again in their second paint, up
+  // to the number asked for and the grid's size.
   private syncBots(): void {
     const humans = this.humans();
     const taken = new Set(humans.map((m) => m.driver));
-    const free = DRIVERS.filter((d) => !taken.has(d.id));
-    const n = Math.max(0, Math.min(this.lobby.bots, MAX_RACERS - humans.length, free.length));
-    const bots = free.slice(0, n).map((d, k) => ({ id: `bot-${k + 1}`, name: d.name, driver: d.id, bot: true }));
+    const free = [...DRIVERS.filter((d) => !taken.has(d.id)).map((d) => d.id), ...DRIVERS.map((d) => repeatOf(d.id))];
+    const n = Math.max(0, Math.min(this.lobby.bots, MAX_RACERS - humans.length));
+    const bots = free.slice(0, n).map((id, k) => ({ id: `bot-${k + 1}`, name: driverById(id).name, driver: id, bot: true }));
     this.lobby.members = [...humans, ...bots];
   }
 

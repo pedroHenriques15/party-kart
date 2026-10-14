@@ -123,7 +123,7 @@ export class Hud {
     speed: number;
     boosting: boolean;
     slip: number; // the slipstream's strength, 0 to 1
-    shield: boolean; // the bodyguard's on
+    shield: boolean; // the umbrella's open
     center: { text: string; cls: string } | null;
     split: { text: string; cls: string } | null;
   }): void {

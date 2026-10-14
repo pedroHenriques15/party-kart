@@ -56,14 +56,14 @@ export function botControls(r: Racer, b: Brain, a: Arena, dt: number): Controls 
       return d > 4 && d < 70;
     });
     switch (r.item.kind) {
-      case 'champagne':
-      case 'champagne3':
+      case 'cafe':
+      case 'cafe3':
         use = b.held > b.patience && speedOf(r.car) > 15 && inp.brake === 0;
         break;
       case 'pudim':
         use = behind || b.held > 6;
         break;
-      case 'disco':
+      case 'bola':
         if (ahead) use = true;
         else if (behind) use = back = true;
         else use = b.held > 8;

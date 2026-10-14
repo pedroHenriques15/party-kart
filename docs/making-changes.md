@@ -115,7 +115,7 @@ Work through the list. The ones in bold fail silently if you miss them.
    - Extend `ProjKind` and `LIFE`, or add a variant to `ItemEv`, and handle it in `Arena.apply`
      (`src/game/arena.ts`). If it needs a sound or effect, add it to `ArenaFx` as well.
    - **Add it to `cleanEv` in `src/session.ts`.** The host drops any event kind, and any `proj`
-     kind outside `['disco', 'drone', 'bomb']`, that it doesn't recognise. Clamp every new number
+     kind outside `['bola', 'pombo', 'foguete']`, that it doesn't recognise. Clamp every new number
      and set `owner` from the sender.
 4. **If other players need to see its effect on a car**, add a status flag. See
    [A new status flag](#a-new-status-flag).
@@ -127,7 +127,7 @@ Work through the list. The ones in bold fail silently if you miss them.
      `src/main.ts`, with new sounds in `sfx` in `src/audio.ts`.
    - If it hits people, add it to `howName` in `main.ts` for the feed ("X got Y's …").
 7. **`README.md`**: add a row to the items table.
-8. **`test/race.test.ts`**: add a test in the style of the disco ball and drone ones, using
+8. **`test/race.test.ts`**: add a test in the style of the bola and pombo ones, using
    `at(...)`, `arena(...)`, `tick(...)` and a seeded random.
 
 ## A new driver
@@ -139,14 +139,17 @@ Work through the list. The ones in bold fail silently if you miss them.
    - `extras`: from `Extra`. New ones are built in `buildDriverFigure`/`buildKart`.
    - `trail`: a key of `STYLE` in `src/render/fx.ts`, or `null`.
    - `horn`: notes in Hz.
-   - `color`, `trim`, `skin`, `outfit`, a `name` and a one-line `tagline`.
-2. Names are parodies and faces are the shared friendly cartoon face. The README says so, and keep
-   it true.
-3. Add them to the drivers list in `README.md`.
+   - `color`, `trim`, `alt` (the second paint), `skin`, `outfit`, a `name` and a one-line `tagline`.
+2. The drivers are the friends the Volta dos Amigos goes past, by first name and never a surname
+   (braga-map's decision 014), each in a car that's a joke about them. Every face is the shared
+   friendly cartoon face, never a likeness.
+3. Add them to the drivers in `README.md`.
 
 Order matters a little. `DRIVERS[0]` is the fallback for an unknown id, and the bots take the free
-drivers in list order. There are more drivers (9) than places on the grid (`MAX_RACERS = 8`). The
-start-up warm-up compiles every driver by itself.
+drivers in list order. There are fewer drivers (5) than places on the grid (`MAX_RACERS = 8`), so
+past the free ones the bots drive them again in their second paint: `repeatOf(id)` is
+`<id>-2`, which `driverById` paints with `alt` and names "<name> II". Players only ever pick the
+five (`validDriver`). The start-up warm-up compiles every driver by itself.
 
 ## A new status flag
 
@@ -202,11 +205,14 @@ footprint's rectangle, a front), make the world again (see "The track"), and add
 
 ## An easter egg
 
-The eggs are in `src/render/eggs.ts`. Each is a model by the road and an update that watches your
-kart (its sample and speed) and returns events: `eggReact` in `main.ts` turns those into sounds,
-sparkles and a line in the feed. They react to your own kart only, so nothing goes over the
-network. Where they stand comes from the waypoints' `egg` in braga-map's `.cache/places.json`,
-through its `tools/track.mjs`: a new one needs a kind in `SET_BACK` and `CLEAR`, a builder, and
-its sounds in `sfx` (`src/audio.ts`). An egg that does something to your own kart for a while (the café's
+The eggs are in `src/render/eggs.ts`. Each is a model on a friend's house and an update that
+watches your kart (its sample and speed) and returns events: `eggReact` in `main.ts` turns those
+into sounds, sparkles and a line in the feed. They react to your own kart only, so nothing goes over
+the network. Where they stand comes from the waypoints' `egg` in braga-map's `.cache/places.json`,
+through its `tools/track.mjs`: each egg's `x`, `z` is the house's own spot (decision 014), and
+`eggSpots` stands the model there, its front to the road, or just far enough from the kerb for
+what's in front of it. A new one needs a kind in `FRONT` and `CLEAR`, a builder, and its sounds in
+`sfx` (`src/audio.ts`). Vale's clock stands on the roof of the building at its spot
+(`roofAt`, from `city.ts`), so it clears nothing. An egg that does something to your own kart for a while (the café's
 cigarette and beer) keeps its time in `RaceCtx` in `main.ts`, and passes it to the kart model's
 `update`.

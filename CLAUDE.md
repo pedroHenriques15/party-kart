@@ -28,7 +28,7 @@ npm run build        # tsc && vite build, into dist/
 npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publishes the game
 ```
 
-- Run one test with `node --test --test-name-pattern="disco ball" test/race.test.ts`.
+- Run one test with `node --test --test-name-pattern="bola" test/race.test.ts`.
 - Node runs the `.ts` tests directly by stripping the types, so it needs Node 22.18 or later, and it
   does **not** type-check them. Run `npm run check` as well as `npm test`.
 - `npm run deploy` publishes to the public site. Only run it when asked. It needs bash (Git Bash on
@@ -139,9 +139,11 @@ How a race runs:
 - **The road's width is kerb to kerb.** A sample's `w` is the carriageway, and the walls stand at
   its edges. The pavements, central reservations and lane lines beyond and on it are only drawn
   (`kerbs` and `lanes`, carried through the layout like `w`), so karts never drive on them.
-- **The friends' houses stay out of the repos, which are public.** The waypoints are only in
-  braga-map's ignored `.cache/places.json` and the shared map's database. The easter eggs stand 44–50 m past
-  the houses, never at them, and nothing names whose street is whose. Keep it that way.
+- **The friends' houses.** The waypoints are only in braga-map's ignored `.cache/places.json` and
+  the shared map's database. Since braga-map's decision 014 (the owner's choice, knowing the repos
+  are public) the easter eggs stand on the houses themselves, and the drivers are the friends by
+  first name, each car matching their egg. Still: never a surname, a street name or a door number
+  in the code, the docs or the UI.
 - **The first track is kept for reference.** `LAYOUT` (`src/track/layout.ts`) and its world
   (`world.ts`, `landmarks.ts`, `braga.ts`, `buildTrees`) compile but aren't used by the game.
   Its scenery has raw sample indices of `LAYOUT` in it. The tests use the track for the jump and

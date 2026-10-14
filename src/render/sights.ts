@@ -1,6 +1,6 @@
 // The sights a Bracarense steers by. Bom Jesus and the Sameiro on the hills to the east, seen from
 // all over the track, and the hills of the horizon behind them; the cross on top of the Picoto;
-// and along the way the Estádio 1.º de Maio, the Altice Forum, Makro and the Tourigalo's bull.
+// and along the way the Estádio 1.º de Maio, the Altice Forum, Makro and the Tourigalo.
 // Simple shapes, at their real places and sizes from the map (braga-map's tools/world.mjs). Far
 // off, it's their outline against the sky that counts.
 import type { Grid, Sight } from 'braga-map';
@@ -149,51 +149,110 @@ function cruzeiro(s: { x: number; y: number; z: number }): THREE.Group {
   return g;
 }
 
-// ---- The Tourigalo's bull: black and glossy on a granite plinth, side-on to the road. ----
-function tourigalo(s: { x: number; y: number; z: number; face?: number }): THREE.Group {
+// ---- The Tourigalo: the restaurant's mascot, half bull and half rooster (touro + galo), as
+// Mapillary's photos show it (2018-2019). A black bull's body, deep in the chest, on four short
+// thick legs, its tail hanging from the rump; from its shoulders a rooster's neck, the head with a
+// big red comb, red wattles and a yellow beak and eyes; "Tourigalo" in white script on both flanks.
+// It stands straight on the grass, its head to the west. About 5 m to the top of the comb. ----
+function tourigalo(s: { x: number; y: number; z: number; face: number }): THREE.Group {
   const g = new THREE.Group();
-  const hide = mat('#151515', { roughness: 0.3, metalness: 0.35 });
-  const horn = mat('#ece2c6', { roughness: 0.4 });
-  const bull = new THREE.Group();
-  // +x is his nose, along the road.
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 2.0, 8, 16), hide);
-  body.rotation.z = Math.PI / 2;
-  body.scale.set(1.25, 1, 0.95);
-  body.position.set(0, 1.55, 0);
-  bull.add(body);
-  // The hump over his shoulders, and the neck down to the head.
-  bull.add(mesh(new THREE.SphereGeometry(0.62, 16, 12), hide, 0.75, 1.85, 0));
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.55, 0.9, 12), hide);
-  neck.position.set(1.35, 1.6, 0);
-  neck.rotation.z = -1.0;
-  bull.add(neck);
-  const head = new THREE.Group();
-  head.add(box(0.7, 0.55, 0.5, hide, 0, -0.3, 0), box(0.35, 0.36, 0.42, hide, 0.42, -0.55, 0));
-  for (const z of [-1, 1]) {
-    const h = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.7, 8), horn);
-    h.position.set(0, 0.12, z * 0.42);
-    h.rotation.set(z * 1.1, 0, -0.6);
-    head.add(h);
+  const black = mat('#18191b', { roughness: 0.55 });
+  const hoof = mat('#0c0c0d', { roughness: 0.4 });
+  const red = mat('#a3352a', { roughness: 0.5 });
+  const yellow = mat('#e3c22b', { roughness: 0.45 });
+  // An ellipsoid at (x, y, z), radius r stretched by (sx, sy, sz).
+  const blob = (m: THREE.Material, x: number, y: number, z: number, r: number, sx: number, sy: number, sz: number) => {
+    const o = mesh(new THREE.SphereGeometry(r, 16, 10), m, x, y, z);
+    o.scale.set(sx, sy, sz);
+    return g.add(o);
+  };
+  // A rounded limb from a to b, in the side view (x forward, y up), at z.
+  const limb = (m: THREE.Material, ax: number, ay: number, bx: number, by: number, z: number, r: number) => {
+    const len = Math.max(0.01, Math.hypot(bx - ax, by - ay) - 2 * r);
+    const o = mesh(new THREE.CapsuleGeometry(r, len, 6, 14), m, (ax + bx) / 2, (ay + by) / 2, z);
+    o.rotation.z = Math.atan2(by - ay, bx - ax) - Math.PI / 2;
+    return g.add(o);
+  };
+  // A body of revolution along x: its radius at each x, smoothed, turned round the axis.
+  const turned = (profile: [number, number][], segments = 28) =>
+    new THREE.LatheGeometry(new THREE.SplineCurve(profile.map(([x, r]) => new THREE.Vector2(r, x))).getPoints(48), segments).rotateZ(-Math.PI / 2);
+  // The bull: the body thick at the haunches and the chest, a little slimmer between, its back
+  // nearly level; the chest dropping deep between the front legs, the dewlap under it.
+  const torso = mesh(turned([[-1.95, 0.05], [-1.85, 0.5], [-1.5, 0.72], [-1.1, 0.76], [-0.4, 0.7], [0.4, 0.74], [1.0, 0.8], [1.5, 0.66], [1.75, 0.3], [1.8, 0.02]]), black, 0, 1.6, 0);
+  torso.scale.set(1, 1, 0.84);
+  g.add(torso);
+  blob(black, 0.9, 1.25, 0, 0.62, 1.15, 0.85, 0.82);
+  blob(black, 1.45, 1.05, 0, 0.4, 0.55, 1, 0.45);
+  blob(black, -1.3, 1.72, 0, 0.66, 0.9, 0.95, 0.88);
+  // The legs: the front ones straight, the back ones bent at the hock, thick to the hooves.
+  for (const z of [-0.4, 0.4]) {
+    limb(black, 1.05, 1.3, 1.12, 0.5, z, 0.27);
+    limb(black, 1.12, 0.62, 1.15, 0.14, z, 0.19);
+    g.add(mesh(new THREE.CylinderGeometry(0.2, 0.23, 0.14, 14), hoof, 1.16, 0.07, z));
+    limb(black, -1.22, 1.55, -1.45, 0.62, z * 0.95, 0.32);
+    limb(black, -1.45, 0.66, -1.36, 0.14, z * 0.95, 0.18);
+    g.add(mesh(new THREE.CylinderGeometry(0.2, 0.23, 0.14, 14), hoof, -1.36, 0.07, z * 0.95));
   }
-  head.position.set(1.85, 1.45, 0);
-  head.rotation.z = -0.5;
-  bull.add(head);
-  for (const [x, z] of [[1.0, -0.3], [1.0, 0.3], [-1.0, -0.3], [-1.0, 0.3]]) bull.add(mesh(new THREE.CylinderGeometry(0.1, 0.13, 1.15, 8), hide, x, 0.57, z));
-  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 1.2, 6), hide);
-  tail.position.set(-1.65, 1.3, 0);
-  tail.rotation.z = -0.25;
-  bull.add(tail);
-  bull.scale.setScalar(1.6);
-  bull.rotation.y = -Math.PI / 2;
-  bull.position.y = 1.4;
-  g.add(bull);
-  g.add(box(2.6, 1.4, 5.6, GRANITE(), 0, 0, 0));
-  const plate = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 0.8), new THREE.MeshStandardMaterial({ map: tex.sign('TOURIGALO', '', '#f1ead6', '#5a1a14', 1024, 186, ''), roughness: 0.5 }));
-  plate.rotation.y = Math.PI / 2;
-  plate.position.set(1.31, 0.75, 0);
-  g.add(plate);
+  // The tail, from the top of the rump down to the hocks, and its tuft.
+  limb(black, -1.85, 2.2, -2.0, 1.4, 0, 0.08);
+  limb(black, -2.0, 1.4, -1.96, 0.85, 0, 0.07);
+  blob(black, -1.96, 0.72, 0, 0.14, 0.8, 1.6, 0.8);
+  // The rooster: a thick neck rising from the shoulders, leaning a little forward and tapering
+  // smoothly up into the head.
+  const neck = mesh(new THREE.LatheGeometry([[0.0, -0.2], [0.62, -0.2], [0.66, 0.2], [0.6, 0.8], [0.5, 1.4], [0.45, 1.8], [0.44, 2.05], [0.3, 2.3], [0.0, 2.36]].map(([r, y]) => new THREE.Vector2(r, y)), 28), black, 1.32, 1.75, 0);
+  neck.rotation.z = -0.16;
+  neck.scale.z = 0.86;
+  g.add(neck);
+  blob(black, 1.82, 3.72, 0, 0.42, 1.25, 0.95, 0.88);
+  // The comb: five big red lobes standing in a row over the head, back to front, on a fleshy base.
+  blob(red, 1.72, 4.18, 0, 0.55, 1.05, 0.5, 0.3);
+  for (let k = 0; k < 5; k++) {
+    const a = ((150 - k * 30) * Math.PI) / 180;
+    blob(red, 1.74 + Math.cos(a) * 0.55, 4.05 + Math.sin(a) * 0.62, 0, 0.32, 0.95, 1.2, 0.32);
+  }
+  // The beak, pointing ahead and a little down; the wattles under it; the eyes.
+  const beak = mesh(new THREE.ConeGeometry(0.17, 0.62, 14).rotateZ(-Math.PI / 2 - 0.15), yellow, 2.55, 3.62, 0);
+  beak.scale.z = 0.8;
+  g.add(beak);
+  for (const z of [-1, 1]) {
+    blob(red, 2.22, 3.28, z * 0.08, 0.2, 0.7, 1.3, 0.35);
+    blob(yellow, 2.12, 3.84, z * 0.32, 0.12, 0.6, 1, 0.3);
+    blob(yellow, 2.08, 3.62, z * 0.34, 0.1, 0.6, 1, 0.3);
+    blob(hoof, 2.17, 3.86, z * 0.35, 0.045, 1, 1, 1);
+  }
+  // "Tourigalo" on each flank, reading along it from either side.
+  const name = new THREE.MeshStandardMaterial({ map: tex.script('Tourigalo', '#f4f4f0'), transparent: true, depthWrite: false, roughness: 0.6 });
+  for (const z of [-1, 1]) {
+    const plate = mesh(new THREE.PlaneGeometry(2.1, 0.53), name, -0.35, 1.66, z * 0.66);
+    plate.rotation.y = z < 0 ? Math.PI : 0;
+    plate.castShadow = false;
+    g.add(plate);
+  }
+  // The stone by its front hoof.
+  const stone = mesh(new THREE.DodecahedronGeometry(0.3), mat('#8f8a82', { roughness: 0.95 }), 1.75, 0.1, -0.6);
+  stone.scale.set(1.4, 0.6, 1);
+  g.add(stone);
   g.position.set(s.x, s.y, s.z);
-  g.rotation.y = -(s.face ?? 0);
+  g.rotation.y = -s.face;
+  return g;
+}
+
+// The restaurant behind it: a grey band along the top of its front with "Restaurante" in green
+// script, and a red board by the door.
+function restaurant(f: { x: number; z: number; face: number; L: number }, ground: Ground): THREE.Group {
+  const g = new THREE.Group();
+  const top = 5.2;
+  g.add(box(0.4, 1.3, 2 * f.L, mat('#b9bec2', { roughness: 0.45, metalness: 0.4 }), 0.2, top - 1.3, 0));
+  const word = new THREE.Mesh(new THREE.PlaneGeometry(12, 1.25), new THREE.MeshStandardMaterial({ map: tex.script('Restaurante', '#3f9a4a', '#1f5a28', 1024, 128), transparent: true, depthWrite: false, roughness: 0.5 }));
+  word.rotation.y = Math.PI / 2;
+  word.position.set(0.42, top - 0.65, -2);
+  g.add(word);
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.9), new THREE.MeshStandardMaterial({ map: tex.sign('TOURIGALO', 'churrasqueira', '#c8102e', '#ffffff', 512, 136, ''), roughness: 0.5 }));
+  board.rotation.y = Math.PI / 2;
+  board.position.set(0.04, 3.0, f.L - 4.5);
+  g.add(board);
+  g.position.set(f.x, ground(f.x, f.z), f.z);
+  g.rotation.y = -f.face;
   return g;
 }
 
@@ -300,7 +359,10 @@ export function buildSights(list: Sight[], track: Track, ground: Ground, far: Gr
     if (s.kind === 'bomjesus') g = bomJesus({ ...s, y: far(s.x, s.z) }, far);
     if (s.kind === 'sameiro') g = sameiro({ ...s, y: far(s.x, s.z) }, far);
     if (s.kind === 'cruzeiro') g = cruzeiro({ ...s, y: ground(s.x, s.z) });
-    if (s.kind === 'tourigalo') g = tourigalo({ ...s, y: ground(s.x, s.z) });
+    if (s.kind === 'tourigalo') {
+      g = tourigalo({ ...s, y: ground(s.x, s.z) });
+      if (s.sign) group.add(bake(restaurant(s.sign, ground)));
+    }
     if (s.kind === 'makro') g = fascia(s, ground, 'makro', '#ffd400', '#111111', 6, 10);
     if (s.kind === 'altice') g = fascia(s, ground, 'ALTICE FORUM BRAGA', '#f4f4f2', '#1b1d22', 4.5, 14);
     if (s.kind === 'stadium') g = stadium({ ...s, y: ground(s.x, s.z) }, track);

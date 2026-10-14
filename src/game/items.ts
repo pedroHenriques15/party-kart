@@ -7,25 +7,25 @@ import type { Track } from '../track/track.ts';
 // sending positions. Hits are decided by the one who gets hit, in their own browser, and told to
 // the others; so what you see is what happened to you.
 
-export type ItemKind = 'champagne' | 'champagne3' | 'pudim' | 'disco' | 'drone' | 'bomb' | 'gold' | 'bass' | 'shield';
+export type ItemKind = 'cafe' | 'cafe3' | 'pudim' | 'bola' | 'pombo' | 'foguete' | 'filigrana' | 'martelinho' | 'guarda';
 
 export const ITEMS: Record<ItemKind, { name: string; icon: string; uses: number; blurb: string }> = {
-  champagne: { name: 'Champagne', icon: '🍾', uses: 1, blurb: 'A burst of speed' },
-  champagne3: { name: 'Three champagnes', icon: '🍾', uses: 3, blurb: 'Three bursts of speed' },
+  cafe: { name: 'Café', icon: '☕', uses: 1, blurb: 'A burst of speed' },
+  cafe3: { name: 'Três cafés', icon: '☕', uses: 3, blurb: 'Three bursts of speed' },
   pudim: { name: 'Pudim Abade de Priscos', icon: '🍮', uses: 1, blurb: 'Dropped behind you; whoever hits it spins' },
-  disco: { name: 'Disco ball', icon: '🪩', uses: 1, blurb: 'Rolls ahead; hold ↓ to roll it back' },
-  drone: { name: 'Paparazzi drone', icon: '📸', uses: 1, blurb: 'Flies to the car ahead of you' },
-  bomb: { name: 'Party bomb', icon: '💣', uses: 1, blurb: 'Goes for the leader' },
-  gold: { name: 'Gold plating', icon: '👑', uses: 1, blurb: 'Faster, and nothing touches you' },
-  bass: { name: 'Bass drop', icon: '🔊', uses: 1, blurb: 'Shrinks everyone ahead of you' },
-  shield: { name: 'Bodyguard', icon: '🛡️', uses: 1, blurb: 'On as soon as you get it; blocks the next hit' },
+  bola: { name: 'Bola do Braga', icon: '⚽', uses: 1, blurb: 'Rolls ahead; hold ↓ to roll it back' },
+  pombo: { name: 'Pombo-correio', icon: '🕊️', uses: 1, blurb: 'Flies to the car ahead of you' },
+  foguete: { name: 'Foguete', icon: '🚀', uses: 1, blurb: 'Goes for the leader' },
+  filigrana: { name: 'Filigrana', icon: '✨', uses: 1, blurb: 'Gold all over: faster, and nothing touches you' },
+  martelinho: { name: 'Martelinho', icon: '🔨', uses: 1, blurb: 'Bonks everyone ahead of you down to size' },
+  guarda: { name: 'Guarda-chuva', icon: '☂️', uses: 1, blurb: 'Open as soon as you get it; keeps off the next hit' },
 };
 
 // Who gets what: the leader gets defence and small stuff, the back of the pack the big guns.
 type Weights = Partial<Record<ItemKind, number>>;
-const FRONT: Weights = { pudim: 35, disco: 25, champagne: 20, shield: 20 };
-const MIDDLE: Weights = { champagne: 18, champagne3: 8, disco: 20, drone: 20, pudim: 14, shield: 10, gold: 5, bass: 2, bomb: 3 };
-const BACK: Weights = { champagne3: 20, drone: 18, gold: 16, bomb: 12, bass: 10, champagne: 14, disco: 6, shield: 4 };
+const FRONT: Weights = { pudim: 35, bola: 25, cafe: 20, guarda: 20 };
+const MIDDLE: Weights = { cafe: 18, cafe3: 8, bola: 20, pombo: 20, pudim: 14, guarda: 10, filigrana: 5, martelinho: 2, foguete: 3 };
+const BACK: Weights = { cafe3: 20, pombo: 18, filigrana: 16, foguete: 12, martelinho: 10, cafe: 14, bola: 6, guarda: 4 };
 
 // The odds at a place in the race: 0 is the leader, 1 the last.
 export function itemOdds(place: number): Weights {
@@ -46,7 +46,7 @@ export function rollItem(place: number, rand: () => number = Math.random): ItemK
     r -= w;
     if (r <= 0) return k;
   }
-  return 'champagne';
+  return 'cafe';
 }
 
 // Where you are in the race, 0 (first) to 1 (last); 0.5 when alone.
@@ -54,7 +54,7 @@ export const placeFraction = (rank: number, count: number) => (count <= 1 ? 0.5 
 
 // ---- What happens in a race, as events every browser applies. ----
 
-export type ProjKind = 'disco' | 'drone' | 'bomb';
+export type ProjKind = 'bola' | 'pombo' | 'foguete';
 
 export interface Proj {
   id: string;
@@ -64,7 +64,7 @@ export interface Proj {
   p0: number; // progress (metres along the track, counting laps) when thrown
   lat: number; // metres right of the centre line
   v: number; // m/s along the track; negative rolls back
-  target?: string; // the drone's
+  target?: string; // the pigeon's
 }
 
 export interface Hazard {
@@ -79,17 +79,17 @@ export interface Hazard {
 export type ItemEv =
   | ({ k: 'proj' } & Proj)
   | ({ k: 'haz' } & Hazard)
-  | { k: 'bass'; id: string; owner: string; t0: number; p0: number }
+  | { k: 'martelinho'; id: string; owner: string; t0: number; p0: number }
   // Someone got hit (or an item was smashed by a gold car, victim null), and the item is gone.
   | { k: 'hit'; id: string; item: string; victim: string | null; blocked: boolean; how: string; x: number; y: number; z: number }
-  // The party bomb went off here: everyone close spins.
+  // The rocket burst here: everyone close spins.
   | { k: 'boom'; id: string; owner: string; victim: string; x: number; y: number; z: number };
 
-export const LIFE: Record<ProjKind, number> = { disco: 7000, drone: 16000, bomb: 22000 };
-export const DISCO_SPEED = 26; // m/s faster than the thrower
-export const DISCO_BACK = -20;
-export const DRONE_SPEED = 80;
-export const BOMB_SPEED = 95;
+export const LIFE: Record<ProjKind, number> = { bola: 7000, pombo: 16000, foguete: 22000 };
+export const BALL_SPEED = 26; // m/s faster than the thrower
+export const BALL_BACK = -20;
+export const PIGEON_SPEED = 80;
+export const ROCKET_SPEED = 95;
 export const SPIN_TIME = 1.0;
 export const SHRINK_TIME = 3.5;
 export const GOLD_TIME = 6;

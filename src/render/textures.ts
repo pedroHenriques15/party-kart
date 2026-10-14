@@ -127,19 +127,18 @@ export const rock = () =>
     noise(g, 256, 256, 8000, 0.1);
   });
 
-// The barriers: white, gold trim, the party's name.
+// The barriers at the start: white with blue bands, as Braga's street plates are, and the race's name.
 export const banner = () =>
   canvas(512, 64, (g) => {
     g.fillStyle = '#fbfbf8';
     g.fillRect(0, 0, 512, 64);
-    g.fillStyle = '#d4af37';
+    g.fillStyle = '#1d4f9c';
     g.fillRect(0, 0, 512, 7);
     g.fillRect(0, 57, 512, 7);
-    g.fillStyle = '#1b1b1f';
     g.font = '800 26px system-ui, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText('WHITE PARTY  ✦  BRAGA GP', 256, 33);
+    g.fillText('VOLTA DOS AMIGOS  ·  BRAGA', 256, 33);
   });
 
 export const boost = () =>
@@ -169,8 +168,8 @@ export const checker = () =>
     }
   });
 
-// A sign: big text on a colour, with an optional line under it, in a gold frame unless `frame` is ''.
-export function sign(text: string, sub = '', bg = '#111318', fg = '#ffffff', w = 1024, h = 192, frame = '#d4af37'): THREE.CanvasTexture {
+// A sign: big text on a colour, with an optional line under it, in a frame unless `frame` is ''.
+export function sign(text: string, sub = '', bg = '#111318', fg = '#ffffff', w = 1024, h = 192, frame = '#9aa0a6'): THREE.CanvasTexture {
   return canvas(
     w,
     h,
@@ -194,7 +193,6 @@ export function sign(text: string, sub = '', bg = '#111318', fg = '#ffffff', w =
       g.fillText(text, w / 2, sub ? h * 0.4 : h / 2);
       if (sub) {
         g.font = `600 ${h * 0.2}px system-ui, sans-serif`;
-        g.fillStyle = '#d4af37';
         g.fillText(sub, w / 2, h * 0.76);
       }
     },
@@ -230,6 +228,201 @@ export function facade(color: string, floors: number): THREE.CanvasTexture {
 }
 
 // A name above someone's car.
+// Braga's arms, simply drawn: on blue, Santa Maria de Braga crowned with the Child, between two
+// silver towers; in chief three escutcheons of Portugal's old arms; the city's mural crown of five
+// towers over it, and the scroll with its name.
+export const bragaArms = () =>
+  canvas(
+    512,
+    640,
+    (g) => {
+      g.lineJoin = 'round';
+      g.strokeStyle = '#1b1b1f';
+      g.lineWidth = 6;
+      const silver = '#e9ecef';
+      const gold = '#e0b13a';
+      // The mural crown: a wall with five crenellated towers.
+      g.fillStyle = silver;
+      g.fillRect(96, 92, 320, 46);
+      g.strokeRect(96, 92, 320, 46);
+      for (let k = 0; k < 5; k++) {
+        const x = 104 + k * 64;
+        g.fillRect(x, 40, 48, 56);
+        g.strokeRect(x, 40, 48, 56);
+        for (let m = 0; m < 3; m++) {
+          g.fillRect(x + m * 18 - 2, 24, 12, 18);
+          g.strokeRect(x + m * 18 - 2, 24, 12, 18);
+        }
+        g.fillStyle = '#1b1b1f';
+        g.fillRect(x + 18, 62, 12, 22);
+        g.fillStyle = silver;
+      }
+      // The shield: square at the top, round at the bottom.
+      const shield = () => {
+        g.beginPath();
+        g.moveTo(76, 150);
+        g.lineTo(436, 150);
+        g.lineTo(436, 420);
+        g.quadraticCurveTo(436, 560, 256, 584);
+        g.quadraticCurveTo(76, 560, 76, 420);
+        g.closePath();
+      };
+      shield();
+      g.fillStyle = '#1f4e9c';
+      g.fill();
+      g.save();
+      shield();
+      g.clip();
+      // The chief, silver, with three blue escutcheons, each with five silver bezants.
+      g.fillStyle = silver;
+      g.fillRect(76, 150, 360, 92);
+      g.beginPath();
+      g.moveTo(76, 242);
+      g.lineTo(436, 242);
+      g.stroke();
+      for (const cx of [156, 256, 356]) {
+        g.fillStyle = '#1f4e9c';
+        g.beginPath();
+        g.moveTo(cx - 26, 164);
+        g.lineTo(cx + 26, 164);
+        g.lineTo(cx + 26, 200);
+        g.quadraticCurveTo(cx + 26, 228, cx, 232);
+        g.quadraticCurveTo(cx - 26, 228, cx - 26, 200);
+        g.closePath();
+        g.fill();
+        g.lineWidth = 4;
+        g.stroke();
+        g.fillStyle = '#ffffff';
+        for (const [dx, dy] of [[-12, 180], [12, 180], [0, 196], [-12, 212], [12, 212]]) {
+          g.beginPath();
+          g.arc(cx + dx, dy, 5, 0, Math.PI * 2);
+          g.fill();
+        }
+      }
+      g.lineWidth = 6;
+      // The two towers.
+      for (const x of [108, 340]) {
+        g.fillStyle = silver;
+        g.fillRect(x, 330, 64, 200);
+        g.strokeRect(x, 330, 64, 200);
+        for (let m = 0; m < 3; m++) {
+          g.fillRect(x + 2 + m * 22, 306, 16, 26);
+          g.strokeRect(x + 2 + m * 22, 306, 16, 26);
+        }
+        g.fillStyle = '#1b1b1f';
+        g.fillRect(x + 22, 470, 20, 60);
+        g.fillRect(x + 26, 380, 12, 28);
+      }
+      // Santa Maria, crowned, in her mantle, the Child on her arm.
+      g.fillStyle = gold;
+      g.beginPath();
+      g.moveTo(256, 300);
+      g.lineTo(316, 540);
+      g.lineTo(196, 540);
+      g.closePath();
+      g.fill();
+      g.stroke();
+      g.fillStyle = '#f2d2b6';
+      g.beginPath();
+      g.arc(256, 286, 26, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      g.fillStyle = gold;
+      g.beginPath();
+      g.moveTo(232, 266);
+      g.lineTo(236, 236);
+      g.lineTo(246, 252);
+      g.lineTo(256, 230);
+      g.lineTo(266, 252);
+      g.lineTo(276, 236);
+      g.lineTo(280, 266);
+      g.closePath();
+      g.fill();
+      g.stroke();
+      g.fillStyle = '#f2d2b6';
+      g.beginPath();
+      g.arc(286, 372, 16, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      g.restore();
+      shield();
+      g.stroke();
+      // The scroll with the city's name.
+      g.fillStyle = '#ffffff';
+      g.beginPath();
+      g.moveTo(60, 586);
+      g.quadraticCurveTo(256, 556, 452, 586);
+      g.lineTo(452, 632);
+      g.quadraticCurveTo(256, 602, 60, 632);
+      g.closePath();
+      g.fill();
+      g.stroke();
+      g.fillStyle = '#1b1b1f';
+      g.font = '900 38px Georgia, serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText('BRAGA', 256, 598);
+    },
+    false,
+  );
+
+// A word in a flowing script on nothing, for painting on things: the Tourigalo's name on its
+// flanks, the restaurant's sign. `edge` outlines it.
+export const script = (text: string, color: string, edge = '', w = 1024, h = 256) =>
+  canvas(
+    w,
+    h,
+    (g) => {
+      let size = h * 0.72;
+      const font = () => `italic 700 ${size}px "Segoe Script", "Brush Script MT", "Lucida Handwriting", cursive`;
+      g.font = font();
+      while (g.measureText(text).width > w * 0.94) {
+        size -= 4;
+        g.font = font();
+      }
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      if (edge) {
+        g.strokeStyle = edge;
+        g.lineWidth = size * 0.09;
+        g.lineJoin = 'round';
+        g.strokeText(text, w / 2, h / 2);
+      }
+      g.fillStyle = color;
+      g.fillText(text, w / 2, h / 2);
+    },
+    false,
+  );
+
+// A clock's face: cream, its minutes and hours marked, 12 at the top.
+export const clockFace = () =>
+  canvas(
+    256,
+    256,
+    (g) => {
+      g.fillStyle = '#fbf6e8';
+      g.beginPath();
+      g.arc(128, 128, 126, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = '#1b1b1d';
+      for (let k = 0; k < 60; k++) {
+        const a = (k / 60) * Math.PI * 2;
+        const r0 = k % 5 ? 108 : 96;
+        g.lineWidth = k % 5 ? 3 : 8;
+        g.beginPath();
+        g.moveTo(128 + Math.sin(a) * r0, 128 - Math.cos(a) * r0);
+        g.lineTo(128 + Math.sin(a) * 118, 128 - Math.cos(a) * 118);
+        g.stroke();
+      }
+      g.fillStyle = '#1b1b1d';
+      g.font = '800 40px system-ui, sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      for (const [n, a] of [[12, 0], [3, 0.25], [6, 0.5], [9, 0.75]] as const) g.fillText(String(n), 128 + Math.sin(a * Math.PI * 2) * 70, 128 - Math.cos(a * Math.PI * 2) * 70);
+    },
+    false,
+  );
+
 export function nameTag(text: string, color: string): THREE.CanvasTexture {
   return canvas(
     256,
@@ -337,16 +530,16 @@ export function townFacade(color: string, floors: number, shutters: string): THR
   );
 }
 
-// The item box: a gold question mark on party glass.
+// The item box: a white question mark on blue glass, the blues of the azulejos.
 export const itemBox = () =>
   canvas(
     128,
     128,
     (g) => {
       const grad = g.createLinearGradient(0, 0, 128, 128);
-      grad.addColorStop(0, 'rgba(255,79,216,0.85)');
-      grad.addColorStop(0.5, 'rgba(255,225,77,0.85)');
-      grad.addColorStop(1, 'rgba(59,232,196,0.85)');
+      grad.addColorStop(0, 'rgba(29,79,156,0.85)');
+      grad.addColorStop(0.5, 'rgba(79,134,214,0.85)');
+      grad.addColorStop(1, 'rgba(156,195,240,0.85)');
       g.fillStyle = grad;
       g.fillRect(0, 0, 128, 128);
       g.strokeStyle = 'rgba(255,255,255,0.9)';

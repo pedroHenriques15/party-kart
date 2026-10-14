@@ -133,18 +133,23 @@ export const sfx = {
     tone(220, now(), 0.15, 'sine', 0.2);
   },
   throw: () => noise(now(), 0.3, 0.25, 600, 3000, 'bandpass'),
-  bass: () => {
+  // The martelinho: a squeaky plastic hammer, bonk-squeak twice.
+  hammer: () => {
     if (!ctx || !master) return;
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = 'sine';
-    o.frequency.setValueAtTime(160, now());
-    o.frequency.exponentialRampToValueAtTime(32, now() + 1.2);
-    g.gain.setValueAtTime(0.6, now());
-    g.gain.exponentialRampToValueAtTime(0.001, now() + 1.3);
-    o.connect(g).connect(master);
-    o.start();
-    o.stop(now() + 1.4);
+    for (const at of [now(), now() + 0.22]) {
+      noise(at, 0.06, 0.35, 900, 300, 'bandpass');
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(1400, at + 0.02);
+      o.frequency.exponentialRampToValueAtTime(2600, at + 0.12);
+      g.gain.setValueAtTime(0.0001, at + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.18, at + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.16);
+      o.connect(g).connect(master);
+      o.start(at);
+      o.stop(at + 0.18);
+    }
   },
   boom: (volume = 1) => {
     noise(now(), 1.2, 0.9 * volume, 1800, 60);
@@ -197,6 +202,14 @@ export const sfx = {
     o.connect(g).connect(master);
     o.start();
     o.stop(now() + 0.85);
+  },
+  // An alarm clock's bells, hammered fast between two of them, for a second and a half.
+  alarm: () => {
+    for (let k = 0; k < 30; k++) {
+      const f = k % 2 ? 2350 : 2650;
+      tone(f, now() + k * 0.05, 0.09, 'square', 0.035);
+      tone(f * 2.76, now() + k * 0.05, 0.05, 'sine', 0.02);
+    }
   },
   // The supermarket's announcement chime: ding-dong.
   chime: () => [880, 698].forEach((f, i) => tone(f, now() + i * 0.34, 0.7, 'sine', 0.22)),

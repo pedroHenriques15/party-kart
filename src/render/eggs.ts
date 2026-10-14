@@ -1,21 +1,25 @@
-// The easter eggs along the Volta dos Amigos, one for each friend whose street it passes: Faísca
-// the dog, who chases your kart down the road barking; a dentist's giant tooth that jumps for
-// joy; the Contente supermarket, whose trolleys roll out to meet you; and a café, where your
-// driver picks up a cigarette and a beer for the next stretch. They stand a little
-// way along from the friends' houses, never at the door. Each browser's eggs react to its own
-// kart only, so nothing about them goes over the network.
+// The easter eggs along the Volta dos Amigos, one on each friend's house: Faísca the dog, who
+// chases your kart down the road barking; a dentist's giant tooth that jumps for joy; the Contente
+// supermarket, whose trolleys roll out to meet you; a café, where your driver picks up a cigarette
+// and a beer for the next stretch; and a giant alarm clock that pops up on Vale's roof as his house
+// comes into view, because he's always late. Each stands on its house's own spot (braga-map's eggs,
+// decision 014), its front to the road. Each browser's eggs react to its own kart only, so nothing
+// about them goes over the network.
 import * as THREE from 'three';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
-import { bake, box, mat, type Ground } from './kit.ts';
+import { bake, box, mat, mesh, type Ground } from './kit.ts';
 import * as tex from './textures.ts';
 
-export type EggKind = 'dog' | 'dentist' | 'supermarket' | 'smoke';
+export type EggKind = 'dog' | 'dentist' | 'supermarket' | 'smoke' | 'clock';
 
-// Where an egg stands: beside sample i, on one side, and the ground it needs kept clear.
+// Where an egg stands: its house's spot (x, z), beside sample i at `lateral` metres right of the
+// centre line, and the ground it needs kept clear.
 export interface EggSpot {
   kind: EggKind;
+  x: number;
+  z: number;
   i: number;
-  side: number;
+  lateral: number;
   clear: { x: number; z: number; r: number };
 }
 
@@ -31,17 +35,22 @@ export interface Eggs {
   update: (t: number, dt: number, focus: { idx: number; speed: number } | null) => EggEvent[];
 }
 
-const SET_BACK = { dog: 3.5, dentist: 6, supermarket: 13, smoke: 7 };
-const CLEAR = { dog: 5, dentist: 7, supermarket: 16, smoke: 10 };
+// How much room each egg needs between its front and the kerb, and the ground it clears round it
+// (the clock clears nothing: it stands on the house).
+const FRONT = { dog: 1.5, dentist: 1.6, supermarket: 4, smoke: 4.5, clock: 0 };
+const CLEAR = { dog: 5, dentist: 7, supermarket: 16, smoke: 10, clock: 0 };
 
 export function eggSpots(track: Track, eggs: { kind: string; x: number; z: number; side: number }[]): EggSpot[] {
   return eggs
-    .filter((e): e is { kind: EggKind; x: number; z: number; side: number } => e.kind in SET_BACK)
+    .filter((e): e is { kind: EggKind; x: number; z: number; side: number } => e.kind in FRONT)
     .map((e) => {
       const i = Math.max(0, distanceToRoad(track, e.x, e.z).i);
       const s = track.samples[i];
-      const p = surfacePoint(s, e.side * (s.w / 2 + SET_BACK[e.kind]), 0);
-      return { kind: e.kind, i, side: e.side, clear: { x: p.x, z: p.z, r: CLEAR[e.kind] } };
+      // On the spot, unless that's too near the road for what stands there.
+      const across = Math.abs((e.x - s.p.x) * s.r.x + (e.z - s.p.z) * s.r.z);
+      const lateral = e.side * Math.max(across, s.w / 2 + FRONT[e.kind]);
+      const p = surfacePoint(s, lateral, 0);
+      return { kind: e.kind, x: e.x, z: e.z, i, lateral, clear: { x: p.x, z: p.z, r: CLEAR[e.kind] } };
     });
 }
 
@@ -52,7 +61,8 @@ const within = (N: number, i: number, idx: number, from: number, to: number) => 
   return d >= from && d <= to;
 };
 
-export function buildEggs(track: Track, ground: Ground, spots: EggSpot[]): Eggs {
+// roofAt: the top of the building at a spot (its middle and height), for the clock to stand on.
+export function buildEggs(track: Track, ground: Ground, spots: EggSpot[], roofAt: (x: number, z: number) => { x: number; y: number; z: number } | null): Eggs {
   const group = new THREE.Group();
   const N = track.samples.length;
   const updates: ((t: number, dt: number, focus: { idx: number; speed: number } | null, out: EggEvent[]) => void)[] = [];
@@ -67,12 +77,12 @@ export function buildEggs(track: Track, ground: Ground, spots: EggSpot[]): Eggs 
   };
 
   for (const spot of spots) {
-    const s = track.samples[spot.i];
-    const lateral = spot.side * (s.w / 2 + SET_BACK[spot.kind]);
+    const lateral = spot.lateral;
     if (spot.kind === 'dog') updates.push(dog(track, ground, place, spot, lateral, group));
     if (spot.kind === 'dentist') updates.push(dentist(place, spot, lateral, N));
     if (spot.kind === 'supermarket') updates.push(supermarket(place, spot, lateral, N));
     if (spot.kind === 'smoke') updates.push(cafe(place, spot, lateral, N));
+    if (spot.kind === 'clock') updates.push(alarmClock(track, ground, spot, roofAt(spot.x, spot.z), group));
   }
   return {
     group,
@@ -355,6 +365,95 @@ function cafe(place: Place, spot: EggSpot, lateral: number, N: number): Update {
     if (focus && focus.speed > 5 && t - cool > 20 && within(N, spot.i, focus.idx, -10, 10)) {
       cool = t;
       out.push({ kind: 'smoke', at: g.position.clone().add(new THREE.Vector3(0, 3, 0)) });
+    }
+  };
+}
+
+// ---- Vale's: he's always late. As soon as his house comes into view, a giant alarm clock pops up
+// on its roof, over the front, turned to your kart: its hands racing round, its bells shaking and
+// ringing. It sinks back once you're past. ----
+function alarmClock(track: Track, ground: Ground, spot: EggSpot, roof: { x: number; y: number; z: number } | null, world: THREE.Group): Update {
+  const N = track.samples.length;
+  const R = 4.2;
+  const red = mat('#c8102e', { roughness: 0.35, metalness: 0.3 });
+  const brass = mat('#e0b94a', { metalness: 1, roughness: 0.25 });
+  const ink = mat('#1b1b1d', { roughness: 0.4 });
+  // +x is its face.
+  const clock = new THREE.Group();
+  clock.add(mesh(new THREE.CylinderGeometry(R, R, 1.3, 40).rotateZ(Math.PI / 2), red, 0, 0, 0));
+  const face = new THREE.Mesh(new THREE.CircleGeometry(R * 0.86, 40), new THREE.MeshStandardMaterial({ map: tex.clockFace(), roughness: 0.4 }));
+  face.position.x = 0.66;
+  face.rotation.y = Math.PI / 2;
+  clock.add(face);
+  clock.add(mesh(new THREE.TorusGeometry(R * 0.92, 0.18, 10, 40).rotateY(Math.PI / 2), brass, 0.66, 0, 0));
+  // Two bells on top, the clapper between them, and two feet.
+  const bells: THREE.Object3D[] = [];
+  for (const z of [-1, 1]) {
+    const bell = mesh(new THREE.SphereGeometry(R * 0.42, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), brass, 0, R * 1.05, z * R * 0.55);
+    bell.rotation.x = z * 0.6;
+    clock.add(bell);
+    bells.push(bell);
+    const foot = mesh(new THREE.CylinderGeometry(0.15, 0.25, 1.0, 10), brass, 0, -R * 1.02, z * R * 0.55);
+    foot.rotation.x = -z * 0.5;
+    clock.add(foot);
+  }
+  const clapper = new THREE.Group();
+  clapper.add(mesh(new THREE.BoxGeometry(0.2, 0.9, 0.2), brass, 0, 0.45, 0), mesh(new THREE.SphereGeometry(0.22, 10, 8), brass, 0, 0.95, 0));
+  clapper.position.y = R * 1.0;
+  clock.add(clapper);
+  // The hands, racing round.
+  const hand = (len: number, w: number) => {
+    const pivot = new THREE.Group();
+    pivot.add(mesh(new THREE.BoxGeometry(0.08, len, w), ink, 0, len / 2 - 0.15, 0));
+    pivot.position.x = 0.72;
+    pivot.rotation.order = 'YXZ';
+    clock.add(pivot);
+    return pivot;
+  };
+  const hour = hand(R * 0.5, 0.26);
+  const minute = hand(R * 0.78, 0.16);
+  clock.add(mesh(new THREE.SphereGeometry(0.22, 10, 8), red, 0.76, 0, 0));
+  // "Late!" on a board under it.
+  const late = new THREE.Mesh(new THREE.PlaneGeometry(R * 1.6, R * 0.38), new THREE.MeshBasicMaterial({ map: tex.sign('ATRASADO!', '', '#ffe14d', '#c8102e', 512, 122, '#c8102e'), toneMapped: false }));
+  late.position.set(0.7, -R - 1.1, 0);
+  late.rotation.y = Math.PI / 2;
+  clock.add(late);
+
+  // Over the house's own spot, at its roof's height, or on a post where there's no building.
+  const top = roof ? roof.y : ground(spot.x, spot.z) + 6;
+  const base = new THREE.Vector3(spot.x, top + R + 1.6, spot.z);
+  if (!roof) world.add(mesh(new THREE.CylinderGeometry(0.15, 0.2, 6, 8), mat('#5b6168'), spot.x, ground(spot.x, spot.z), spot.z));
+  clock.position.copy(base);
+  clock.scale.setScalar(0.001);
+  clock.visible = false;
+  clock.userData.moves = true;
+  world.add(clock);
+
+  let shown = 0; // 0 hidden, 1 fully up
+  let cool = -1e9;
+  return (t, dt, focus, out) => {
+    // Up from as soon as the house can be seen on the way to it, until you're past.
+    const near = !!focus && within(N, spot.i, focus.idx, -230, 40);
+    if (near && shown === 0 && t - cool > 10) {
+      cool = t;
+      out.push({ kind: 'clock', at: base.clone() });
+    }
+    shown = near ? Math.min(1, shown + dt * 1.6) : Math.max(0, shown - dt * 1.2);
+    clock.visible = shown > 0;
+    if (!clock.visible) return;
+    // A pop with a wobble as it comes up; then it rings.
+    const pop = near ? 1 + Math.sin(shown * Math.PI * 2.5) * (1 - shown) * 0.5 : shown;
+    clock.scale.setScalar(Math.max(0.001, pop * Math.min(1, shown * 1.5)));
+    clock.position.y = base.y + Math.sin(t * 40) * 0.06;
+    clock.rotation.x = Math.sin(t * 38) * 0.05;
+    clapper.rotation.x = Math.sin(t * 38) * 0.7;
+    for (const b of bells) b.position.y = R * 1.05 + Math.abs(Math.sin(t * 38)) * 0.05;
+    minute.rotation.x = -t * 7;
+    hour.rotation.x = -t * 0.6;
+    // Its face to your kart.
+    if (focus) {
+      const p = track.samples[focus.idx].p;
+      clock.rotation.y = -Math.atan2(p.z - base.z, p.x - base.x);
     }
   };
 }

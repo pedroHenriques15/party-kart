@@ -289,9 +289,10 @@ RTX 4060 Ti; the round is `shots/2026-10-13-budget/`):
 | Textures | 91 MB | 57 MB | 42 MB |
 | Building the city | 1.4–1.8 s | 1.4–1.7 s | 0.8–1.0 s |
 
-The download before a race is 1.41 MB gzipped, 4.87 MB as it is, on every level: the game (three.js,
-PeerJS and the code) is 0.28 MB of it, and the map's 48 tiles 1.12 MB. The busiest viewpoints are
-`robert-smith` (190 draw calls) and `alameda-fujacal`, `imaculada-conceicao` and
+The download before a race is 1.47 MB as the live site sends it, 4.87 MB as it is, on every level.
+`node scripts/download.mjs` gzips it to 1.41 MB (GitHub Pages compresses a little less): the game
+(three.js, PeerJS and the code) is 0.28 MB of that, and the map's 48 tiles 1.12 MB. The busiest
+viewpoints are `robert-smith` (190 draw calls) and `alameda-fujacal`, `imaculada-conceicao` and
 `conselheiro-lobato` (1.07 M triangles on High).
 
 - **Textures**, on High: the ground's painted map is 44 MB (3330 × 2600 pixels, a metre each; 22 MB
@@ -321,7 +322,7 @@ not take the city past these; one that needs more first takes it from somewhere 
 | Draw calls, at any viewpoint | 200 | 200 | 180 |
 | Triangles, at any viewpoint | 1.1 M | 0.9 M | 0.55 M |
 | Textures | 95 MB | 60 MB | 45 MB |
-| Download, gzipped | 1.5 MB | 1.5 MB | 1.5 MB |
+| Download, as the live site sends it | 1.5 MB | 1.5 MB | 1.5 MB |
 
 These are the city alone, as the shots measure it. The karts, items and effects come on top: about
 500 draw calls for 8 karts on High, 370 on Medium, 300 on Low.

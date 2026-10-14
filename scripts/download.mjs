@@ -1,7 +1,8 @@
 // What the game downloads before a race, built as it's shipped. It builds the game into a folder of
 // its own, serves it, opens the city (?scenery, which loads what a race loads) and adds up every
-// file the page fetched: as it is, and gzipped, as GitHub Pages sends it. For the budget (task 004
-// in braga-map): a phone on 4G waits for all of it before the race.
+// file the page fetched: as it is, and gzipped. GitHub Pages compresses a little less: 1.47 MB live
+// on 2026-10-14, when this said 1.41. For the budget (task 004 in braga-map): a phone on 4G waits
+// for all of it before the race.
 //
 // node scripts/download.mjs
 import fs from 'node:fs';

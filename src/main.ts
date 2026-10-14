@@ -19,6 +19,7 @@ import { nameTag } from './render/textures.ts';
 import { buildCity } from './render/city.ts';
 import type { EggEvent } from './render/eggs.ts';
 import { ClientRoom, cleanName, HostRoom, MAX_RACERS, setLapLimit, type Entry, type Room, type Snap } from './session.ts';
+import { Stats, textureBytes } from './stats.ts';
 import { buildTrack } from './track/track.ts';
 
 const DT = 1 / 120;
@@ -34,6 +35,8 @@ const START_AT = AUTODRIVE ? Number(new URLSearchParams(location.search).get('at
 // every time and nothing moves, so two shots of the same city match. What a frame costs is in
 // window.__kart.
 const SCENERY = new URLSearchParams(location.search).has('scenery');
+// ?stats: what the game costs on this screen, in a corner, for measuring it on a phone.
+const STATS = new URLSearchParams(location.search).has('stats');
 if (SCENERY) {
   let seed = 1;
   Math.random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -61,6 +64,7 @@ const building = performance.now();
 const world = await buildCity(track, amigos, quality);
 const buildMs = performance.now() - building;
 scene.add(world.group);
+const stats = STATS ? new Stats(renderer, scene, buildMs, performance.now()) : null;
 const fx = new Particles(0.55);
 const glow = new Particles(0.32, true);
 const smoke = new Particles(1.8);
@@ -1194,6 +1198,7 @@ function frame(now: number): void {
   glow.update(dt);
   smoke.update(dt);
   look.render();
+  stats?.frame(quality, !!race);
   requestAnimationFrame(frame);
 }
 
@@ -1222,6 +1227,7 @@ function timeFrames(n: number): number {
   return (performance.now() - t0) / n;
 }
 let drawn = 0;
+let texBytes = 0;
 // The city as it is at 0 s.
 function sceneryFrame(): void {
   world.update(0);
@@ -1229,7 +1235,9 @@ function sceneryFrame(): void {
   look.follow(kartAt);
   look.render();
   const { render: r, memory: m } = renderer.info;
-  (window as unknown as { __kart: object }).__kart = { frames: ++drawn, buildMs: Math.round(buildMs), calls: r.calls, tris: r.triangles, textures: m.textures, geometries: m.geometries, timeFrames };
+  // Once the sun's shadows are made, at the first frame.
+  texBytes ||= textureBytes(scene);
+  (window as unknown as { __kart: object }).__kart = { frames: ++drawn, buildMs: Math.round(buildMs), calls: r.calls, tris: r.triangles, textures: m.textures, texMB: Math.round(texBytes / 1048576), geometries: m.geometries, timeFrames };
   requestAnimationFrame(sceneryFrame);
 }
 

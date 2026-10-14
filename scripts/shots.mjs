@@ -1,6 +1,6 @@
 // Shoots every viewpoint in the game, to see whether the city looks more like Braga than it did.
-// For each of braga-map's viewpoints (../braga-map/refs/viewpoints.json), at High and at Low, it
-// opens the city alone (?scenery) from the viewpoint's camera and saves
+// For each of braga-map's viewpoints (../braga-map/refs/viewpoints.json), at High and at Low (and
+// Medium, with --medium), it opens the city alone (?scenery) from the viewpoint's camera and saves
 // shots/<round>/<quality>/<id>.png, the shape of the viewpoint's photo and 720 pixels high. What
 // each frame costs goes in shots/<round>/stats.json, and shots/<round>/index.html sets each shot
 // beside the real photo (braga-map's .cache/refs/, which its tools/refs.mjs fetches) and the round
@@ -9,6 +9,7 @@
 //
 // node scripts/shots.mjs baseline                   every viewpoint, into shots/<today>-baseline/
 // node scripts/shots.mjs facades estadio devesa     only the viewpoints named
+// node scripts/shots.mjs budget --medium            Medium too, for the budget (task 004)
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,12 +18,14 @@ import { createServer } from 'vite';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const MAP = path.resolve(ROOT, '../braga-map');
-const QUALITIES = ['high', 'low'];
 const H = 720;
 
-const [label, ...only] = process.argv.slice(2);
+const flags = process.argv.slice(2).filter((a) => a.startsWith('--'));
+const QUALITIES = flags.includes('--medium') ? ['high', 'medium', 'low'] : ['high', 'low'];
+const LEVEL = { high: 'High', medium: 'Medium', low: 'Low' };
+const [label, ...only] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 if (!label || !/^[\w-]+$/.test(label)) {
-  console.error('node scripts/shots.mjs <label> [viewpoint ids…]   the label in letters, numbers and dashes');
+  console.error('node scripts/shots.mjs <label> [viewpoint ids…] [--medium]   the label in letters, numbers and dashes');
   process.exit(1);
 }
 const day = new Date();
@@ -118,11 +121,11 @@ try {
         const k = await page.evaluate(() => window.__kart);
         if (errors.length) throw new Error(errors.join('; '));
         const frameMs = runs.sort((a, b) => a - b)[1];
-        stats.shots[quality][v.id] = { ...size, buildMs: k.buildMs, calls: k.calls, tris: k.tris, textures: k.textures, geometries: k.geometries, frameMs: +frameMs.toFixed(2) };
-        console.log(`${quality.padEnd(5)} ${v.id.padEnd(22)} ${String(k.calls).padStart(5)} calls ${(k.tris / 1e6).toFixed(2).padStart(6)} M triangles ${frameMs.toFixed(2).padStart(6)} ms a frame`);
+        stats.shots[quality][v.id] = { ...size, buildMs: k.buildMs, calls: k.calls, tris: k.tris, textures: k.textures, texMB: k.texMB, geometries: k.geometries, frameMs: +frameMs.toFixed(2) };
+        console.log(`${quality.padEnd(6)} ${v.id.padEnd(22)} ${String(k.calls).padStart(5)} calls ${(k.tris / 1e6).toFixed(2).padStart(6)} M triangles ${String(k.texMB).padStart(4)} MB textures ${frameMs.toFixed(2).padStart(6)} ms a frame`);
       } catch (e) {
         failed.push(`${quality} ${v.id}: ${e.message.split('\n')[0]}`);
-        console.log(`${quality.padEnd(5)} ${v.id.padEnd(22)} failed: ${e.message.split('\n')[0]}`);
+        console.log(`${quality.padEnd(6)} ${v.id.padEnd(22)} failed: ${e.message.split('\n')[0]}`);
       }
     }
     await context.close();
@@ -143,8 +146,8 @@ const before = fs
   .sort((a, b) => (a.made < b.made ? 1 : -1))[0];
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const url = (p) => p.split(path.sep).map(encodeURIComponent).join('/');
-const cost = (s) => (s ? `${s.calls} calls · ${(s.tris / 1e6).toFixed(2)} M triangles · ${s.frameMs} ms a frame` : 'not shot');
-const shot = (q, s, src, what) => `<figure class="${q}">${s ? `<img src="${esc(src)}" alt="">` : '<div class="none"></div>'}<figcaption>${what}, ${q === 'high' ? 'High' : 'Low'}: ${cost(s)}</figcaption></figure>`;
+const cost = (s) => (s ? `${s.calls} calls · ${(s.tris / 1e6).toFixed(2)} M triangles${s.texMB === undefined ? '' : ` · ${s.texMB} MB textures`} · ${s.frameMs} ms a frame` : 'not shot');
+const shot = (q, s, src, what) => `<figure class="q ${q}">${s ? `<img src="${esc(src)}" alt="">` : '<div class="none"></div>'}<figcaption>${what}, ${LEVEL[q]}: ${cost(s)}</figcaption></figure>`;
 const rows = views.map((v) => {
   const photo = fs.existsSync(photoOf(v))
     ? `<img src="${esc(url(path.relative(OUT, photoOf(v))))}" alt="">`
@@ -153,7 +156,7 @@ const rows = views.map((v) => {
   const credit = `Photo: <a href="${esc(p.url)}">${esc(p.author)}</a>, ${esc(p.licence)}, ${esc(p.source === 'mapillary' ? 'Mapillary' : p.source)}, ${esc(p.date)}`;
   const figs = QUALITIES.flatMap((q) => [
     shot(q, stats.shots[q]?.[v.id], `${q}/${v.id}.png`, 'This round'),
-    before ? shot(q, before.shots[q]?.[v.id], `../${before.round}/${q}/${v.id}.png`, `${before.round}`) : `<figure class="${q}"><div class="none">No round before this one</div></figure>`,
+    before ? shot(q, before.shots[q]?.[v.id], `../${before.round}/${q}/${v.id}.png`, `${before.round}`) : `<figure class="q ${q}"><div class="none">No round before this one</div></figure>`,
   ]);
   return `<section><h2>${esc(v.name)} <small>${esc(v.id)} · ${esc(v.kind)}</small></h2><div class="row"><figure>${photo}<figcaption>${credit}</figcaption></figure>${figs.join('')}</div></section>`;
 });
@@ -177,14 +180,13 @@ const html = `<!doctype html>
   .none { aspect-ratio: 4 / 3; border: 1px dashed var(--line); display: grid; place-items: center; text-align: center; color: var(--dim); padding: 8px; box-sizing: border-box; }
   figcaption { font-size: 12px; margin-top: 4px; }
   a { color: inherit; }
-  body:has(#q-high:checked) .low, body:has(#q-low:checked) .high { display: none; }
+${QUALITIES.map((q) => `  body:has(#q-${q}:checked) .q:not(.${q}) { display: none; }`).join('\n')}
   @media (max-width: 760px) { .row { grid-template-columns: 1fr; } }
 </style>
 <header>
   <h1>Shots ${esc(round)}</h1>
   <p>party-kart ${esc(stats.game)} · braga-map ${esc(stats.map)} · ${esc(stats.gpu)} · ${views.length} viewpoints${before ? ` · set beside ${esc(before.round)}` : ''}</p>
-  <label><input type="radio" name="q" id="q-high" checked> High</label>
-  <label><input type="radio" name="q" id="q-low"> Low</label>
+${QUALITIES.map((q, k) => `  <label><input type="radio" name="q" id="q-${q}"${k ? '' : ' checked'}> ${LEVEL[q]}</label>`).join('\n')}
 </header>
 ${rows.join('\n')}
 </html>

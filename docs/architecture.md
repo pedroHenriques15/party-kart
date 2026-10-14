@@ -22,6 +22,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/session.ts` | browser | Rooms over PeerJS: `HostRoom` and `ClientRoom` |
 | `src/main.ts` | browser | The screens, the race loop, the cameras, and the glue between all of it |
 | `src/hud.ts` | browser | The race screen: place, lap, item slot, clock, minimap, order, feed |
+| `src/stats.ts` | browser | `?stats`: what the game costs on this screen, in a corner, for measuring it on a phone |
 | `src/audio.ts` | browser | Every sound, synthesized with Web Audio |
 | `src/input.ts` | browser | The keyboard and the touch screen: held controls, plus actions counted once per press |
 | `src/render/` | browser | three.js: the look, the city round the track (`city.ts`), the road (`road.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
@@ -267,3 +268,60 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   shrink, gold paint, the shield bubble and the exhaust flames on a boost.
 - **Warm-up**: at startup `main.ts` builds every driver's kart once and calls `renderer.compile`,
   so the first race doesn't freeze while shaders compile.
+
+## The city's budget
+
+How much city a phone can draw. The floor is an older Android phone, the slowest one a friend races
+on: the budget is what it manages with room to spare, per graphics level, and every change that
+adds to the city keeps inside it. Measure with `?stats` in a race, `node scripts/shots.mjs <label>
+--medium` at braga-map's viewpoints, and `node scripts/download.mjs` (task 004 in braga-map).
+
+**What it costs today** (2026-10-14: party-kart `ac47bf0`, braga-map 1.2.0, on a desktop
+RTX 4060 Ti; the round is `shots/2026-10-13-budget/`):
+
+| | High | Medium | Low |
+|---|---|---|---|
+| Pixel ratio, the sun's shadows | 2, 2048 px | 1.25, 1024 px | 1, none |
+| The city alone, at the 29 viewpoints: draw calls | 48–190 | 48–190 | 33–173 |
+| The city alone: triangles | 0.76–1.07 M | 0.72–0.89 M | 0.42–0.53 M |
+| A race of 8 karts, on the start straight: draw calls | 680 | 561 | 456 |
+| A race of 8 karts: triangles | 1.22 M | 1.00 M | 0.61 M |
+| Textures | 91 MB | 57 MB | 42 MB |
+| Building the city | 1.4–1.8 s | 1.4–1.7 s | 0.8–1.0 s |
+
+The download before a race is 1.41 MB gzipped, 4.87 MB as it is, on every level: the game (three.js,
+PeerJS and the code) is 0.28 MB of it, and the map's 48 tiles 1.12 MB. The busiest viewpoints are
+`robert-smith` (190 draw calls) and `alameda-fujacal`, `imaculada-conceicao` and
+`conselheiro-lobato` (1.07 M triangles on High).
+
+- **Textures**, on High: the ground's painted map is 44 MB (3330 × 2600 pixels, a metre each; 22 MB
+  on Medium, 11 on Low), the sun's shadows 16 MB (4 on Medium), the street plates 10.5 MB, the sky's
+  reflections 6 MB, and everything else 8 MB. That's counted as the scene holds them (`textureBytes`
+  in `src/stats.ts`): four bytes a pixel and a third more for the mipmaps. A canvas texture keeps its
+  canvas as well, which Chrome may hold on the graphics card too: the ground's is another 34 MB on
+  High.
+- **The street plates** are one texture 512 pixels wide and 112 a street, 4032 high for 36 streets.
+  The 37th takes it past 4096, the most some phones take.
+- **The karts cost more draw calls than the city.** Each is about 40 on Low to 60 on High (its parts
+  aren't merged, and are drawn again for the shadows), so 8 karts are two or three times the city.
+- **The frame time on the PC** is 0.2–2.6 ms on every level, so it can't tell them apart. The phone
+  gives the frame rate.
+- **Stepping down a level in a race** (`watchSpeed`) changes the pixel ratio and the shadows only.
+  The city stays as it was built (`buildCity` runs once), so a phone that starts on Medium and drops
+  to Low keeps Medium's triangles and textures.
+
+**The phone** (to come, task 004): the frame rate on the start straight and at `robert-smith`, on
+Medium and on Low, and the load on 4G.
+
+**The budget.** Until the phone is measured, it's what the city costs today, rounded up. A change may
+not take the city past these; one that needs more first takes it from somewhere else.
+
+| The city may take at most | High | Medium | Low |
+|---|---|---|---|
+| Draw calls, at any viewpoint | 200 | 200 | 180 |
+| Triangles, at any viewpoint | 1.1 M | 0.9 M | 0.55 M |
+| Textures | 95 MB | 60 MB | 45 MB |
+| Download, gzipped | 1.5 MB | 1.5 MB | 1.5 MB |
+
+These are the city alone, as the shots measure it. The karts, items and effects come on top: about
+500 draw calls for 8 karts on High, 370 on Medium, 300 on Low.

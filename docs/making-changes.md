@@ -53,7 +53,8 @@ Other things to know:
   so the two levels need to be more than about 40 m of road apart.
 - To look at one part of the track, open the game with `?autodrive&at=<sample>`: your car starts
   the race there. `?view=x,y,z,tx,ty,tz` holds the camera anywhere, to look at the scenery, and
-  `?scenery&view=…` shows the city alone from there, without starting a race.
+  `?scenery&view=…` shows the city alone from there, without starting a race. `?stats` shows what
+  the game costs in a corner: the frame rate, draw calls, triangles, textures, load time and download.
 - The city keeps only what's near the track (`nearBuildings` and the trees in `buildCity`): the
   map has the whole of Braga in it, for the other games.
 
@@ -190,11 +191,14 @@ footprint's rectangle, a front), make the world again (see "The track"), and add
 4. Add it to `statics` in `buildCity`, which is run through `bake()` to merge its static meshes by
    material. **Anything that moves needs `userData.moves = true`**, and its animation goes in an
    `update(t)` that's called every frame.
-5. Watch the cost. With `?autodrive`, `window.__kart.calls` and `.tris` give the draw calls and
-   triangles. The game steps itself down a level when a race runs under 35 fps, and phones start on
-   Medium, so check on Low and Medium too (the picker is on the first screen).
-   `node scripts/shots.mjs <label>` shoots braga-map's viewpoints at High and Low, with each one's
-   draw calls, triangles and frame time, beside the real photos and the round before.
+5. Watch the cost, against the city's budget in [architecture.md](architecture.md). With
+   `?autodrive`, `window.__kart.calls` and `.tris` give the draw calls and triangles, and `?stats`
+   shows them on the screen with the frame rate and the textures' memory. The game steps itself
+   down a level when a race runs under 35 fps, and phones start on Medium, so check on Low and
+   Medium too (the picker is on the first screen). `node scripts/shots.mjs <label>` shoots
+   braga-map's viewpoints at High and Low (`--medium` adds Medium), with each one's draw calls,
+   triangles, textures' memory and frame time, beside the real photos and the round before.
+   `node scripts/download.mjs` gives what the game downloads.
 
 ## An easter egg
 

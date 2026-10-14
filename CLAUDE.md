@@ -57,9 +57,16 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   race builds it, still, and the same every time (its textures' noise is seeded). The graphics are
   whatever `localStorage['pk-quality']` says. `window.__kart` has the build time, draw calls,
   triangles, textures and geometries, and `__kart.timeFrames(60)` the milliseconds a frame takes.
+- `?stats` shows what the game costs in a corner, for measuring it on a phone (`src/stats.ts`): the
+  frame rate and the race's worst second (after its first two), the graphics level, draw calls,
+  triangles, the textures' memory, how long the city took to build and the page to be ready, what
+  it downloaded, the graphics card and the pixels drawn. A screenshot of it is the measurement.
+- `node scripts/download.mjs` builds the game as it's shipped, opens it and adds up what the page
+  fetched before the city was ready, as it is and gzipped.
 - `node scripts/shots.mjs <label>` shoots braga-map's viewpoints (`../braga-map/refs/viewpoints.json`)
-  with `?scenery`, at High and Low, into `shots/<date>-<label>/` (ignored by git): a PNG each, the
-  shape of its photo and 720 pixels high, `stats.json` with each one's cost, and `index.html` setting
+  with `?scenery`, at High and Low (and Medium with `--medium`), into `shots/<date>-<label>/` (ignored
+  by git): a PNG each, the shape of its photo and 720 pixels high, `stats.json` with each one's cost
+  (draw calls, triangles, textures' memory, build and frame time), and `index.html` setting
   each beside its real photo (`../braga-map/.cache/refs/`) and the round before's. Name viewpoints
   after the label to shoot only those. It starts its own dev server, as one started before braga-map
   was last installed still serves the old map; restart yours after `npm install` too. About 2 minutes.

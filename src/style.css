@@ -379,6 +379,23 @@ button.small {
   font-weight: 700;
 }
 
+/* ?stats: what the game costs, in small print at the left edge, above the steering stick. It covers
+   a little of the minimap, which a measurement can do without. */
+.stats {
+  position: fixed;
+  left: calc(6px + var(--sl));
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  pointer-events: none;
+  white-space: pre;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(10, 12, 18, 0.6);
+  color: #fff;
+  font: 10px/1.35 ui-monospace, Menlo, Consolas, monospace;
+}
+
 /* The race's HUD. */
 #hud {
   position: fixed;

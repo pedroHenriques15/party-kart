@@ -109,11 +109,11 @@ export class TouchPad {
     this.base.append(this.knob);
     const zone = el('t-steer');
     zone.append(this.base);
-    const drift = el('t-btn t-drift', 'Drift');
-    const brake = el('t-btn t-brake', 'Brake');
+    const drift = el('t-btn t-drift', 'Derrapar');
+    const brake = el('t-btn t-brake', 'Travar');
     this.itemBtn = el('t-btn t-item');
     this.el = el('t-pad');
-    this.el.append(zone, drift, brake, this.itemBtn, el('t-rotate', 'Turn your phone sideways for a wider view'));
+    this.el.append(zone, drift, brake, this.itemBtn, el('t-rotate', 'Deita o telemóvel para veres mais'));
     document.body.append(this.el);
 
     // A finger keeps whatever it pressed until it lifts, even if it slides off.

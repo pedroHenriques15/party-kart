@@ -446,7 +446,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   // ---- The road, its bridges, the lamps along it: baked together at the end, being many small
   // meshes. (The land, the hills and the buildings are a mesh each already.) ----
   const statics = new THREE.Group();
-  const road = buildRoad(track, overWater, { start: tex.sign('VOLTA DOS AMIGOS', 'BRAGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('CHECKPOINT', '', '#111318', '#ffe14d', 1024, 160) }, edges);
+  const road = buildRoad(track, overWater, { start: tex.sign('VOLTA DOS AMIGOS', 'BRAGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('PONTO DE CONTROLO', '', '#111318', '#ffe14d', 1024, 160) }, edges);
   statics.add(road.group);
   updates.push(road.update);
   for (const [a, b] of runs(track, overWater)) {
@@ -1046,7 +1046,7 @@ function streetFurniture(track: Track, ground: (x: number, z: number) => number,
 
   // Bus stops: a shelter of glass under a flat roof, or just the pole, beside the road.
   const glass = mat('#9fb7c4', { roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.35 });
-  const sign = new THREE.MeshStandardMaterial({ map: tex.sign('BUS', '', '#ffffff', '#1b3f8b', 256, 128, ''), roughness: 0.5 });
+  const sign = new THREE.MeshStandardMaterial({ map: tex.sign('PARAGEM', '', '#ffffff', '#1b3f8b', 256, 128, ''), roughness: 0.5 });
   for (const st of meta.stops) {
     const { i } = distanceToRoad(track, st.x, st.z);
     if (i < 0) continue;

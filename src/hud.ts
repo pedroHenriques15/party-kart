@@ -12,7 +12,7 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', ...kids: Chi
   return el;
 }
 
-export const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+export const ordinal = (n: number) => `${n}.º`;
 export const fmt = (ms: number | null) => {
   if (ms === null || !Number.isFinite(ms)) return '–';
   const m = Math.floor(ms / 60000);
@@ -59,7 +59,7 @@ export class Hud {
     e.keys = h(
       'div',
       'keys',
-      race ? 'Arrows drive · Space drift (hold, then let go for a turbo) · E/Shift use item (↓ to throw back) · Enter checkpoint · H horn · C camera' : 'Arrows drive · Space drift · Enter checkpoint · Backspace restart · H horn · C camera',
+      race ? 'Setas conduzem · Espaço derrapa (mantém e larga para um turbo) · E/Shift usa o item (↓ atira para trás) · Enter ponto de controlo · H buzina · C câmara' : 'Setas conduzem · Espaço derrapa · Enter ponto de controlo · Backspace recomeça a volta · H buzina · C câmara',
     );
 
     // The minimap: the track drawn once, the cars on top each frame.
@@ -129,7 +129,7 @@ export class Hud {
   }): void {
     const e = this.el;
     if (o.place) {
-      e.place.replaceChildren(h('b', '', String(o.place[0])), h('sup', '', ordinal(o.place[0]).slice(-2)), h('small', '', ` /${o.place[1]}`));
+      e.place.replaceChildren(h('b', '', String(o.place[0])), h('sup', '', 'º'), h('small', '', ` /${o.place[1]}`));
       e.place.dataset.p = String(o.place[0]);
     }
     e.lap.textContent = o.lap;

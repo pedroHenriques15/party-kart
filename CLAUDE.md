@@ -127,6 +127,10 @@ How a race runs:
   not what the next line does. Maths-heavy code uses short names (`c`, `s`, `r`, `a`, `P`, `N`). Use
   2 spaces, single quotes, semicolons and trailing commas. Long lines are fine, and no formatter is
   configured. Write the README and UI text in the same plain voice as the README.
+- Everything a player sees is in Portuguese, Portugal's, speaking to them as *tu*: the menus, the
+  HUD, the feed, the item names and blurbs, the drivers' taglines, the errors, and the signs in the
+  city. The code, its comments, the README and the docs stay in English. Credits a licence words
+  exactly (EU-DEM's, "© OpenStreetMap contributors") keep their own words.
 
 ## Gotchas
 

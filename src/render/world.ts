@@ -156,7 +156,7 @@ export function buildWorld(track: Track): World {
     updates.push((t) => normal.offset.set(t * 0.02, -t * 0.12));
   }
 
-  const road = buildRoad(track, onBridge, { start: tex.sign('BRAGA GRAND PRIX', 'PISTA ANTIGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('CHECKPOINT', '', '#111318', '#ffe14d', 1024, 160) });
+  const road = buildRoad(track, onBridge, { start: tex.sign('GRANDE PRÉMIO DE BRAGA', 'PISTA ANTIGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('PONTO DE CONTROLO', '', '#111318', '#ffe14d', 1024, 160) });
   group.add(road.group);
   updates.push(road.update);
   for (const [a, b] of runsOf(track, onBridge)) group.add(bridge(track, a, b, WATER_Y, RIVER_HALF_W));

@@ -45,13 +45,13 @@ function downloaded(): { bytes: number; cached: boolean } {
 function gpuName(renderer: THREE.WebGLRenderer): string {
   const gl = renderer.getContext();
   const ext = gl.getExtension('WEBGL_debug_renderer_info');
-  const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : 'graphics card unknown';
+  const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : 'placa gráfica desconhecida';
   const angle = /^ANGLE \((.*)\)$/.exec(name);
   return (angle ? (angle[1].split(', ')[1] ?? angle[1]) : name).replace(/\s*\(0x[0-9a-f]+\).*$/i, '');
 }
 
 const MB = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
-const LEVEL = { high: 'High', medium: 'Medium', low: 'Low' };
+const LEVEL = { high: 'Alta', medium: 'Média', low: 'Baixa' };
 
 export class Stats {
   private el = document.createElement('div');
@@ -75,7 +75,7 @@ export class Stats {
     this.renderer = renderer;
     this.scene = scene;
     const d = downloaded();
-    this.build = `built ${(buildMs / 1000).toFixed(1)} s · ready ${(readyMs / 1000).toFixed(1)} s · ${d.cached ? 'from the cache' : `${MB(d.bytes)} down`}`;
+    this.build = `cidade em ${(buildMs / 1000).toFixed(1)} s · pronta em ${(readyMs / 1000).toFixed(1)} s · ${d.cached ? 'da cache' : `${MB(d.bytes)} descarregados`}`;
     this.gpu = gpuName(renderer);
     this.el.className = 'stats';
     document.body.append(this.el);
@@ -100,8 +100,8 @@ export class Stats {
     const r = this.renderer.info.render;
     const px = this.renderer.getDrawingBufferSize(new THREE.Vector2());
     this.el.textContent = [
-      `${Math.round(this.fps)} fps · worst ${Number.isFinite(this.worst) ? Math.round(this.worst) : '–'} · ${LEVEL[quality]}${this.from && this.from !== quality ? ` (from ${LEVEL[this.from]})` : ''}`,
-      `${r.calls} calls · ${(r.triangles / 1e6).toFixed(2)} M tris · textures ${Math.round(textureBytes(this.scene) / 1048576)} MB`,
+      `${Math.round(this.fps)} fps · pior ${Number.isFinite(this.worst) ? Math.round(this.worst) : '–'} · ${LEVEL[quality]}${this.from && this.from !== quality ? ` (era ${LEVEL[this.from]})` : ''}`,
+      `${r.calls} chamadas · ${(r.triangles / 1e6).toFixed(2)} M triângulos · texturas ${Math.round(textureBytes(this.scene) / 1048576)} MB`,
       this.build,
       `${this.gpu} · ${px.x}×${px.y}`,
     ].join('\n');

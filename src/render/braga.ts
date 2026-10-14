@@ -453,7 +453,7 @@ export function buildBraga(track: Track, ground: Ground): { group: THREE.Group; 
   g.add(tib);
 
   // A sign for the Roman ruins.
-  const sign = mesh(new THREE.PlaneGeometry(8, 1.6), new THREE.MeshBasicMaterial({ map: tex.sign('BRACARA AUGUSTA', 'Roman Braga, 16 BC', '#3a2c1c', '#f3e3c0', 1024, 200) }), 0, 0, 0);
+  const sign = mesh(new THREE.PlaneGeometry(8, 1.6), new THREE.MeshBasicMaterial({ map: tex.sign('BRACARA AUGUSTA', 'Braga romana, 16 a.C.', '#3a2c1c', '#f3e3c0', 1024, 200) }), 0, 0, 0);
   const f = at(track, 1690, w(1690) / 2 + 3, 2.2);
   sign.position.copy(f.pos);
   sign.rotation.y = f.yaw + Math.PI;

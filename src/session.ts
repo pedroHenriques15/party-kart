@@ -91,7 +91,7 @@ type ToClient =
   | { t: 'bye'; why: string };
 
 export const cleanName = (n: unknown): string =>
-  (typeof n === 'string' ? n : '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 16) || 'Driver';
+  (typeof n === 'string' ? n : '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 16) || 'Piloto';
 
 const validDriver = (d: unknown) => (typeof d === 'string' && DRIVERS.some((x) => x.id === d) ? d : DRIVERS[0].id);
 
@@ -307,7 +307,7 @@ export class HostRoom implements Room {
     if (r) r.heard = performance.now();
     if (m.t === 'hello' && !r) {
       if (this.humans().length >= MAX_RACERS) {
-        this.send(c, { t: 'bye', why: 'The room is full.' });
+        this.send(c, { t: 'bye', why: 'A sala está cheia.' });
         setTimeout(() => c.close(), 500);
         return;
       }
@@ -535,10 +535,10 @@ export class ClientRoom implements Room {
     this.peer = peer;
     this.conn = conn;
     conn.on('data', (raw) => this.receive(raw as ToClient));
-    conn.on('close', () => this.close('The host closed the room.'));
-    conn.on('error', () => this.close('Lost the connection to the host.'));
+    conn.on('close', () => this.close('O anfitrião fechou a sala.'));
+    conn.on('error', () => this.close('Perdeu-se a ligação ao anfitrião.'));
     peer.on('error', (e) => {
-      if (errType(e) !== 'peer-unavailable') this.close('Lost the connection to the host.');
+      if (errType(e) !== 'peer-unavailable') this.close('Perdeu-se a ligação ao anfitrião.');
     });
     this.pinger = setInterval(() => this.send({ t: 'ping' }), PING_MS);
   }
@@ -551,10 +551,10 @@ export class ClientRoom implements Room {
         peer.destroy();
         reject(new Error(why));
       };
-      const timer = setTimeout(() => fail("Couldn't reach that room. Check the code, and that the host still has it open."), 15000);
+      const timer = setTimeout(() => fail('Não foi possível chegar a essa sala. Confirma o código, e se o anfitrião ainda a tem aberta.'), 15000);
       peer.once('error', (e) => {
         clearTimeout(timer);
-        fail(errType(e) === 'peer-unavailable' ? 'No room with that code.' : `Couldn't connect (${errType(e) || 'error'}).`);
+        fail(errType(e) === 'peer-unavailable' ? 'Não há nenhuma sala com esse código.' : `Não foi possível ligar (${errType(e) || 'erro'}).`);
       });
       conn.once('open', () => {
         clearTimeout(timer);

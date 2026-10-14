@@ -267,11 +267,13 @@ function driverGrid(current: string, taken: Map<string, string>, onPick: (id: st
         { class: `driver${d.id === current ? ' on' : ''}`, disabled: !!by && d.id !== current, onclick: () => onPick(d.id), style: `--c:${d.color};--t:${d.trim}` },
         h('span', { class: 'swatch' }),
         h('b', {}, d.name),
-        h('small', {}, by && d.id !== current ? `taken by ${by}` : d.tagline),
+        h('small', {}, by && d.id !== current ? `escolhido por ${by}` : d.tagline),
       );
     }),
   );
 }
+
+const QUALITY_NAME: Record<Quality, string> = { high: 'Alta', medium: 'Média', low: 'Baixa' };
 
 function qualityPicker(): HTMLElement {
   const sel = h(
@@ -283,15 +285,15 @@ function qualityPicker(): HTMLElement {
         look.setQuality(quality);
       },
     },
-    ...(['high', 'medium', 'low'] as Quality[]).map((q) => h('option', { value: q, selected: q === quality }, q[0].toUpperCase() + q.slice(1))),
+    ...(['high', 'medium', 'low'] as Quality[]).map((q) => h('option', { value: q, selected: q === quality }, QUALITY_NAME[q])),
   );
-  return h('label', { class: 'inline' }, 'Graphics ', sel);
+  return h('label', { class: 'inline' }, 'Gráficos ', sel);
 }
 
 function homeScreen(): HTMLElement {
   let driver = stored('pk-driver', DRIVERS[0].id);
-  const name = h('input', { maxLength: 16, placeholder: 'Your name', value: stored('pk-name', ''), autocomplete: 'off' });
-  const code = h('input', { class: 'code-in', maxLength: 5, placeholder: 'Room code', value: roomFromUrl(), autocomplete: 'off', spellcheck: false });
+  const name = h('input', { maxLength: 16, placeholder: 'O teu nome', value: stored('pk-name', ''), autocomplete: 'off' });
+  const code = h('input', { class: 'code-in', maxLength: 5, placeholder: 'Código da sala', value: roomFromUrl(), autocomplete: 'off', spellcheck: false });
   const err = h('p', { class: 'err' }, notice);
   const grid = h('div', {});
   const drawGrid = () =>
@@ -319,24 +321,24 @@ function homeScreen(): HTMLElement {
     unlockAudio();
     fullScreen();
     busy(true);
-    err.textContent = 'Opening a room…';
+    err.textContent = 'A abrir uma sala…';
     try {
       enter(await HostRoom.create(who(), driver));
     } catch (e) {
       busy(false);
-      err.textContent = `Couldn't open a room (${(e as { type?: string }).type ?? 'error'}). Try again in a moment.`;
+      err.textContent = `Não foi possível abrir uma sala (${(e as { type?: string }).type ?? 'erro'}). Tenta outra vez daqui a pouco.`;
     }
   };
   const join = async () => {
     const c = code.value.trim().toLowerCase();
     if (!/^[a-z0-9]{5}$/.test(c)) {
-      err.textContent = 'A room code has 5 letters and numbers.';
+      err.textContent = 'O código da sala tem 5 letras e números.';
       return;
     }
     unlockAudio();
     fullScreen();
     busy(true);
-    err.textContent = 'Joining…';
+    err.textContent = 'A entrar…';
     try {
       enter(await ClientRoom.join(c, who(), driver));
     } catch (e) {
@@ -350,13 +352,13 @@ function homeScreen(): HTMLElement {
     'div',
     { class: 'panel home' },
     h('h1', {}, 'Party Kart', h('span', {}, '.')),
-    h('p', { class: 'tag' }, "The Volta dos Amigos, round Braga's real streets, past the friends' houses. Race your friends, throw things at them."),
-    h('label', {}, 'Your name', name),
-    h('label', {}, 'Your driver'),
+    h('p', { class: 'tag' }, 'A Volta dos Amigos, pelas ruas verdadeiras de Braga e à porta dos amigos. Corre contra eles e atira-lhes com coisas.'),
+    h('label', {}, 'O teu nome', name),
+    h('label', {}, 'O teu piloto'),
     grid,
-    invited ? h('button', { class: 'primary', onclick: join }, `Join room ${invited}`) : h('button', { class: 'primary', onclick: host }, 'Create a room'),
-    h('div', { class: 'or' }, invited ? 'or' : 'or join one'),
-    invited ? h('button', { onclick: host }, 'Create my own room') : h('div', { class: 'row' }, code, h('button', { onclick: join }, 'Join')),
+    invited ? h('button', { class: 'primary', onclick: join }, `Entrar na sala ${invited}`) : h('button', { class: 'primary', onclick: host }, 'Criar uma sala'),
+    h('div', { class: 'or' }, invited ? 'ou' : 'ou entra numa'),
+    invited ? h('button', { onclick: host }, 'Criar a minha sala') : h('div', { class: 'row' }, code, h('button', { onclick: join }, 'Entrar')),
     err,
     h('div', { class: 'row foot' }, qualityPicker()),
     howTo(),
@@ -368,28 +370,28 @@ function howTo(): HTMLElement {
   return h(
     'details',
     { class: 'how' },
-    h('summary', {}, 'How to play'),
+    h('summary', {}, 'Como se joga'),
     h(
       'ul',
       {},
-      h('li', { class: 'keys-only' }, h('b', {}, 'Drive'), ' arrows or WASD. ', h('b', {}, 'Drift'), ' hold Space through a corner; when the sparks turn blue, then orange, let go for a mini-turbo.'),
-      h('li', { class: 'keys-only' }, h('b', {}, 'Items'), ' drive through the ? boxes; ', h('b', {}, 'E'), ' or ', h('b', {}, 'Shift'), ' uses it (hold ↓ to throw backwards). The further behind you are, the better what you get.'),
-      h('li', { class: 'touch-only' }, h('b', {}, 'Steer'), ' with your left thumb, dragging left and right anywhere on that half of the screen. The kart goes by itself; ', h('b', {}, 'Brake'), ' slows it down, and reverses once it stops. Best with the phone sideways.'),
-      h('li', { class: 'touch-only' }, h('b', {}, 'Drift'), ' hold it through a corner; when the sparks turn blue, then orange, let go for a mini-turbo.'),
-      h('li', { class: 'touch-only' }, h('b', {}, 'Items'), ' drive through the ? boxes, then tap the item button (swipe it down to throw backwards). The further behind you are, the better what you get.'),
-      h('li', {}, h('b', {}, 'Slipstream'), ' get right behind a car and it builds up and pulls you along, the closer the harder; pull out to pass and the extra speed wears off over a few seconds.'),
-      h('li', { class: 'keys-only' }, h('b', {}, 'Enter'), ' back to your last checkpoint. ', h('b', {}, 'H'), ' horn · ', h('b', {}, 'C'), ' camera · ', h('b', {}, 'M'), ' sound.'),
-      h('li', { class: 'touch-only' }, h('b', {}, '↺'), ' back to your last checkpoint. The horn, the camera and the sound are at the top.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Conduzir:'), ' setas ou WASD. ', h('b', {}, 'Derrapar:'), ' mantém o Espaço numa curva; quando as faíscas ficarem azuis, e depois laranja, larga para um mini-turbo.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Itens:'), ' passa pelas caixas ?; ', h('b', {}, 'E'), ' ou ', h('b', {}, 'Shift'), ' usa o que te saiu (com ↓ atiras para trás). Quanto mais atrás fores, melhor o que te sai.'),
+      h('li', { class: 'touch-only' }, h('b', {}, 'Virar:'), ' com o polegar esquerdo, a arrastar para a esquerda e para a direita em qualquer sítio dessa metade do ecrã. O kart anda sozinho; ', h('b', {}, 'Travar'), ' abranda, e faz marcha-atrás depois de parar. Melhor com o telemóvel deitado.'),
+      h('li', { class: 'touch-only' }, h('b', {}, 'Derrapar:'), ' mantém-no numa curva; quando as faíscas ficarem azuis, e depois laranja, larga para um mini-turbo.'),
+      h('li', { class: 'touch-only' }, h('b', {}, 'Itens:'), ' passa pelas caixas ? e toca no botão do item (arrasta-o para baixo para atirar para trás). Quanto mais atrás fores, melhor o que te sai.'),
+      h('li', {}, h('b', {}, 'Cone de aspiração:'), ' cola-te atrás de um carro e ele puxa-te, com mais força quanto mais perto; sai para ultrapassar e a velocidade a mais vai-se em poucos segundos.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Enter'), ' volta ao último ponto de controlo. ', h('b', {}, 'H'), ' buzina · ', h('b', {}, 'C'), ' câmara · ', h('b', {}, 'M'), ' som.'),
+      h('li', { class: 'touch-only' }, h('b', {}, '↺'), ' volta ao último ponto de controlo. A buzina, a câmara e o som estão lá em cima.'),
       h(
         'li',
         {},
-        'Items: ',
+        'Itens: ',
         Object.values(ITEMS)
           .filter((i, k, a) => a.findIndex((x) => x.icon === i.icon) === k)
           .map((i) => `${i.icon} ${i.name}`)
           .join(' · '),
       ),
-      h('li', {}, h('b', {}, 'The track'), " is 7 km of Braga as it is: the streets, the buildings and the hills. Watch out for a dog. Map data © OpenStreetMap contributors. Ground: informação geográfica cedida pela Direção-Geral do Território. Horizon: EU-DEM, produced using Copernicus data and information funded by the European Union."),
+      h('li', {}, h('b', {}, 'O percurso'), ' são 9 km de Braga como ela é: as ruas, os prédios e os montes, e o Tourigalo. Em casa de cada amigo há uma surpresa. Mapa: © OpenStreetMap contributors (ODbL). Relevo: informação geográfica cedida pela Direção-Geral do Território. Horizonte: Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers.'),
     ),
   );
 }
@@ -407,7 +409,7 @@ function lobbyScreen(r: Room): HTMLElement {
       onclick: async () => {
         if (share) {
           try {
-            await navigator.share({ title: 'Party Kart', text: 'Race me in Party Kart', url: inviteLink(L.code) });
+            await navigator.share({ title: 'Party Kart', text: 'Corre contra mim no Party Kart', url: inviteLink(L.code) });
             return;
           } catch (e) {
             if ((e as Error).name === 'AbortError') return;
@@ -415,13 +417,13 @@ function lobbyScreen(r: Room): HTMLElement {
         }
         try {
           await navigator.clipboard.writeText(inviteLink(L.code));
-          copy.textContent = 'Copied!';
+          copy.textContent = 'Copiado!';
         } catch {
-          prompt('Send this link to your friends:', inviteLink(L.code));
+          prompt('Envia esta ligação aos teus amigos:', inviteLink(L.code));
         }
       },
     },
-    share ? 'Share invite link' : 'Copy invite link',
+    share ? 'Partilhar o convite' : 'Copiar o convite',
   );
   const select = <T extends string | number>(value: T, options: [T, string][], set: (v: T) => void) => {
     const s = h(
@@ -439,12 +441,12 @@ function lobbyScreen(r: Room): HTMLElement {
   const settings = h(
     'div',
     { class: 'settings' },
-    h('label', { class: 'inline' }, 'Mode ', select(L.mode, [['race', 'Race'], ['time', 'Time attack']], (mode) => host?.configure({ mode }))),
+    h('label', { class: 'inline' }, 'Modo ', select(L.mode, [['race', 'Corrida'], ['time', 'Contrarrelógio']], (mode) => host?.configure({ mode }))),
     L.mode === 'race'
-      ? h('label', { class: 'inline' }, 'Laps ', select(L.laps, [[1, '1'], [2, '2'], [3, '3']], (laps) => host?.configure({ laps })))
-      : h('label', { class: 'inline' }, 'Round ', select(L.minutes, [5, 8, 10, 15].map((n) => [n, `${n} min`] as [number, string]), (minutes) => host?.configure({ minutes }))),
-    L.mode === 'race' && h('label', { class: 'inline' }, check(L.items, (items) => host?.configure({ items })), ' Power-ups'),
-    L.mode === 'race' && h('label', { class: 'inline' }, check(L.catchUp, (catchUp) => host?.configure({ catchUp })), ' Catch-up'),
+      ? h('label', { class: 'inline' }, 'Voltas ', select(L.laps, [[1, '1'], [2, '2'], [3, '3']], (laps) => host?.configure({ laps })))
+      : h('label', { class: 'inline' }, 'Duração ', select(L.minutes, [5, 8, 10, 15].map((n) => [n, `${n} min`] as [number, string]), (minutes) => host?.configure({ minutes }))),
+    L.mode === 'race' && h('label', { class: 'inline' }, check(L.items, (items) => host?.configure({ items })), ' Itens'),
+    L.mode === 'race' && h('label', { class: 'inline' }, check(L.catchUp, (catchUp) => host?.configure({ catchUp })), ' Ajuda a quem vai atrás'),
     h(
       'label',
       { class: 'inline' },
@@ -459,22 +461,22 @@ function lobbyScreen(r: Room): HTMLElement {
   return h(
     'div',
     { class: 'panel lobby' },
-    h('div', { class: 'room' }, h('div', {}, h('span', { class: 'label' }, 'Room'), h('b', { class: 'code' }, L.code)), copy),
+    h('div', { class: 'room' }, h('div', {}, h('span', { class: 'label' }, 'Sala'), h('b', { class: 'code' }, L.code)), copy),
     h(
       'div',
       { class: 'members' },
       ...L.members.map((m) =>
-        h('span', { class: `chip${m.bot ? ' bot' : ''}`, style: `--c:${driverById(m.driver).color}` }, m.bot ? '🤖 ' : '', m.id === r.you ? `${m.name} (you)` : m.name, h('small', {}, m.bot ? 'bot' : driverById(m.driver).name)),
+        h('span', { class: `chip${m.bot ? ' bot' : ''}`, style: `--c:${driverById(m.driver).color}` }, m.bot ? '🤖 ' : '', m.id === r.you ? `${m.name} (tu)` : m.name, h('small', {}, m.bot ? 'bot' : driverById(m.driver).name)),
       ),
     ),
-    h('label', {}, 'Your driver'),
+    h('label', {}, 'O teu piloto'),
     driverGrid(me?.driver ?? '', taken, (id) => {
       remember('pk-driver', id);
       r.pick(id);
     }),
     settings,
-    host ? h('button', { class: 'primary', onclick: () => (fullScreen(), host.start()) }, L.mode === 'race' ? 'Start the race' : 'Start the round') : h('p', { class: 'wait' }, 'Waiting for the host to start…'),
-    h('div', { class: 'row foot' }, qualityPicker(), h('button', { class: 'ghost', onclick: leave }, 'Leave the room')),
+    host ? h('button', { class: 'primary', onclick: () => (fullScreen(), host.start()) }, L.mode === 'race' ? 'Começar a corrida' : 'Começar a ronda') : h('p', { class: 'wait' }, 'À espera que o anfitrião comece…'),
+    h('div', { class: 'row foot' }, qualityPicker(), h('button', { class: 'ghost', onclick: leave }, 'Sair da sala')),
     howTo(),
   );
 }
@@ -484,7 +486,7 @@ function resultsScreen(r: Room, list: Entry[]): HTMLElement {
   return h(
     'div',
     { class: 'panel results' },
-    h('h2', {}, isRace ? 'Results' : 'Best laps'),
+    h('h2', {}, isRace ? 'Resultados' : 'Melhores voltas'),
     h(
       'ol',
       { class: 'podium' },
@@ -494,8 +496,8 @@ function resultsScreen(r: Room, list: Entry[]): HTMLElement {
           { class: e.id === r.you ? 'me' : '' },
           h('span', { class: 'pos' }, String(k + 1)),
           h('span', { class: 'swatch', style: `--c:${driverById(e.driver).color};--t:${driverById(e.driver).trim}` }),
-          h('span', { class: 'who' }, e.bot ? `🤖 ${e.name}` : e.name, h('small', {}, isRace ? `best lap ${fmt(e.best)}` : driverById(e.driver).name)),
-          h('span', { class: 'time' }, isRace ? (e.fin !== null ? fmt(e.fin) : 'DNF') : fmt(e.best)),
+          h('span', { class: 'who' }, e.bot ? `🤖 ${e.name}` : e.name, h('small', {}, isRace ? `melhor volta ${fmt(e.best)}` : driverById(e.driver).name)),
+          h('span', { class: 'time' }, isRace ? (e.fin !== null ? fmt(e.fin) : 'não acabou') : fmt(e.best)),
         ),
       ),
     ),
@@ -503,7 +505,7 @@ function resultsScreen(r: Room, list: Entry[]): HTMLElement {
       ? h(
           'div',
           { class: 'row' },
-          h('button', { class: 'primary', onclick: () => (fullScreen(), (r as HostRoom).start()) }, 'Race again'),
+          h('button', { class: 'primary', onclick: () => (fullScreen(), (r as HostRoom).start()) }, 'Correr outra vez'),
           h(
             'button',
             {
@@ -512,13 +514,13 @@ function resultsScreen(r: Room, list: Entry[]): HTMLElement {
                 render();
               },
             },
-            'Back to the lobby',
+            'Voltar à sala',
           ),
         )
       : h(
           'div',
           { class: 'row' },
-          h('p', { class: 'wait' }, 'Waiting for the host…'),
+          h('p', { class: 'wait' }, 'À espera do anfitrião…'),
           h(
             'button',
             {
@@ -527,7 +529,7 @@ function resultsScreen(r: Room, list: Entry[]): HTMLElement {
                 render();
               },
             },
-            'Change driver',
+            'Mudar de piloto',
           ),
         ),
   );
@@ -535,7 +537,7 @@ function resultsScreen(r: Room, list: Entry[]): HTMLElement {
 
 function leave(): void {
   if (room) {
-    if (room.isHost && room.lobby.members.some((m) => !m.bot && m.id !== room!.you) && !confirm('Close the room for everyone?')) return;
+    if (room.isHost && room.lobby.members.some((m) => !m.bot && m.id !== room!.you) && !confirm('Fechar a sala para todos?')) return;
     room.onClose = () => {};
     room.leave();
   }
@@ -580,19 +582,19 @@ function render(): void {
   if (race) {
     // On a touch screen, the keys Enter, Backspace, H, C and M are buttons here.
     const touchBtn = (label: string, title: string, onclick: () => void) => h('button', { class: 'small ghost touch-only', title, onclick }, label);
-    const sound = touchBtn(isMuted() ? '🔇' : '🔊', 'Sound', () => (sound.textContent = toggleMute() ? '🔇' : '🔊'));
+    const sound = touchBtn(isMuted() ? '🔇' : '🔊', 'Som', () => (sound.textContent = toggleMute() ? '🔇' : '🔊'));
     ui.replaceChildren(
       h(
         'div',
         { class: 'bar' },
-        h('span', { class: 'room-code' }, 'Room ', h('b', {}, room?.lobby.code ?? '')),
-        touchBtn('↺', 'Back to the last checkpoint', () => pad.press('respawn')),
-        race.rules.mode === 'time' && touchBtn('Restart lap', 'Restart the lap', () => pad.press('restart')),
-        touchBtn('📢', 'Horn', () => pad.press('horn')),
-        touchBtn('🎥', 'Camera', () => pad.press('camera')),
+        h('span', { class: 'room-code' }, 'Sala ', h('b', {}, room?.lobby.code ?? '')),
+        touchBtn('↺', 'Voltar ao último ponto de controlo', () => pad.press('respawn')),
+        race.rules.mode === 'time' && touchBtn('Recomeçar volta', 'Recomeçar a volta', () => pad.press('restart')),
+        touchBtn('📢', 'Buzina', () => pad.press('horn')),
+        touchBtn('🎥', 'Câmara', () => pad.press('camera')),
         sound,
-        room?.isHost ? h('button', { class: 'small ghost', onclick: () => (room as HostRoom).endNow() }, 'End race') : null,
-        h('button', { class: 'small ghost', onclick: leave }, 'Leave'),
+        room?.isHost ? h('button', { class: 'small ghost', onclick: () => (room as HostRoom).endNow() }, 'Acabar a corrida') : null,
+        h('button', { class: 'small ghost', onclick: leave }, 'Sair'),
       ),
     );
     return;
@@ -706,7 +708,7 @@ function onArenaFx(r: RaceCtx, f: ArenaFx): void {
     glow.spray(where, 40, ev.blocked ? ['#7fd4ff', '#ffffff'] : ['#ffe14d', '#ffffff', '#ff4fd8'], 7, 6, 0.7);
     if (ev.victim !== r.me.id && near(r, where) > 0) sfx.hit(near(r, where));
     if (ev.victim && ev.victim !== r.me.id && !ev.blocked && ev.item) {
-      r.hud.feed(`${a.nameOf(ev.victim)} got ${owner(ev.item)}'s ${howName(ev.how)}`);
+      r.hud.feed(`${owner(ev.item)} acertou em ${a.nameOf(ev.victim)} com ${howName(ev.how)}`);
     }
   } else if (f.k === 'boom') {
     const ev = f.ev;
@@ -715,17 +717,19 @@ function onArenaFx(r: RaceCtx, f: ArenaFx): void {
     fx.spray(where, 260, ['#ffffff', '#ffe14d', '#ff7a1a', '#c8102e', '#7fd4ff'], 16, 14, 2.4);
     sfx.boom(Math.max(0.25, near(r, where)));
     r.shake = Math.max(r.shake, near(r, where) * 1.2);
-    r.hud.feed(`🚀 ${a.nameOf(ev.owner)}'s foguete got ${a.nameOf(ev.victim)}!`, 'big');
+    r.hud.feed(`🚀 O foguete de ${a.nameOf(ev.owner)} apanhou ${a.nameOf(ev.victim)}!`, 'big');
   } else if (f.k === 'martelinho') {
     const ev = f.ev;
     const c = a.cars.get(ev.owner);
     if (c) r.items.wave(c, t);
     sfx.hammer();
-    r.hud.feed(`🔨 ${a.nameOf(ev.owner)}'s martelinho: bonk!`, 'big');
+    r.hud.feed(`🔨 Martelada de ${a.nameOf(ev.owner)}!`, 'big');
   }
 }
 
-const howName = (how: string) => ({ bola: 'bola ⚽', pombo: 'pombo-correio 🕊️', foguete: 'foguete 🚀', pudim: 'pudim 🍮', filigrana: 'filigrana ✨' })[how] ?? how;
+// What hit someone, with its article, for the feed and the flash: "a bola ⚽".
+const HOW: Record<string, [string, string]> = { bola: ['a bola', '⚽'], pombo: ['o pombo-correio', '🕊️'], foguete: ['o foguete', '🚀'], pudim: ['o pudim', '🍮'], filigrana: ['a filigrana', '✨'] };
+const howName = (how: string) => (HOW[how] ? `${HOW[how][0]} ${HOW[how][1]}` : how);
 
 function flashSplit(r: RaceCtx, text: string, cls: string, ms = 2000): void {
   r.split = { text, cls, until: performance.now() + ms };
@@ -737,26 +741,26 @@ function eggReact(r: RaceCtx | null, events: EggEvent[]): void {
     if (e.kind === 'dog') {
       if (r) horn(r.karts.get(r.me.id)!.model.driver.horn);
       sfx.bark();
-      r?.hud.feed('🐕 Faísca is chasing you!', 'big');
+      r?.hud.feed('🐕 O Faísca vai atrás de ti!', 'big');
     }
     if (e.kind === 'dentist') {
       sfx.drill();
       for (let k = 0; k < 50; k++) glow.add(e.at.x + (Math.random() - 0.5) * 4, e.at.y + Math.random() * 3, e.at.z + (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 6, 2 + Math.random() * 5, (Math.random() - 0.5) * 6, 0.9, k % 2 ? '#ffffff' : '#9fe3ff', -6);
-      r?.hud.feed('🦷 The dentist says: open wide!', 'big');
+      r?.hud.feed('🦷 O dentista diz: abra bem a boca!', 'big');
     }
     if (e.kind === 'supermarket') {
       sfx.chime();
-      r?.hud.feed('🛒 Contente card: +1 point', 'big');
+      r?.hud.feed('🛒 Cartão Contente: +1 ponto', 'big');
     }
     if (e.kind === 'smoke' && r) {
       sfx.pop();
       r.vice = performance.now() + 15000;
-      r.hud.feed('🚬🍺 One for the road, from the café', 'big');
+      r.hud.feed('🚬🍺 Uma para o caminho, oferta do café', 'big');
     }
     if (e.kind === 'clock') {
       sfx.alarm();
       for (let k = 0; k < 60; k++) glow.add(e.at.x + (Math.random() - 0.5) * 6, e.at.y + (Math.random() - 0.5) * 5, e.at.z + (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, 2 + Math.random() * 4, (Math.random() - 0.5) * 6, 1.1, k % 2 ? '#ffe14d' : '#ffffff', -4);
-      r?.hud.feed("⏰ Vale's late again!", 'big');
+      r?.hud.feed('⏰ O Vale está atrasado outra vez!', 'big');
     }
   }
 }
@@ -786,11 +790,11 @@ function noteForMe(r: RaceCtx, n: Note): void {
       if (race) {
         if (me.fin === null) {
           const lap = me.run.laps + 1;
-          if (lap === r.rules.laps) flashCenter(r, 'FINAL LAP', 'big final', 2200);
-          else flashSplit(r, `Lap ${lap}/${r.rules.laps}  ·  ${fmt(n.ms)}`, n.best ? 'faster' : 'neutral');
+          if (lap === r.rules.laps) flashCenter(r, 'ÚLTIMA VOLTA', 'big final', 2200);
+          else flashSplit(r, `Volta ${lap}/${r.rules.laps}  ·  ${fmt(n.ms)}`, n.best ? 'faster' : 'neutral');
         }
       } else {
-        flashSplit(r, `${n.best ? 'Best lap! ' : 'Lap '}${fmt(n.ms)}${n.diff === null ? '' : `  ${fmtDiff(n.diff)}`}`, n.best ? 'faster' : 'slower', 3000);
+        flashSplit(r, `${n.best ? 'Melhor volta! ' : 'Volta '}${fmt(n.ms)}${n.diff === null ? '' : `  ${fmtDiff(n.diff)}`}`, n.best ? 'faster' : 'slower', 3000);
         if (n.best) r.ghostLap = r.rec;
         r.rec = [];
       }
@@ -800,12 +804,12 @@ function noteForMe(r: RaceCtx, n: Note): void {
       const place = r.arena.rankOf(me.id);
       sfx.finish(place);
       fx.spray(me.car.p, 300, ['#ffffff', '#d4af37', '#ffe14d', '#ff4fd8'], 10, 12, 2.5);
-      flashCenter(r, `${ordinal(place)}!`, `big place p${place}`, 4000);
+      flashCenter(r, `${ordinal(place)} lugar!`, `big place p${place}`, 4000);
       room?.sendFin(n.ms);
       break;
     }
     case 'respawn':
-      flashSplit(r, 'Respawn', 'neutral', 800);
+      flashSplit(r, 'De volta à estrada', 'neutral', 800);
       break;
     case 'box':
       sfx.box();
@@ -820,20 +824,20 @@ function noteForMe(r: RaceCtx, n: Note): void {
       } else if (n.kind === 'filigrana') sfx.got();
       else if (n.kind === 'guarda') {
         sfx.shield();
-        flashSplit(r, '☂️ Guarda-chuva open: it keeps off the next hit', 'faster', 1600);
+        flashSplit(r, '☂️ Guarda-chuva aberto: aguenta o próximo ataque', 'faster', 1600);
       } else if (n.kind !== 'martelinho') sfx.throw();
       break;
     case 'hit':
       sfx.hit(1);
       r.shake = Math.max(r.shake, 0.8);
-      flashCenter(r, n.how === 'filigrana' ? 'Knocked by the filigrana!' : `${n.by}'s ${howName(n.how)}!`, 'hit', 1400);
+      flashCenter(r, HOW[n.how] ? `${HOW[n.how][1]} Levaste com ${HOW[n.how][0]} de ${n.by}!` : 'Levaste!', 'hit', 1400);
       break;
     case 'blocked':
       sfx.shield();
-      flashSplit(r, '☂️ The guarda-chuva kept it off!', 'faster');
+      flashSplit(r, '☂️ O guarda-chuva aguentou!', 'faster');
       break;
     case 'shrunk':
-      flashCenter(r, `🔨 Bonk! ${n.by}'s martelinho`, 'hit', 1600);
+      flashCenter(r, `🔨 Martelada! O martelinho de ${n.by}`, 'hit', 1600);
       r.shake = Math.max(r.shake, 0.5);
       break;
     case 'bump':
@@ -957,7 +961,7 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
   }
   if (r.rules.mode === 'time' && !r.timeUp && now >= r.endAt) {
     r.timeUp = true;
-    flashCenter(r, "Time's up!", 'big', 99999);
+    flashCenter(r, 'Acabou o tempo!', 'big', 99999);
   }
 
   r.acc += Math.min(0.25, dt);
@@ -1034,7 +1038,7 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
   if (a.started && r.lastBeep !== 0 && r.lastBeep < 99) {
     r.lastBeep = 0;
     beep(true);
-    flashCenter(r, 'GO!', 'big go', 900);
+    flashCenter(r, 'JÁ!', 'big go', 900);
   }
 
   // The HUD.
@@ -1042,16 +1046,16 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
   const order = a.order();
   const colorOf = (id: string) => driverById(room?.lobby.members.find((m) => m.id === id)?.driver ?? '').color;
   const center = !a.started
-    ? { text: left <= 3 ? String(left) : 'Get ready', cls: 'big' }
+    ? { text: left <= 3 ? String(left) : 'Prepara-te', cls: 'big' }
     : r.center && now < r.center.until
       ? r.center
       : null;
   const grace = room?.isHost ? (room as HostRoom).graceLeft() : null;
   r.hud.set({
     place: isRace ? [a.rankOf(me.id), a.cars.size] : undefined,
-    lap: isRace ? (me.fin !== null ? 'Finished' : `Lap ${Math.min(r.rules.laps, me.run.laps + 1)}/${r.rules.laps}`) : a.started && !r.timeUp ? fmt(Math.max(0, lapMs)) : fmt(0),
-    time: isRace ? (me.fin !== null ? fmt(me.fin) : a.started ? fmt(raceMs) : fmt(0)) : `Best ${fmt(me.run.best)}`,
-    clock: isRace ? (grace !== null ? `Finish in ${Math.ceil(grace / 1000)} s` : '') : `Round ${Math.floor(Math.max(0, r.endAt - now) / 60000)}:${String(Math.floor((Math.max(0, r.endAt - now) % 60000) / 1000)).padStart(2, '0')}`,
+    lap: isRace ? (me.fin !== null ? 'Acabaste' : `Volta ${Math.min(r.rules.laps, me.run.laps + 1)}/${r.rules.laps}`) : a.started && !r.timeUp ? fmt(Math.max(0, lapMs)) : fmt(0),
+    time: isRace ? (me.fin !== null ? fmt(me.fin) : a.started ? fmt(raceMs) : fmt(0)) : `Melhor ${fmt(me.run.best)}`,
+    clock: isRace ? (grace !== null ? `Fim em ${Math.ceil(grace / 1000)} s` : '') : `Tempo ${Math.floor(Math.max(0, r.endAt - now) / 60000)}:${String(Math.floor((Math.max(0, r.endAt - now) % 60000) / 1000)).padStart(2, '0')}`,
     item: me.item,
     rolling: me.roll > 0,
     speed: speedOf(me.car),
@@ -1072,7 +1076,7 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
           name: c.name,
           color: colorOf(c.id),
           me: c.id === me.id,
-          right: c.fin !== null ? fmt(c.fin) : c === lead ? 'Leader' : `−${Math.max(0, Math.round((lead.P - c.P) / Math.max(10, speedOf(me.car) || 30)))}s`,
+          right: c.fin !== null ? fmt(c.fin) : c === lead ? 'Líder' : `−${Math.max(0, Math.round((lead.P - c.P) / Math.max(10, speedOf(me.car) || 30)))}s`,
         })),
       );
     } else if (room) {
@@ -1142,7 +1146,7 @@ function watchSpeed(dt: number): void {
     quality = quality === 'high' ? 'medium' : 'low';
     remember('pk-quality', quality);
     look.setQuality(quality);
-    race.hud.feed(`Graphics lowered to ${quality === 'medium' ? 'Medium' : 'Low'} to keep it smooth`, 'big');
+    race.hud.feed(`Gráficos baixados para ${QUALITY_NAME[quality]}, para o jogo não engasgar`, 'big');
   }
   slow.frames = 0;
   slow.time = 0;

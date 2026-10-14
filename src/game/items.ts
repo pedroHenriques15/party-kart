@@ -10,15 +10,15 @@ import type { Track } from '../track/track.ts';
 export type ItemKind = 'cafe' | 'cafe3' | 'pudim' | 'bola' | 'pombo' | 'foguete' | 'filigrana' | 'martelinho' | 'guarda';
 
 export const ITEMS: Record<ItemKind, { name: string; icon: string; uses: number; blurb: string }> = {
-  cafe: { name: 'Café', icon: '☕', uses: 1, blurb: 'A burst of speed' },
-  cafe3: { name: 'Três cafés', icon: '☕', uses: 3, blurb: 'Three bursts of speed' },
-  pudim: { name: 'Pudim Abade de Priscos', icon: '🍮', uses: 1, blurb: 'Dropped behind you; whoever hits it spins' },
-  bola: { name: 'Bola do Braga', icon: '⚽', uses: 1, blurb: 'Rolls ahead; hold ↓ to roll it back' },
-  pombo: { name: 'Pombo-correio', icon: '🕊️', uses: 1, blurb: 'Flies to the car ahead of you' },
-  foguete: { name: 'Foguete', icon: '🚀', uses: 1, blurb: 'Goes for the leader' },
-  filigrana: { name: 'Filigrana', icon: '✨', uses: 1, blurb: 'Gold all over: faster, and nothing touches you' },
-  martelinho: { name: 'Martelinho', icon: '🔨', uses: 1, blurb: 'Bonks everyone ahead of you down to size' },
-  guarda: { name: 'Guarda-chuva', icon: '☂️', uses: 1, blurb: 'Open as soon as you get it; keeps off the next hit' },
+  cafe: { name: 'Café', icon: '☕', uses: 1, blurb: 'Uma dose de velocidade' },
+  cafe3: { name: 'Três cafés', icon: '☕', uses: 3, blurb: 'Três doses de velocidade' },
+  pudim: { name: 'Pudim Abade de Priscos', icon: '🍮', uses: 1, blurb: 'Fica atrás de ti; quem lhe passar por cima, rodopia' },
+  bola: { name: 'Bola do Braga', icon: '⚽', uses: 1, blurb: 'Rola para a frente; com ↓ rola para trás' },
+  pombo: { name: 'Pombo-correio', icon: '🕊️', uses: 1, blurb: 'Voa até ao carro que vai à tua frente' },
+  foguete: { name: 'Foguete', icon: '🚀', uses: 1, blurb: 'Vai direito ao primeiro' },
+  filigrana: { name: 'Filigrana', icon: '✨', uses: 1, blurb: 'Ouro dos pés à cabeça: mais rápido, e nada te toca' },
+  martelinho: { name: 'Martelinho', icon: '🔨', uses: 1, blurb: 'Encolhe à martelada quem vai à tua frente' },
+  guarda: { name: 'Guarda-chuva', icon: '☂️', uses: 1, blurb: 'Abre-se logo; aguenta o próximo ataque' },
 };
 
 // Who gets what: the leader gets defence and small stuff, the back of the pack the big guns.

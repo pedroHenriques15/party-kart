@@ -46,11 +46,11 @@ export interface Driver {
 
 // In the order the Volta dos Amigos passes their houses.
 export const DRIVERS: Driver[] = [
-  { id: 'pedro', name: 'Pedro', tagline: 'Have you tried turning it off and on again?', body: 'kart', color: '#16181d', trim: '#22d3ee', alt: { color: '#eef1f5', trim: '#7c3aed' }, skin: '#e2a98a', outfit: '#2b2f36', extras: ['hair', 'glasses', 'headset', 'laptop', 'antenna', 'neon'], trail: 'bits', horn: [988, 1319, 1760] },
-  { id: 'joel', name: 'Joel', tagline: "Open wide! This won't hurt a bit.", body: 'chair', color: '#f4f6f5', trim: '#6fd6c1', alt: { color: '#6fd6c1', trim: '#f4f6f5' }, skin: '#dba383', outfit: '#ffffff', extras: ['hair', 'mask', 'headmirror', 'toothbrush', 'tooth'], trail: 'foam', horn: [2093, 2217, 2093, 2349] },
-  { id: 'joelf', name: 'Joel F.', tagline: 'Next customer, please!', body: 'trolley', color: '#00843d', trim: '#f39200', alt: { color: '#f39200', trim: '#00843d' }, skin: '#d99c7c', outfit: '#ffffff', extras: ['cap', 'groceries'], trail: 'receipts', horn: [784, 659, 523] },
-  { id: 'capelas', name: 'Capelas', tagline: 'For sale, for parts. Make an offer.', body: 'banger', color: '#9b4a3c', trim: '#8a8f96', alt: { color: '#5f7d8c', trim: '#8a8f96' }, skin: '#d8a07f', outfit: '#3d4a5c', extras: ['capback'], trail: 'smoke', horn: [180, 160, 140, 110] },
-  { id: 'vale', name: 'Vale', tagline: 'Five minutes away. Since forever.', body: 'kart', color: '#1f3b73', trim: '#e0b94a', alt: { color: '#7a1f2b', trim: '#e0b94a' }, skin: '#e0a585', outfit: '#9fb8e6', extras: ['nightcap', 'watch', 'alarm', 'hourglass', 'clockwheels'], trail: 'sparkle', horn: [1568, 1760, 1568, 1760, 1568, 1760] },
+  { id: 'pedro', name: 'Pedro', tagline: 'Já experimentaste desligar e voltar a ligar?', body: 'kart', color: '#16181d', trim: '#22d3ee', alt: { color: '#eef1f5', trim: '#7c3aed' }, skin: '#e2a98a', outfit: '#2b2f36', extras: ['hair', 'glasses', 'headset', 'laptop', 'antenna', 'neon'], trail: 'bits', horn: [988, 1319, 1760] },
+  { id: 'joel', name: 'Joel', tagline: 'Abra bem a boca! Não vai doer nada.', body: 'chair', color: '#f4f6f5', trim: '#6fd6c1', alt: { color: '#6fd6c1', trim: '#f4f6f5' }, skin: '#dba383', outfit: '#ffffff', extras: ['hair', 'mask', 'headmirror', 'toothbrush', 'tooth'], trail: 'foam', horn: [2093, 2217, 2093, 2349] },
+  { id: 'joelf', name: 'Joel F.', tagline: 'Próximo cliente, faz favor!', body: 'trolley', color: '#00843d', trim: '#f39200', alt: { color: '#f39200', trim: '#00843d' }, skin: '#d99c7c', outfit: '#ffffff', extras: ['cap', 'groceries'], trail: 'receipts', horn: [784, 659, 523] },
+  { id: 'capelas', name: 'Capelas', tagline: 'Vende-se para peças. Aceito propostas.', body: 'banger', color: '#9b4a3c', trim: '#8a8f96', alt: { color: '#5f7d8c', trim: '#8a8f96' }, skin: '#d8a07f', outfit: '#3d4a5c', extras: ['capback'], trail: 'smoke', horn: [180, 160, 140, 110] },
+  { id: 'vale', name: 'Vale', tagline: 'A cinco minutos daí. Desde sempre.', body: 'kart', color: '#1f3b73', trim: '#e0b94a', alt: { color: '#7a1f2b', trim: '#e0b94a' }, skin: '#e0a585', outfit: '#9fb8e6', extras: ['nightcap', 'watch', 'alarm', 'hourglass', 'clockwheels'], trail: 'sparkle', horn: [1568, 1760, 1568, 1760, 1568, 1760] },
 ];
 
 // Past five karts, bots drive the same cars again in their second paint: "Pedro II".

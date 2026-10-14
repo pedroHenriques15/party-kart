@@ -99,7 +99,7 @@ Work through the list. The ones in bold fail silently if you miss them.
 
 1. **`src/game/items.ts`**
    - Add the kind to `ItemKind`, and add an `ITEMS` entry: name, an emoji icon, uses, and a one-line
-     blurb. The HUD and the "How to play" list read these.
+     blurb, in Portuguese like all the UI. The HUD and the "How to play" list read these.
    - Give it a weight in `FRONT`, `MIDDLE` and/or `BACK`. Leaders should get defence and small
      stuff, and the back of the pack the big guns. The "every item turns up somewhere" test fails
      if it has no weight anywhere.
@@ -139,7 +139,7 @@ Work through the list. The ones in bold fail silently if you miss them.
    - `extras`: from `Extra`. New ones are built in `buildDriverFigure`/`buildKart`.
    - `trail`: a key of `STYLE` in `src/render/fx.ts`, or `null`.
    - `horn`: notes in Hz.
-   - `color`, `trim`, `alt` (the second paint), `skin`, `outfit`, a `name` and a one-line `tagline`.
+   - `color`, `trim`, `alt` (the second paint), `skin`, `outfit`, a `name` and a one-line `tagline` (in Portuguese).
 2. The drivers are the friends the Volta dos Amigos goes past, by first name and never a surname
    (braga-map's decision 014), each in a car that's a joke about them. Every face is the shared
    friendly cartoon face, never a likeness.

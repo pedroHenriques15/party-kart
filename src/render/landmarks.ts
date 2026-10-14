@@ -112,7 +112,7 @@ export function buildLandmarks(track: Track, ground: Ground): { group: THREE.Gro
       }
     }
     stage.add(box(6, 1.2, 2, mat('#222'), 0, 1.6, -1));
-    const signTex = tex.sign('BRAGA GRAND PRIX', 'Pista antiga', '#fbfbf8', '#1d4f9c');
+    const signTex = tex.sign('GRANDE PRÉMIO DE BRAGA', 'Pista antiga', '#fbfbf8', '#1d4f9c');
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(22, 4), new THREE.MeshBasicMaterial({ map: signTex }));
     sign.position.set(0, 12, -3.5);
     stage.add(sign);

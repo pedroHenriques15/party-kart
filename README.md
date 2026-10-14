@@ -6,9 +6,11 @@ server, no accounts, nothing to maintain. The drivers are the friends, and all f
 
 ## Playing
 
-1. Open the page, pick a driver, click **Create a room**.
-2. **Copy invite link** and send it to your friends. They open it, pick a driver, **Join**.
-3. Choose the mode and **Start**. Empty places on the grid are bots (you choose how many).
+The game speaks Portuguese, Portugal's.
+
+1. Open the page, pick a driver, click **Criar uma sala**.
+2. **Copiar o convite** and send it to your friends. They open it, pick a driver, **Entrar**.
+3. Choose the mode and **Começar a corrida**. Empty places on the grid are bots (you choose how many).
 
 **Race**: 1 to 3 laps (a lap is about four and a half minutes), a starting grid, positions, power-ups, catch-up. **Time attack**: everyone
 drives at once, through each other; your best lap before the clock runs out counts, against
@@ -28,8 +30,8 @@ the ghost of your best.
 | Touch | |
 |---|---|
 | Left half of the screen | Steer: put your thumb down anywhere and drag left or right |
-| Drift | Hold it through a corner, as with Space |
-| Brake | Slows you down, and reverses once you've stopped |
+| Derrapar | Hold it through a corner, as with Space |
+| Travar | Slows you down, and reverses once you've stopped |
 | Item | Tap to use what it shows; swipe it down to throw backwards |
 | ↺ · 📢 · 🎥 · 🔊 (at the top) | Back to your last checkpoint · horn · camera · sound |
 
@@ -86,7 +88,7 @@ Capelas's car for sale for parts (rusty, roofless, its bumper hanging off), and 
 giant alarm clock on the back, because he's always late. With more than five on the grid, the bots
 drive the same cars again in a second paint ("Pedro II").
 
-**Graphics**: High, Medium or Low, on the first screen and in the lobby. Phones start on Medium. If
+**Graphics** (*Gráficos*): *Alta*, *Média* or *Baixa*, on the first screen and in the lobby. Phones start on Medium. If
 a race runs slowly, the game steps down a level by itself, as far as Low.
 
 ## How it works

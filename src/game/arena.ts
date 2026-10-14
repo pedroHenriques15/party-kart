@@ -118,6 +118,6 @@ export class Arena {
   }
 
   nameOf(id: string): string {
-    return this.cars.get(id)?.name ?? 'Someone';
+    return this.cars.get(id)?.name ?? 'Alguém';
   }
 }

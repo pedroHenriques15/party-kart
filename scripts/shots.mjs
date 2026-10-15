@@ -10,6 +10,7 @@
 // node scripts/shots.mjs baseline                   every viewpoint, into shots/<today>-baseline/
 // node scripts/shots.mjs facades estadio devesa     only the viewpoints named
 // node scripts/shots.mjs budget --medium            Medium too, for the budget (task 004)
+// node scripts/shots.mjs photos --photos            with the map's photo textures (?photos, its task 007)
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,10 +23,11 @@ const H = 720;
 
 const flags = process.argv.slice(2).filter((a) => a.startsWith('--'));
 const QUALITIES = flags.includes('--medium') ? ['high', 'medium', 'low'] : ['high', 'low'];
+const PHOTOS = flags.includes('--photos');
 const LEVEL = { high: 'High', medium: 'Medium', low: 'Low' };
 const [label, ...only] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 if (!label || !/^[\w-]+$/.test(label)) {
-  console.error('node scripts/shots.mjs <label> [viewpoint ids…] [--medium]   the label in letters, numbers and dashes');
+  console.error('node scripts/shots.mjs <label> [viewpoint ids…] [--medium] [--photos]   the label in letters, numbers and dashes');
   process.exit(1);
 }
 const day = new Date();
@@ -84,6 +86,7 @@ const stats = {
   made: new Date().toISOString(),
   game: git('rev-parse --short HEAD') + (git('status --porcelain') ? ' with changes' : ''),
   map: JSON.parse(fs.readFileSync(path.join(ROOT, 'node_modules', 'braga-map', 'package.json'), 'utf8')).version,
+  photos: PHOTOS,
   gpu: '',
   pixelRatio: 1,
   shots: {},
@@ -112,7 +115,7 @@ try {
       try {
         errors.length = 0;
         await page.setViewportSize(size);
-        await page.goto(`${server.url}?scenery&view=${[v.x, v.y, v.z, v.tx, v.ty, v.tz, v.fov].join(',')}`);
+        await page.goto(`${server.url}?scenery${PHOTOS ? '&photos' : ''}&view=${[v.x, v.y, v.z, v.tx, v.ty, v.tz, v.fov].join(',')}`);
         // The city built and two frames drawn; then what a frame costs, over 60 of them.
         await page.waitForFunction(() => window.__kart?.frames >= 2, null, { timeout: 120_000 });
         await page.screenshot({ path: path.join(OUT, quality, `${v.id}.png`) });

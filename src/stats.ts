@@ -7,8 +7,9 @@ import type { Quality } from './render/look.ts';
 
 // About how many bytes of the graphics card's memory the scene's textures take, once everything in
 // it has been drawn: each texture a material uses, the sky's reflections and the sun's shadows. Four
-// bytes a pixel (eight in half floats), and a third more where there are mipmaps. (The ground's
-// grain, added in its shader, isn't counted: it's 256 pixels square.)
+// bytes a pixel (eight in half floats), and a third more where there are mipmaps; a compressed one
+// (the map's photos, render/photos.ts) what its levels hold, as this graphics card takes them. (The
+// ground's grain, added in its shader, isn't counted: it's 256 pixels square.)
 export function textureBytes(scene: THREE.Scene): number {
   const seen = new Set<THREE.Texture>();
   const add = (t: unknown) => {
@@ -24,6 +25,10 @@ export function textureBytes(scene: THREE.Scene): number {
     if (sun.isDirectionalLight && sun.castShadow && sun.shadow.map) bytes += sun.shadow.map.width * sun.shadow.map.height * 4;
   });
   for (const t of seen) {
+    if ((t as THREE.CompressedTexture).isCompressedTexture) {
+      for (const m of (t as THREE.CompressedTexture).mipmaps ?? []) bytes += (m as { data: ArrayBufferView }).data.byteLength;
+      continue;
+    }
     const img = t.image as { width?: number; height?: number } | null;
     if (!img?.width || !img.height) continue;
     const px = t.type === THREE.HalfFloatType ? 8 : t.type === THREE.FloatType ? 16 : 4;

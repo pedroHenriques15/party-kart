@@ -18,6 +18,7 @@ import { bake, box, mat } from './kit.ts';
 import { Lattice, Surface } from './lattice.ts';
 import { buildLevels, isDeck, nearLevels } from './levels.ts';
 import type { Quality } from './look.ts';
+import type { Photos } from './photos.ts';
 import { raceMarks } from './road.ts';
 import { clipConvex, convexPieces, faces, shapeOf, wallTop } from './roofs.ts';
 import { buildStreets, streetEdges, type Built } from './streets.ts';
@@ -78,20 +79,30 @@ const ROOFS = ['#b55a3c', '#a54e35', '#c26942', '#9c4a34'];
 // The ground's material: the map painted on it, and a fine grain tiled by world position, so it
 // isn't smeared up close. Where the painting is clear, there's a street over it (streets.ts) and the
 // land isn't drawn, whatever its height. The canvas leaves a clear pixel black, so a pixel's colour
-// is taken back out of its share of what's clear.
-function groundMaterial(map: THREE.Texture): THREE.MeshStandardMaterial {
+// is taken back out of its share of what's clear. With ?photos, over the tile the map has its
+// orthophoto for, the photo instead (photos.ts), faded into the painting over its last 15 m.
+function groundMaterial(map: THREE.Texture, photo: Photos['ground']): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ map, roughness: 0.96, alphaTest: 0.5 });
+  // The photo on the material as well as in its shader, so the textures' memory counts it (stats.ts).
+  if (photo) Object.assign(m, { photo: photo.map });
   const grain = tex.grain();
   m.onBeforeCompile = (sh) => {
     sh.uniforms.grain = { value: grain };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec2 vWorldXZ;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWorldXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    if (photo) {
+      sh.uniforms.photo = { value: photo.map };
+      sh.uniforms.photoBox = { value: new THREE.Vector4(photo.box.x0, photo.box.z0, photo.box.x1, photo.box.z1) };
+    }
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D grain;\nvarying vec2 vWorldXZ;')
+      .replace('#include <common>', '#include <common>\nuniform sampler2D grain;\nvarying vec2 vWorldXZ;' + (photo ? '\nuniform sampler2D photo;\nuniform vec4 photoBox;' : ''))
       .replace(
         '#include <map_fragment>',
-        '#include <map_fragment>\ndiffuseColor.rgb /= max(diffuseColor.a, 0.01);\ndiffuseColor.rgb *= (0.62 + 0.76 * texture2D(grain, vWorldXZ / 5.0).r) * (0.8 + 0.4 * texture2D(grain, vWorldXZ / 41.0).r);',
+        '#include <map_fragment>\ndiffuseColor.rgb /= max(diffuseColor.a, 0.01);\ndiffuseColor.rgb *= (0.62 + 0.76 * texture2D(grain, vWorldXZ / 5.0).r) * (0.8 + 0.4 * texture2D(grain, vWorldXZ / 41.0).r);' +
+          (photo
+            ? '\nvec2 pq = (vWorldXZ - photoBox.xy) / (photoBox.zw - photoBox.xy);\nfloat pin = clamp(min(min(pq.x, 1.0 - pq.x), min(pq.y, 1.0 - pq.y)) * (photoBox.z - photoBox.x) / 15.0, 0.0, 1.0);\nif (pin > 0.0) diffuseColor.rgb = mix(diffuseColor.rgb, texture2D(photo, pq).rgb, pin);'
+            : ''),
       )
       .replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\ndiffuseColor.a = 1.0;');
   };
@@ -101,8 +112,17 @@ function groundMaterial(map: THREE.Texture): THREE.MeshStandardMaterial {
 // ---- The world ----
 
 // Besides the city, the world as the karts' ground (ground.ts), built for it and kept for driving on.
-export async function buildCity(track: Track, course: Course, quality: Quality): Promise<World & { eggs: Eggs; drive: WorldGround; race: WorldGround; stageYaw: number; marks: THREE.Object3D }> {
+// Given a renderer (?photos), the map's photo textures too (photos.ts), as its graphics card takes them.
+export async function buildCity(track: Track, course: Course, quality: Quality, photosFor: THREE.WebGLRenderer | null = null): Promise<World & { eggs: Eggs; drive: WorldGround; race: WorldGround; stageYaw: number; marks: THREE.Object3D }> {
   const map = await loadWorld(course.box);
+  // Fetched, and turned for the graphics card in workers, while the land is worked out. Only then is
+  // photos.ts (and three.js's KTX2Loader) downloaded at all. If they can't be had, the city goes
+  // without them.
+  const photosLoading = photosFor
+    ? import('./photos.ts')
+        .then((m) => m.loadPhotos(map.photos, photosFor, quality))
+        .catch((e: unknown) => (console.warn('The photo textures failed to load:', e), null))
+    : null;
   const B = course.box;
   const group = new THREE.Group();
   const updates: ((t: number) => void)[] = [];
@@ -212,10 +232,11 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
     }
   }
   const landMesh = new Surface(lat, land);
+  const photos = await photosLoading;
   {
     const r = lat.r;
     const W = lat.nx * r + 1;
-    const material = groundMaterial(paint);
+    const material = groundMaterial(paint, photos?.ground ?? null);
     const lands = new THREE.Group();
     lands.name = 'land';
     // A tile of the land at a time, a kilometre square, so whole tiles out of view are skipped. Its
@@ -411,6 +432,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   const kept = new Set(list);
   for (const b of all) if (!kept.has(b)) wg.unwall(b.pts);
   group.add(Object.assign(buildBuildings(list), { name: 'buildings' }));
+  if (photos) group.add(photos.facades);
 
   // ---- Trees, from the map and filling its parks and woods. In the area every one the karts can
   // hit (all but those on a carriageway, ground.ts); round it the map's own anywhere in the box and

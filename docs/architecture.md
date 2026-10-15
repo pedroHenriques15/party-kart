@@ -404,10 +404,20 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
 - **Few draw calls**: `mat()` shares one material per colour and settings, and `bake()` merges each
   group's static meshes into one mesh per material. Trees, lamps and item boxes are instanced. Particles
   are three pools of one `Points` each: normal, glowing and smoke.
-- **Hardly any assets**: every texture is drawn on a canvas in `textures.ts`, and every sound is an
-  oscillator or filtered noise in `audio.ts`, but the city's: eight CC0 recordings, 673 KB, in
-  `src/sounds/` (braga-map's decision 016). The city's map is numbers in a module, drawn into
-  textures and meshes as the game loads.
+- **Hardly any assets of its own**: every texture the game makes is drawn on a canvas in
+  `textures.ts`, and every sound is an oscillator or filtered noise in `audio.ts`, but the city's:
+  eight CC0 recordings, 673 KB, in `src/sounds/` (braga-map's decision 016). The city's map is
+  numbers in a module, drawn into textures and meshes as the game loads.
+- **Photo textures** are the map's, not the game's (braga-map's decisions 002 and 030): KTX2 files
+  in braga-map's `world/textures/`, one for each graphics level, which `loadWorld` lists with
+  each tile (`world.photos`) and Vite serves as assets (never inlined, `vite.config.ts`).
+  `render/photos.ts` loads them with three.js's KTX2Loader, which turns Basis Universal's ETC1S
+  into what the graphics card takes (ETC1 on a phone, BC7 on a PC) in its workers, so they stay
+  compressed on the card: half a byte a pixel on a phone, a byte on a PC, where a canvas or a WebP
+  takes four. For now they're drawn only with `?photos`: the ground's photo over its tile in the
+  land's shader (`groundMaterial`, faded into the painting over its last 15 m), and each facade as
+  quads 4 cm in front of its wall, a mesh each. `photos.ts` and the loader are a chunk of their
+  own, fetched only then, and Basis's transcoder (0.56 MB, 0.26 MB gzipped) with them.
 - **Karts** (`render/drivers.ts`): each `Driver` is one of the friends: a body (`kart`, `trolley`,
   `banger`, `chair`), colours and a second paint (`alt`, for a bot repeating them), extras (on the
   driver and on the car), a trail and a horn. `buildKart` builds the model. Its
@@ -538,7 +548,14 @@ race road and its rows of barriers, 36 KB more in the track's file. Round the ci
 the plinth moved with the start line, and within 3,000 triangles everywhere, the city built in
 3.0–3.2 s on High on a busier desktop). In a race its 188 rows of barriers are about 1,000
 triangles and no draw call more (they share the start's barriers' material, baked into one mesh),
-and its ground's 10,000 wall pieces take about 60 ms to build with the city.
+and its ground's 10,000 wall pieces take about 60 ms to build with the city. braga-map 1.12.0's
+photo textures (its task 007) cost nothing without `?photos`: 0.01 MB more to download (2.22 MB
+gzipped), the tiles' indexes of them. With it (`shots/2026-10-15-task007-photos/` against
+`task037`): up to 10 more draw calls where facades are in view (`robert-smith` 237 on High, 219 on
+Low), a few dozen triangles, textures 105 MB on High and 63 on Medium as the PC holds them (97 and
+61 before; on a phone, which takes them as ETC1, half the difference: +4 and +1 MB), 45 on Low
+either way, the city built about 0.25 s slower, and 1.4 MB more to download on High (0.4 on
+Medium, 0.13 on Low) besides Basis's transcoder, 0.26 MB gzipped, once.
 
 - **Textures**, on High: the ground's painted map is 44 MB (3330 × 2600 pixels, a metre each; 22 MB
   on Medium, 11 on Low), the sun's shadows 16 MB (4 on Medium), the street plates 10.5 MB, the sky's

@@ -2,7 +2,8 @@
 
 Braga's real streets, to drive round in a kart with your friends, and the Volta dos Amigos to race
 them on, past the friends' houses. In the browser, on a keyboard or a phone, with power-ups and bots
-in a race. A throwaway game: no server, no accounts, nothing to maintain. The drivers are the
+in a race. A throwaway game: no server, no accounts, nothing to maintain but the map it's played
+on, which lives with its photos in braga-map. The drivers are the
 friends, and all faces are cartoons.
 
 ## Playing
@@ -174,6 +175,9 @@ npm run deploy   # publish to GitHub Pages (the gh-pages branch)
 ```
 
 Map data © OpenStreetMap contributors, under the Open Database Licence. The ground is from DGT's
-LiDAR (CC BY 4.0): informação geográfica cedida pela Direção-Geral do Território. The horizon
-beyond the map is from Terrain Tiles, on AWS Open Data. Europe terrain data produced using
-Copernicus data and information funded by the European Union - EU-DEM layers.
+LiDAR (CC BY 4.0), and its photo from DGT's 2025 orthophoto (CC BY 4.0): informação geográfica
+cedida pela Direção-Geral do Território. The horizon beyond the map is from Terrain Tiles, on AWS
+Open Data. Europe terrain data produced using Copernicus data and information funded by the
+European Union - EU-DEM layers. The facades' photos are © Mapillary contributors, CC BY-SA 4.0,
+and so are the textures made from them: How to play names their authors, and braga-map's
+`world/textures/` gives each one's author and link.

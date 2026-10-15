@@ -436,7 +436,7 @@ function howTo(): HTMLElement {
       'ul',
       {},
       h('li', { class: 'keys-only' }, h('b', {}, 'Conduzir:'), ' setas ou WASD, por onde quiseres dentro da zona (o mapa mostra o limite a vermelho). ', h('b', {}, 'Derrapar:'), ' mantém o Espaço numa curva; quando as faíscas ficarem azuis, e depois laranja, larga para um mini-turbo.'),
-      h('li', { class: 'touch-only' }, h('b', {}, 'Virar:'), ' com o polegar esquerdo, a arrastar para a esquerda e para a direita em qualquer sítio dessa metade do ecrã. O kart anda sozinho; ', h('b', {}, 'Travar'), ' abranda, e faz marcha-atrás depois de parar. Melhor com o telemóvel deitado.'),
+      h('li', { class: 'touch-only' }, h('b', {}, 'Virar:'), ' com o polegar esquerdo, a arrastar para a esquerda e para a direita em qualquer sítio dessa metade do ecrã. Pela cidade, o kart anda enquanto lá tiveres o polegar e para quando o levantas; na corrida anda sozinho. ', h('b', {}, 'Travar'), ' abranda, e faz marcha-atrás depois de parar. Melhor com o telemóvel deitado.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Derrapar:'), ' mantém-no numa curva; quando as faíscas ficarem azuis, e depois laranja, larga para um mini-turbo.'),
       h('li', {}, h('b', {}, 'Amigos:'), ' Convidar amigos dá-te uma ligação para lhes mandares; quem a abrir aparece ao teu lado, no teu mundo.'),
       h('li', {}, h('b', {}, 'Corrida:'), ' a Volta dos Amigos, com toda a gente da sala e bots nos lugares vazios. O anfitrião escolhe as voltas e os itens e dá a partida; no fim voltas para onde estavas.'),
@@ -821,8 +821,8 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
     r.acc -= DT;
     const k = keys.controls();
     const p = pad.controls();
-    // With the menu open, the kart pulls up and waits.
-    const ctl: Input = open ? stopInput(me.car) : { throttle: Math.max(k.throttle, p.throttle), brake: Math.max(k.brake, p.brake), steer: clampSteer(k.steer + p.steer), drift: k.drift || p.drift };
+    // With the menu open, or no thumb on a touch screen's steering half, the kart pulls up and waits.
+    const ctl: Input = open || (pad.waiting && !k.throttle && !k.brake) ? stopInput(me.car) : { throttle: Math.max(k.throttle, p.throttle), brake: Math.max(k.brake, p.brake), steer: clampSteer(k.steer + p.steer), drift: k.drift || p.drift };
     r.steer = ctl.steer;
     r.throttle = ctl.throttle;
     me.step(r.cars.values(), ctl, DT);

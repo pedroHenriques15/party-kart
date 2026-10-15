@@ -215,8 +215,10 @@ How a race runs:
   `worldGround` has neither.
 - **Graphics step down a level by themselves**, as far as Low, each time the game runs under 35 fps
   for 6 s, round the city or in a race (`watchSpeed` in `main.ts`). `?autodrive` turns this off. Phones start on Medium.
-- **On a touch screen the kart accelerates by itself.** `TouchPad` in `src/input.ts` holds the
-  throttle down unless Brake is held, and its controls are merged with the keyboard's in
-  `stepRace`. `body.touch` is set while the touch controls are in use (from the first touch until
+- **On a touch screen the kart accelerates by itself in a race.** `TouchPad` in `src/input.ts`
+  holds the throttle down unless Brake is held, and its controls are merged with the keyboard's in
+  `stepRace`. Round the city (`show('roam')`) it holds it only while a thumb is on the steering
+  half; with none, `pad.waiting` and `stepRoam` pull the kart up, so it doesn't drive off the plinth
+  and into the building over the street the moment the game opens. `body.touch` is set while the touch controls are in use (from the first touch until
   a game key is pressed). Mark keyboard-only and touch-only UI with `.keys-only` and `.touch-only`.
   Don't re-render the menus when it changes, or the tap that changed it is lost.

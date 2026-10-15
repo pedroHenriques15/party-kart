@@ -45,11 +45,12 @@ the ghost of your best. Round the city there are no items.
 | H · C · M | Horn · camera · sound |
 | Esc | The menu |
 
-**On a phone or a tablet**, turned sideways, the kart goes by itself:
+**On a phone or a tablet**, turned sideways: round the city the kart goes while your thumb is on
+the left half, and pulls up when you lift it; in a race it goes by itself.
 
 | Touch | |
 |---|---|
-| Left half of the screen | Steer: put your thumb down anywhere and drag left or right |
+| Left half of the screen | Steer: put your thumb down anywhere and drag left or right. Round the city, it also drives |
 | Derrapar | Hold it through a corner, as with Space |
 | Travar | Slows you down, and reverses once you've stopped |
 | Item | In a race: tap to use what it shows; swipe it down to throw backwards |

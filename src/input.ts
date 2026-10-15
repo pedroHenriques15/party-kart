@@ -83,8 +83,10 @@ const DEAD = 0.08;
 const SWIPE = 28;
 
 // The touch screen, for phones and tablets: drag anywhere on the left half to steer, and the
-// buttons on the right drift, brake and use the item. There's no thumb spare for a pedal, so the
-// kart accelerates by itself. Brake slows it down, and reverses once stopped, as ↓ does. The rarer
+// buttons on the right drift, brake and use the item. There's no thumb spare for a pedal, so in a
+// race the kart accelerates by itself; round the city it goes while a thumb is on the steering
+// half, and pulls up when it lifts (`waiting`). Brake slows it down, and reverses once stopped, as
+// ↓ does. The rarer
 // actions (back on the street, restart, horn, camera) are buttons in the bar, out of the thumbs' way.
 export class TouchPad {
   readonly el: HTMLElement;
@@ -92,6 +94,7 @@ export class TouchPad {
   // anything else, and until a key is pressed.
   on = false;
   private driving = false;
+  private roam = false;
   private steer = 0;
   private drift = false;
   private brake = false;
@@ -224,6 +227,7 @@ export class TouchPad {
   show(mode: 'race' | 'time' | 'roam' | null): void {
     if (mode === (this.el.dataset.mode || null)) return;
     this.driving = mode !== null;
+    this.roam = mode === 'roam';
     this.el.dataset.mode = mode ?? '';
     this.letGo();
     this.pending = [];
@@ -243,7 +247,14 @@ export class TouchPad {
 
   controls(): Held {
     if (!this.on || !this.driving) return { throttle: 0, brake: 0, steer: 0, drift: false };
-    return { throttle: this.brake ? 0 : 1, brake: this.brake ? 1 : 0, steer: this.steer, drift: this.drift };
+    const go = !this.roam || !!this.stick;
+    return { throttle: this.brake || !go ? 0 : 1, brake: this.brake ? 1 : 0, steer: this.steer, drift: this.drift };
+  }
+
+  // Round the city, no thumb on the steering half and Brake not held: the kart pulls up and waits,
+  // rather than driving off by itself the moment the game opens.
+  get waiting(): boolean {
+    return this.on && this.driving && this.roam && !this.stick && !this.brake;
   }
 
   actions(): Action[] {

@@ -96,6 +96,14 @@ export const GOLD_TIME = 6;
 export const BOOM_RADIUS = 12;
 
 export const projProgress = (p: Proj, t: number) => p.p0 + (p.v * (t - p.t0)) / 1000;
+// Where a thing thrown along the track is across the road at progress P: its own offset, but never
+// past the road's edge there less half a metre, so a ball kicked wide on a broad street rolls on inside
+// a narrow one (the race's streets are at their real widths, braga-map's task 037).
+export function latAt(track: Track, P: number, lat: number): number {
+  const N = track.samples.length;
+  const h = Math.max(0, track.samples[((Math.round(P) % N) + N) % N].w / 2 - 0.5);
+  return Math.max(-h, Math.min(h, lat));
+}
 export const projAlive = (p: Proj, t: number) => t - p.t0 < LIFE[p.kind];
 
 // The signed distance from b to a along a loop of length n, the short way round.

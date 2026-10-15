@@ -43,9 +43,13 @@ Other things to know:
   a raw sample index: it's all placed by position, so it moves with the track when that's made
   again.
 - **The tests guard the track.** It must be a 7–10.5 km loop with 5 checkpoints, and the autopilot
-  must lap it with no respawns, its second lap taking 170–290 s. Eight bots must all finish a lap,
-  within 60 s of each other. If the autopilot can't get round, a corner is too tight: raise
-  `R_MIN` in braga-map's `tools/track.mjs`, or change the costs so the loop goes another way.
+  must lap it on the world's ground within the race's walls with no respawns, its second lap taking
+  170–310 s. The race must be closed (from its line, nothing off braga-map's `road` is reachable),
+  and every row of barriers must stop a kart driven at it. Eight bots must all finish a lap, within
+  60 s of each other. The race runs on the streets at their real widths (braga-map's decision 019):
+  if the autopilot can't get round, the bots and the autopilot change, not the street; the line
+  keeps 1.2 m inside the race's road where it rounds a corner (`CLEAR` in braga-map's
+  `tools/track.mjs`), or the costs can send the loop another way.
 - **A new track needs a new peer id prefix** (`PREFIX` in `src/session.ts`), or old builds join
   rooms that race a different road. So does a new version of braga-map that changes the track's
   points (a change to the city alone doesn't).

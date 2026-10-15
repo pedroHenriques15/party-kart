@@ -924,13 +924,14 @@ function startRace(goIn: number, endIn: number, grid: Record<string, number>): v
   const rules: Rules = { mode: L.mode, laps: L.laps, items: L.mode === 'race' && L.items, catchUp: L.mode === 'race' && L.catchUp };
   const arena = new Arena(track, rules);
   const meMember = L.members.find((m) => m.id === r.you)!;
-  const me = new Racer(track, r.you, meMember.name, false, grid[r.you] ?? 0);
+  // On the world's ground with the race's walls and ramp (braga-map's task 037).
+  const me = new Racer(track, r.you, meMember.name, false, grid[r.you] ?? 0, world.race);
   if (START_AT) {
-    me.car = newCar(track, START_AT % N);
+    me.car = me.put(newCar(track, START_AT % N));
     me.run.nextCp = track.checkpoints.filter((c) => c < START_AT % N).length;
   }
   const bots = r.isHost
-    ? L.members.filter((m) => m.bot).map((m) => ({ racer: new Racer(track, m.id, m.name, true, grid[m.id] ?? 0), brain: newBrain(), steer: 0, throttle: 0 }))
+    ? L.members.filter((m) => m.bot).map((m) => ({ racer: new Racer(track, m.id, m.name, true, grid[m.id] ?? 0, world.race), brain: newBrain(), steer: 0, throttle: 0 }))
     : [];
   arena.locals = [me, ...bots.map((b) => b.racer)];
   for (const x of arena.locals) arena.cars.set(x.id, x.info());
@@ -951,7 +952,7 @@ function startRace(goIn: number, endIn: number, grid: Record<string, number>): v
     acc: 0,
     cam: 0,
     karts,
-    items: new ItemsView(track, arena),
+    items: new ItemsView(track, arena, (x, z, y) => world.race.floor(x, z, y + 1).y),
     hud: new Hud(hudRoot, track, rules.mode === 'race'),
     use: false,
     back: false,
@@ -1008,7 +1009,7 @@ function hearKarts(r: RaceCtx, dt: number): void {
     others.push({ id, p: o, v: { x: o.vx, y: 0, z: o.vz }, speed, throttle: bot ? bot.throttle : speed > 2 ? 1 : 0, grounded: bot ? bot.racer.car.grounded : true });
   }
   const slip = Math.abs(-c.v.x * Math.sin(c.yaw) + c.v.z * Math.cos(c.yaw));
-  engines({ id: r.me.id, p: c.p, v: c.v, speed: speedOf(c), throttle: r.throttle, grounded: c.grounded, drifting: c.drifting, slip, cobble: track.samples[c.idx].surface === 'cobble' }, others, dt);
+  engines({ id: r.me.id, p: c.p, v: c.v, speed: speedOf(c), throttle: r.throttle, grounded: c.grounded, drifting: c.drifting, slip, cobble: world.race.surface(c.p.x, c.p.z, c.p.y) === 'setts' }, others, dt);
   citySound(c.p, dt);
 }
 
@@ -1538,7 +1539,7 @@ function frame(now: number): void {
     chase(race, dt);
     fitTags(race.karts.values());
     look.follow(race.me.car.p);
-    if (AUTODRIVE) (window as unknown as { __kart: object }).__kart = { mode: 'race', driver: race.kart.driver, idx: race.me.car.idx, lap: race.me.run.laps, fin: race.me.fin, item: race.me.item?.kind ?? null, place: race.arena.rankOf(race.me.id), cars: race.arena.cars.size, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, audio: { ...readMeter(), record: recordState(), played, city: cityHeard } };
+    if (AUTODRIVE) (window as unknown as { __kart: object }).__kart = { mode: 'race', driver: race.kart.driver, x: race.me.car.p.x, y: race.me.car.p.y, z: race.me.car.p.z, idx: race.me.car.idx, lap: race.me.run.laps, fin: race.me.fin, item: race.me.item?.kind ?? null, place: race.arena.rankOf(race.me.id), cars: race.arena.cars.size, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, audio: { ...readMeter(), record: recordState(), played, city: cityHeard } };
   } else if (roam) {
     const r = roam;
     stepRoam(r, now, dt);

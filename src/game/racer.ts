@@ -12,6 +12,7 @@ import {
   BOOM_RADIUS,
   GOLD_TIME,
   ITEMS,
+  latAt,
   loopDelta,
   PIGEON_SPEED,
   placeFraction,
@@ -65,7 +66,8 @@ export class Racer {
   readonly name: string;
   readonly bot: boolean;
   readonly track: Track;
-  // What its car drives on: the track's road and walls (the world's with the race's walls, task 037).
+  // What its car drives on: the world's ground with the race's walls (src/world/race.ts), or a track's
+  // own road and walls (the first track's, in the tests).
   readonly ground: Ground;
   car: Car;
   run: Run;
@@ -82,14 +84,19 @@ export class Racer {
   notes: Note[] = [];
   private seq = 0;
 
-  constructor(track: Track, id: string, name: string, bot: boolean, grid: number) {
+  constructor(track: Track, id: string, name: string, bot: boolean, grid: number, ground: Ground = trackGround(track)) {
     this.track = track;
-    this.ground = trackGround(track);
+    this.ground = ground;
     this.id = id;
     this.name = name;
     this.bot = bot;
-    this.car = gridCar(track, grid);
+    this.car = this.put(gridCar(track, grid));
     this.run = newRun(0);
+  }
+
+  // A car made on the track, on what's under it.
+  put(c: Car): Car {
+    return this.ground.place ? this.ground.place(c) : c;
   }
 
   // Metres along the track since the start, counting laps (negative behind the line at first).
@@ -150,7 +157,7 @@ export class Racer {
 
     const from = this.car.idx;
     if (stepCar(this.car, inp, this.ground, dt, mods)) {
-      this.car = respawn(this.run, this.track, t, this.car.idx);
+      this.car = this.put(respawn(this.run, this.track, t, this.car.idx));
       this.notes.push({ k: 'respawn' });
       return;
     }
@@ -294,7 +301,7 @@ export class Racer {
       if (p.owner === this.id && age < (p.v < 0 ? 1500 : 700)) continue;
       const at = projProgress(p, t);
       if (p.kind === 'bola') {
-        if (Math.abs(loopDelta(at, P, N)) < 2.2 && Math.abs(p.lat - c.lat) < 1.9 && c.h < 1.6) this.hit(a, p.id, a.nameOf(p.owner), 'bola');
+        if (Math.abs(loopDelta(at, P, N)) < 2.2 && Math.abs(latAt(this.track, at, p.lat) - c.lat) < 1.9 && c.h < 1.6) this.hit(a, p.id, a.nameOf(p.owner), 'bola');
       } else if (p.kind === 'pombo') {
         if (p.target === this.id && at >= P - 1) this.hit(a, p.id, a.nameOf(p.owner), 'pombo');
       } else if (p.kind === 'foguete') {
@@ -336,18 +343,26 @@ export class Racer {
   // Bumping into the others, a gold car spinning you, and the slipstream behind a car ahead.
   private contact(a: Arena, dt: number): void {
     const speed = speedOf(this.car);
+    const was = { ...this.car.p };
     const { pull, gold } = bump(this.car, this.id, a.cars.values(), this.notes);
+    this.ground.nudge?.(this.car, was);
     if (gold && this.gold <= 0 && this.spin <= 0) this.hit(a, '', gold.name, 'filigrana');
     this.slip = slipstream(this.slip, pull, speed, this.spin > 0, dt, this.notes);
   }
 
   // Time attack's restart: back to the line, the lap's clock reset.
   restart(a: Arena): void {
-    this.car = restart(this.run, this.track, a.t);
+    this.car = this.put(restart(this.run, this.track, a.t));
   }
 
   respawn(a: Arena): void {
-    this.car = respawn(this.run, this.track, a.t);
+    this.car = this.put(respawn(this.run, this.track, a.t));
+  }
+
+  // A bot that's stuck: back on the track's line where it is, standing.
+  unstick(): void {
+    this.car = this.put(newCar(this.track, this.car.idx));
+    this.notes.push({ k: 'respawn' });
   }
 }
 

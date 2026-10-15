@@ -195,10 +195,11 @@ export function buildRoad(track: Track, overWater: (s: Sample) => boolean, signs
   return { group, update: marks.update };
 }
 
-// What the race adds to the road: the barriers along the kerbs at the start, the boost pads, the start
-// line, and the gates at the start and the checkpoints. Given `at`, laid on what it says is under
-// them (the streets as they're drawn) rather than on the track's own surface.
-export function raceMarks(track: Track, signs: RoadSigns, at?: At): { group: THREE.Group; update: (t: number) => void } {
+// What the race adds to the road: the barriers along the kerbs at the start and in rows across the
+// side streets (`rows`, braga-map's closures: each a row along its points, [x, y, z]), the boost
+// pads, the start line, the gates at the start and the checkpoints, and the ramp. Given `at`, laid on
+// what it says is under them (the streets as they're drawn) rather than on the track's own surface.
+export function raceMarks(track: Track, signs: RoadSigns, at?: At, rows: [number, number, number][][] = []): { group: THREE.Group; update: (t: number) => void } {
   const group = new THREE.Group();
   const updates: ((t: number) => void)[] = [];
   const N = track.samples.length;
@@ -208,6 +209,9 @@ export function raceMarks(track: Track, signs: RoadSigns, at?: At): { group: THR
   for (const [a, b] of runs(track, (_s, i) => i < 160 || i > N - 160)) {
     for (const side of [-1, 1]) group.add(new THREE.Mesh(wall(track, a, b, (s) => side * (s.w / 2 + 0.4), 0.15, 1.3, 8, at), wallMat));
   }
+  // And the same across the side streets, and between a road's carriageways where they're drawn as
+  // one, where the race's walls are.
+  if (rows.length) group.add(new THREE.Mesh(rowWalls(rows, 0.15, 1.3, 8, at), wallMat));
 
   // Boost pads, their arrows running.
   const boostTex = tex.boost();
@@ -225,6 +229,31 @@ export function raceMarks(track: Track, signs: RoadSigns, at?: At): { group: THR
   return { group, update: (t) => updates.forEach((u) => u(t)) };
 }
 
+// Panels along rows of points [x, y, z], from height a to b over what `at` says is under each point (or
+// its own y), their texture a tile every uScale metres along.
+function rowWalls(rows: [number, number, number][][], a: number, b: number, uScale: number, at?: At): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const idx: number[] = [];
+  for (const r of rows) {
+    let u = 0;
+    r.forEach(([x, y, z], k) => {
+      if (k) u += Math.hypot(x - r[k - 1][0], z - r[k - 1][2]) / uScale;
+      const g = at ? at(x, z) : y;
+      const q = pos.length / 3;
+      pos.push(x, g + a, z, x, g + b, z);
+      uv.push(u, 0, u, 1);
+      if (k) idx.push(q - 2, q, q - 1, q - 1, q, q + 1);
+    });
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
 // A ramp the race jumps from (braga-map's task 039, the owner's choice): planks up a pile of rubble
 // behind an "obras" sign, as if the city's road works had left it there, with the red-and-white boards
 // of the race's road-works barriers along its sides. The planks are where the karts drive (the track's
@@ -232,7 +261,10 @@ export function raceMarks(track: Track, signs: RoadSigns, at?: At): { group: THR
 // Past the lip there's nothing but what's really there.
 function ramp(track: Track, r: Ramp, at?: At): THREE.Group {
   const g = new THREE.Group();
-  const F = track.samples[r.foot].p, T = track.samples[r.lip].p;
+  // On the street at its foot (`at`), rising as braga-map planned it: as the race's ground has it
+  // (rampSlope in race.ts).
+  const F0 = track.samples[r.foot].p, T0 = track.samples[r.lip].p, y0 = at ? at(F0.x, F0.z) : F0.y;
+  const F = { ...F0, y: y0 }, T = { ...T0, y: y0 + T0.y - F0.y };
   const L = Math.hypot(T.x - F.x, T.z - F.z), ux = (T.x - F.x) / L, uz = (T.z - F.z) / L, rx = -uz, rz = ux, hw = r.w / 2;
   const base = (x: number, z: number) => (at ? at(x, z) : F.y);
   const P = (p: V, side: number, y = p.y) => new THREE.Vector3(p.x + rx * side * hw, y, p.z + rz * side * hw);

@@ -13,11 +13,12 @@ export interface Brain {
   patience: number; // s it waits before using a speed item
   home: number; // the line across the road it likes, -1 (left) to 1 (right)
   line: number; // the line it's on now, moved out to pass
+  stuck: number; // s it has been all but still, racing
 }
 
 export const newBrain = (rand: () => number = Math.random): Brain => {
   const home = (rand() * 2 - 1) * 0.5;
-  return { caution: 1.05 + rand() * 0.22, held: 0, patience: 0.5 + rand() * 2, home, line: home };
+  return { caution: 1.05 + rand() * 0.22, held: 0, patience: 0.5 + rand() * 2, home, line: home, stuck: 0 };
 };
 
 // Stuck behind someone on its line, it moves across to pass; otherwise it eases back to its own.
@@ -39,6 +40,13 @@ function steerLine(r: Racer, b: Brain, a: Arena, dt: number): void {
 }
 
 export function botControls(r: Racer, b: Brain, a: Arena, dt: number): Controls {
+  // Stuck against a wall it keeps steering into (a corner's pocket, a barrier's end), it gets back on
+  // the track where it is after a few seconds, as a player would press Enter.
+  b.stuck = a.started && r.fin === null && r.spin <= 0 && speedOf(r.car) < 1 ? b.stuck + dt : 0;
+  if (b.stuck > 3) {
+    b.stuck = 0;
+    r.unstick();
+  }
   steerLine(r, b, a, dt);
   const inp = autopilot(r.car, a.track, b.caution, b.line);
   let use = false;

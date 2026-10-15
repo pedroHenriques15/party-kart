@@ -48,7 +48,7 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
 - `?autodrive` lets the autopilot drive your car in a race and use its items. It also exposes
   `window.__kart` and `window.__scene`, for checking a change with Playwright: round the city
   `mode: 'roam'`, where you are, the room, its members and the others where you see them; in a race
-  `mode: 'race'`, lap, place, item, draw calls, triangles. Add `&at=<sample>` and your car starts
+  `mode: 'race'`, where you are, lap, place, item, draw calls, triangles. Add `&at=<sample>` and your car starts
   the race there, to look at one part of the track without driving a lap to it.
 - To race alone, the menu's "🏁 Corrida": it opens a room of your own, and the empty places on the
   grid fill with bots. To test with other players, "Convidar amigos" and open the invite link
@@ -112,8 +112,9 @@ How a race runs:
   streets, planned by braga-map) into a road sampled every metre from the start line. A sample
   index is roughly metres from the line, and the lap is about 10.1 km (N ≈ 10080 samples).
 - `stepCar` (`src/car/car.ts`) is the handling. It always runs at a fixed `DT = 1/120` s, in the
-  game and in the tests alike, on a `Ground`: the race's `trackGround(track)`, or the open world's
-  `worldGround` (`src/world/ground.ts`: the land, braga-map's streets at their levels, and walls).
+  game and in the tests alike, on a `Ground`: the open world's `worldGround` (`src/world/ground.ts`:
+  the land, braga-map's streets at their levels, and walls), or a race's, the same with the race's
+  walls and ramp (`raceGround` in `src/world/race.ts`, built with the city as `world.race`).
 - An `Arena` is one browser's view of a race: the clock, every car's `CarInfo`, the projectiles and
   hazards on the track, and positions. A `Racer` is a car this browser drives: yours, plus the bots
   if you host.
@@ -164,12 +165,19 @@ How a race runs:
   scripts, tag a new version, then change the tag in `package.json` and `npm install`. To try a
   change before tagging it, `npm install --install-links ../braga-map` (again after each change
   there), and put the tag back before committing. See "The track" in `docs/making-changes.md`.
-- **The road's width is kerb to kerb.** A sample's `w` is the carriageway, and the walls stand at
-  its edges (`kerbs` and `lanes`, carried through the layout like `w`, are the first track's, and
-  only drawn). **The streets drawn aren't the race's road:** they're the map's, at their real
-  widths (`streets.ts`), and the race still drives the track's road, at least 9 m wide and its line
-  up to 3 m off the street's middle, until braga-map's task 037 puts it on them. Until then a kart
-  can drive over a drawn pavement, and the race's marks (`raceMarks`) stand where the track is.
+- **The race runs on the streets as they're drawn** (braga-map's task 037). Its road is braga-map's
+  `road`: the route's own streets at their real widths and the jump's flight. Its outline is the
+  race's walls (`raceWalls`), standing at the route's level, and a row of the race's barriers is
+  drawn wherever the street goes on past it (`closures`: across each side street, and between a
+  road's two carriageways drawn as one). Past the jump's landing it takes in the ground a kart flat
+  out comes down on, walled in the open. A kart that comes down off it (launched over a wall) has
+  left the race and is put back. The track's samples are only
+  where the race goes: a sample's `w` is its street's width kerb to kerb, never past the race's road
+  either side of the line, for the bots' lines, the item boxes and the grid; the walls are the
+  road's outline, not the samples' edges (`kerbs` and `lanes`, carried through the layout like `w`,
+  are the first track's, and only drawn). In front of a tunnel's mouth the land is held down, but
+  not on another street's carriageway beside it (`land.ts`); where the race's road still drops away
+  under the route, a fence stands (`raceDips`).
 - **The friends' houses.** The waypoints are only in braga-map's ignored `.cache/places.json` and
   the shared map's database. Since braga-map's decision 014 (the owner's choice, knowing the repos
   are public) the easter eggs stand on the houses themselves, and the drivers are the friends by
@@ -189,7 +197,7 @@ How a race runs:
   animate needs `userData.moves = true` on it or a parent, or it gets frozen into the merged mesh.
 - **`mat()` caches materials by colour and settings**, so changing one changes every mesh that
   uses it. A kart's body paint is its own because gold plating recolours it.
-- **The peer id prefix** `partykart-pk33-` in `src/session.ts` decides which builds can see each
+- **The peer id prefix** `partykart-pk34-` in `src/session.ts` decides which builds can see each
   other's rooms. The deployed game and a dev build share rooms while it matches. Change it when the
   message format changes incompatibly, or the track changes.
 - **Item rolls and bot patience use `Math.random`.** That's fine because only one browser ever
@@ -199,19 +207,26 @@ How a race runs:
   bots spread across the road to pass (`steerLine` in `src/game/bot.ts`) it rarely does. Rerun it
   before assuming you broke something, and look at the printed summary.
 - **The tests guard the track and the tuning.** They check a loop of 7–10.5 km with 5
-  checkpoints, an autopilot lap with no respawns and a second lap of 170–290 s, the first track's
-  jump flying over 1 s and landing at any speed from 60 to 158 km/h, the Volta dos Amigos' jump
-  landing on its street from braga-map's speed to 158 km/h and short of it respawning on the
-  run-up, every item turning up at some
-  place in the race, and eight bots all finishing a lap within 60 s of each other. A change to the
-  track, the physics or the item odds has to keep them passing.
+  checkpoints, an autopilot lap of the race on the world's ground with no respawns and a second lap
+  of 170–310 s, the race closed (from its line a kart reaches nothing off its road), every row of
+  barriers stopping a kart driven at it flat out, the first track's jump flying over 1 s and landing
+  at any speed from 60 to 158 km/h, the Volta dos Amigos' jump landing on the race's road from
+  braga-map's speed to flat out (past its 4 m landing street, on the ground beside it the race's road
+  takes in) and short of it respawning on the run-up, every item turning up at
+  some place in the race, and eight bots all finishing a lap within 60 s of each other. A change to
+  the track, the physics or the item odds has to keep them passing.
+- **A bot stuck against a wall gets itself out.** Still for 3 s in a race, it's put back on the
+  track's line where it is (`unstick`), as a player would press Enter. A kart bumped by another is
+  pushed back out of any wall the bump took it through (`nudge`).
 - **A race's time limit follows the track's length.** `setLapLimit` (`session.ts`), set in
   `main.ts`, allows a lap at 60 km/h. The race's settings offer 1–3 laps, and time attack 5–15
   minutes.
 - **What the race adds to the streets is up only in a race.** The start line, the gates, the boost
-  pads, the barriers along the start and the ramp into the dead end (`raceMarks`) are the city's
-  `marks`, shown by `startRace` and hidden by `endRace`. `?scenery` shoots the city without them.
-  Round the city there's no ramp, on the screen or in the karts' ground: free roam is all real.
+  pads, the barriers along the start and across the side streets, and the ramp into the dead end
+  (`raceMarks`) are the city's `marks`, shown by `startRace` and hidden by `endRace`; the race's
+  walls and ramp are in its own ground (`world.race`), not `world.drive`. `?scenery` shoots the city
+  without them. Round the city there's no ramp or barrier, on the screen or in the karts' ground:
+  free roam is all real.
 - **The plinth at the start is part of the karts' ground**, added to `world.drive` once the city is
   built (`stand` in `ground.ts`), and so are the walls of the buildings the city leaves out round the
   plinth, the eggs and the Tourigalo taken away (`unwall`). A test that builds its own

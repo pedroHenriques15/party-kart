@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
 import { Rings, trimmed, worldGround, type WorldGround } from '../world/ground.ts';
 import { smooth } from '../world/land.ts';
+import { raceGround } from '../world/race.ts';
 import { buildEggs, eggSpots, type Eggs } from './eggs.ts';
 import { buildSights, horizon, TOURIGALO_CLEAR } from './sights.ts';
 import { bake, box, mat } from './kit.ts';
@@ -100,7 +101,7 @@ function groundMaterial(map: THREE.Texture): THREE.MeshStandardMaterial {
 // ---- The world ----
 
 // Besides the city, the world as the karts' ground (ground.ts), built for it and kept for driving on.
-export async function buildCity(track: Track, course: Course, quality: Quality): Promise<World & { eggs: Eggs; drive: WorldGround; stageYaw: number; marks: THREE.Object3D }> {
+export async function buildCity(track: Track, course: Course, quality: Quality): Promise<World & { eggs: Eggs; drive: WorldGround; race: WorldGround; stageYaw: number; marks: THREE.Object3D }> {
   const map = await loadWorld(course.box);
   const B = course.box;
   const group = new THREE.Group();
@@ -355,10 +356,13 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   updates.push(streets.update);
 
   // ---- What only the race adds to the streets: the start line, the gates, the boost pads, the
-  // barriers at the start. Up only while a race is on (main.ts): round the city the streets are as
-  // they are. ----
-  const top = (x: number, z: number) => wg.floor(x, z, firm(x, z) + 1).y;
-  const road = raceMarks(track, { start: tex.sign('VOLTA DOS AMIGOS', 'BRAGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('PONTO DE CONTROLO', '', '#111318', '#ffe14d', 1024, 160) }, top);
+  // barriers at the start and across every side street it passes, the ramp. Up only while a race is
+  // on (main.ts): round the city the streets are as they are. Its ground is the world's, with its
+  // walls and ramp (race.ts). Each laid on the street at the route's level there: on a deck, the
+  // deck. ----
+  const raced = raceGround(wg, track, course);
+  const onRoute = (x: number, z: number) => wg.floor(x, z, track.samples[distanceToRoad(track, x, z).i].p.y + 1.5).y;
+  const road = raceMarks(track, { start: tex.sign('VOLTA DOS AMIGOS', 'BRAGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('PONTO DE CONTROLO', '', '#111318', '#ffe14d', 1024, 160) }, onRoute, raced.rows);
   const marks = Object.assign(bake(road.group), { name: 'race marks', visible: false });
   group.add(marks);
   updates.push(road.update);
@@ -467,6 +471,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
     marks,
     eggs,
     drive: wg,
+    race: raced.ground,
   };
 }
 

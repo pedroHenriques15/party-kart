@@ -273,10 +273,24 @@ interface Block {
   y: number;
 }
 
+// A ramp a race stands on a street (race.ts, braga-map's task 039): a slope from its foot at (fx, fz),
+// up the way (ux, uz) to its lip L metres on, w wide, rising from y0 to y1. A car stands on it as on a
+// block, and from beside it meets its sides.
+export interface Slope {
+  fx: number;
+  fz: number;
+  ux: number;
+  uz: number;
+  L: number;
+  w: number;
+  y0: number;
+  y1: number;
+}
+
 // What a car at a point stands on.
 export interface Floor {
   y: number;
-  kind: 'land' | 'road' | 'pavement' | 'deck' | 'tunnel' | 'block';
+  kind: 'land' | 'road' | 'pavement' | 'deck' | 'tunnel' | 'block' | 'ramp';
   // How far it's over the land (or its piece's level): a kerb's height on a pavement, ramped down
   // to a dropped kerb.
   raise: number;
@@ -320,26 +334,39 @@ interface Data {
   counts: Record<string, number>;
 }
 
-// The world as a ground: built once from braga-map's world, then given to stepCar. race() makes another sharing it, for a race: one that keeps each car's place on the
-// track (idx and lat) and has the race's own walls (task 037).
+// The world as a ground: built once from braga-map's world, then given to stepCar. race() makes
+// another sharing it, for a race (race.ts, braga-map's task 037): one that keeps each car's place on
+// the track (idx and lat), has the race's walls and its ramp, gives a boost on its pads, and counts a
+// car that has come down short of a ramp's landing as fallen.
 export class WorldGround implements Ground {
   d: Data;
   track: Track | null;
   extra: Cells<Wall>;
+  slopes: Slope[];
+  // A race's road (braga-map's `road`): a car that comes down off it has left the race, and is lost.
+  road: Rings | null;
   private state = new WeakMap<Car, State>();
   private seen: Wall[] = [];
   private seenPosts: Post[] = [];
 
-  constructor(d: Data, track: Track | null = null, extra: Wall[] = []) {
+  constructor(d: Data, track: Track | null = null, extra: Wall[] = [], slopes: Slope[] = [], road: Rings | null = null) {
     this.d = d;
     this.track = track;
+    this.slopes = slopes;
+    this.road = road;
     this.extra = new Cells<Wall>();
     for (const w of extra) this.extra.add(Math.min(w.ax, w.bx), Math.min(w.az, w.bz), Math.max(w.ax, w.bx), Math.max(w.az, w.bz), w);
   }
 
-  // The same world for a race on a track, with walls only it has.
-  race(track: Track, walls: Wall[] = []): WorldGround {
-    return new WorldGround(this.d, track, walls);
+  // The same world for a race on a track, with walls and ramps only it has, and its road.
+  race(track: Track, walls: Wall[] = [], slopes: Slope[] = [], road: Rings | null = null): WorldGround {
+    return new WorldGround(this.d, track, walls, slopes, road);
+  }
+
+  // A car moved from `from` by something besides its own driving (bumped by another): out of any
+  // wall that took it through.
+  nudge(c: Car, from: V): void {
+    this.walls(c, from);
   }
 
   land(x: number, z: number): number {
@@ -379,6 +406,13 @@ export class WorldGround implements Ground {
       if (b.y > y + STEP || (best && b.y <= best.y) || !inRing(b.pts, x, z)) continue;
       best = { y: b.y, kind: 'block', raise: 0, piece: null, buried: false };
     }
+    for (const s of this.slopes) {
+      const along = (x - s.fx) * s.ux + (z - s.fz) * s.uz;
+      if (along < 0 || along > s.L || Math.abs((z - s.fz) * s.ux - (x - s.fx) * s.uz) > s.w / 2) continue;
+      const ys = s.y0 + ((s.y1 - s.y0) * along) / s.L;
+      if (ys > y + STEP || (best && ys <= best.y)) continue;
+      best = { y: ys, kind: 'ramp', raise: 0, piece: null, buried: false };
+    }
     // Under the land, and not on a piece just under the car (in a tunnel, or a deck in a cutting).
     if (ground > y + STEP && (!best || best.y < y - 2)) return { y: ground, kind, raise, piece: null, buried: true };
     return best!;
@@ -387,6 +421,11 @@ export class WorldGround implements Ground {
   // The floor's normal at (x, z), over about a car's length.
   normal(f: Floor, x: number, z: number): V {
     if (f.kind === 'block') return v3(0, 1, 0);
+    if (f.kind === 'ramp') {
+      const s = this.slopes.find((q) => Math.abs((x - q.fx) * q.ux + (z - q.fz) * q.uz - q.L / 2) <= q.L / 2 + 0.01)!;
+      const k = (s.y1 - s.y0) / s.L;
+      return norm(v3(-s.ux * k, 1, -s.uz * k));
+    }
     const h =f.piece ? (a: number, b: number) => f.piece!.height(a, b) : f.kind === 'land' ? this.d.land.land : this.d.land.firm;
     const gx = (h(x + SMOOTH, z) - h(x - SMOOTH, z)) / (2 * SMOOTH);
     const gz = (h(x, z + SMOOTH) - h(x, z - SMOOTH)) / (2 * SMOOTH);
@@ -400,7 +439,9 @@ export class WorldGround implements Ground {
       s = { n: this.normal(f, c.p.x, c.p.z), raise: f.raise, hop: false };
       this.state.set(c, s);
     }
-    return { n: s.n, boost: false };
+    // In a race, its boost pads, as wide as they're drawn (road.ts).
+    const q = this.track?.samples[c.idx];
+    return { n: s.n, boost: !!q?.boost && Math.abs(c.lat) < q.w * 0.3 + 0.4 && c.h < 0.5 };
   }
 
   contact(c: Car, from: V, dt: number): boolean {
@@ -416,7 +457,7 @@ export class WorldGround implements Ground {
     const top = Math.max(c.p.y, from.y);
     // The land in front: one the car would be in, or too steep to climb off the carriageway.
     let f = this.floor(c.p.x, c.p.z, top);
-    if (!f.piece && f.kind !== 'block' && (f.buried || f.kind !== 'road')) {
+    if (!f.piece && f.kind !== 'block' && f.kind !== 'ramp' && (f.buried || f.kind !== 'road')) {
       const g = this.slope(c.p.x, c.p.z, f.kind === 'land' ? this.d.land.land : this.d.land.firm);
       const mx = c.p.x - from.x;
       const mz = c.p.z - from.z;
@@ -455,17 +496,23 @@ export class WorldGround implements Ground {
       c.h = 0;
     }
 
+    // In a race, where it is on the track; and in a ramp's flight, a car that has come down on what's
+    // under it, or dropped 3 m under the flight's line (straight from the lip to the landing), has
+    // fallen short, as on the track's own ground. One that has come down off the race's road
+    // (flown past a ramp's landing street, launched over a wall) has left it.
+    let short = false;
     if (this.track) {
       const loc = locate(this.track, c.p, c.idx);
       c.idx = loc.i;
       c.lat = loc.lateral;
+      short = (this.track.samples[loc.i].air && (loc.h < -3 || (c.grounded && loc.h < -1))) || (!!this.road && c.grounded && !this.road.has(c.p.x, c.p.z));
     }
 
     const b = d.world.box;
     const r = d.land.riverAt(c.p.x, c.p.z);
     const drowned = r.d < d.land.HW && c.p.y < r.y - 0.3;
     const out = c.p.x < b.x0 || c.p.x > b.x1 || c.p.z < b.z0 || c.p.z > b.z1 || c.p.y < -40;
-    return f.buried || wedged || drowned || out;
+    return f.buried || wedged || drowned || out || short;
   }
 
   // Which way the land h climbs at (x, z), and how steeply, over about a car's length.

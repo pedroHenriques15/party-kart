@@ -33,7 +33,9 @@ export class Roamer {
     if (c.wallHit > 3) this.notes.push({ k: 'wall', strength: c.wallHit });
     if (c.landed > 4) this.notes.push({ k: 'land', strength: c.landed });
     const speed = speedOf(c);
+    const was = { ...c.p };
     const { pull } = bump(c, this.id, cars, this.notes);
+    this.ground.nudge(c, was);
     this.slip = slipstream(this.slip, pull, speed, false, dt, this.notes);
   }
 

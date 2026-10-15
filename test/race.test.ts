@@ -1,3 +1,4 @@
+import { loadWorld } from 'braga-map';
 import amigosPlan from 'braga-map/tracks/amigos.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -8,11 +9,15 @@ import { boxRows, itemOdds, ITEMS, rollItem, type ItemEv, type ItemKind } from '
 import { NO_CONTROLS, Racer, type Controls } from '../src/game/racer.ts';
 import { LAYOUT } from '../src/track/layout.ts';
 import { buildTrack, surfacePoint, type Track } from '../src/track/track.ts';
+import { worldGround } from '../src/world/ground.ts';
+import { raceGround } from '../src/world/race.ts';
 
 // The items and the handling are tested on the first track, kept for reference: the places these
-// tests put cars (down the Avenida's straight) were picked on it. The bots race the game's track.
+// tests put cars (down the Avenida's straight) were picked on it. The bots race the game's track, on
+// the world's ground with the race's walls, as the game runs it.
 const track = buildTrack(LAYOUT);
 const amigos = buildTrack(amigosPlan.points, amigosPlan.ramps);
+const { ground: race } = raceGround(worldGround(await loadWorld({ open: true })), amigos, amigosPlan);
 const N = track.samples.length;
 const DT = 1 / 120;
 const RACE: Rules = { mode: 'race', laps: 2, items: true, catchUp: true };
@@ -240,7 +245,7 @@ test('catch-up: far behind the leader, a car goes faster', () => {
 });
 
 test('eight bots race a lap of the Volta dos Amigos with items: everyone finishes, items fly, places change', () => {
-  const racers = Array.from({ length: 8 }, (_, k) => new Racer(amigos, `bot${k}`, `Bot ${k}`, true, k));
+  const racers = Array.from({ length: 8 }, (_, k) => new Racer(amigos, `bot${k}`, `Bot ${k}`, true, k, race));
   const brains = new Map<string, Brain>(racers.map((r, k) => [r.id, newBrain(seeded(k + 1))]));
   const { a, events } = arena({ ...RACE, laps: 1 }, racers, amigos);
   const leaders = new Set<string>();

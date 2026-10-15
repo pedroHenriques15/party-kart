@@ -3,7 +3,7 @@
 // martelinho's ring.
 import * as THREE from 'three';
 import type { Arena } from '../game/arena.ts';
-import { projProgress, type Proj } from '../game/items.ts';
+import { latAt, projProgress, type Proj } from '../game/items.ts';
 import { surfacePoint, type Track } from '../track/track.ts';
 import * as tex from './textures.ts';
 
@@ -124,9 +124,14 @@ function pudim(): THREE.Object3D {
   return g;
 }
 
+// The height of what's under a point near a height: the race's floor, which the track's own height can
+// be a little off (the stadium's level ground, say).
+export type Floor = (x: number, z: number, y: number) => number;
+
 export class ItemsView {
   readonly group = new THREE.Group();
   private track: Track;
+  private floor: Floor;
   private boxes: THREE.InstancedMesh;
   private things = new Map<string, THREE.Object3D>();
   private waves: { mesh: THREE.Mesh; t0: number }[] = [];
@@ -134,8 +139,9 @@ export class ItemsView {
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
 
-  constructor(track: Track, arena: Arena | null) {
+  constructor(track: Track, arena: Arena | null, floor: Floor = (_x, _z, y) => y) {
     this.track = track;
+    this.floor = floor;
     const n = arena?.boxes.length ?? 0;
     this.boxes = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1.3, 1.3, 1.3),
@@ -153,6 +159,7 @@ export class ItemsView {
     arena.boxes.forEach((b, k) => {
       const s = this.track.samples[b.i];
       const p = surfacePoint(s, b.lat, 1.35 + Math.sin(t * 2 + k) * 0.15);
+      p.y += this.floor(p.x, p.z, s.p.y) - s.p.y;
       // Taken: gone, growing back in its last 300 ms.
       const back = (taken.get(b.key) ?? -Infinity) - time;
       const sc = back > 0 ? Math.max(0, Math.min(1, 1 - back / 300)) : 1;
@@ -173,7 +180,7 @@ export class ItemsView {
       const o = this.thing(h.id, pudim);
       const s = this.track.samples[h.idx];
       const p = surfacePoint(s, h.lat, 0.02);
-      o.position.set(p.x, p.y, p.z);
+      o.position.set(p.x, p.y + this.floor(p.x, p.z, s.p.y) - s.p.y, p.z);
       const w = o.getObjectByName('wobble');
       if (w) w.scale.set(1 + Math.sin(t * 9 + h.idx) * 0.06, 1 - Math.sin(t * 9 + h.idx) * 0.08, 1 + Math.cos(t * 9 + h.idx) * 0.06);
     }
@@ -222,9 +229,13 @@ export class ItemsView {
     const a = this.track.samples[i0];
     const b = this.track.samples[(i0 + 1) % N];
     const lift = p.kind === 'bola' ? 0.64 : p.kind === 'pombo' ? 2.6 + Math.sin(t * 5) * 0.2 : 5.5 + Math.sin(t * 3) * 0.4;
-    const pa = surfacePoint(a, p.lat, lift);
-    const pb = surfacePoint(b, p.lat, lift);
-    o.position.set(pa.x + (pb.x - pa.x) * f, pa.y + (pb.y - pa.y) * f, pa.z + (pb.z - pa.z) * f);
+    const lat = latAt(this.track, P, p.lat);
+    const pa = surfacePoint(a, lat, lift);
+    const pb = surfacePoint(b, lat, lift);
+    const x = pa.x + (pb.x - pa.x) * f;
+    const z = pa.z + (pb.z - pa.z) * f;
+    const y = a.p.y + (b.p.y - a.p.y) * f;
+    o.position.set(x, pa.y + (pb.y - pa.y) * f + this.floor(x, z, y) - y, z);
     const yaw = -Math.atan2(a.t.z, a.t.x) + (p.v < 0 ? Math.PI : 0);
     o.rotation.set(0, yaw, 0);
     if (p.kind === 'bola') o.children[0].rotation.z -= (p.v / 0.62) * dt;

@@ -12,9 +12,10 @@ change things, read [making-changes.md](making-changes.md).
 | `braga-map/tracks/amigos.js` | sim | The Volta dos Amigos: Braga's real streets, from the map the games share (the `braga-map` package) |
 | `src/track/layout.ts` | sim | The `Point` type; and `LAYOUT`, the first track (the cartoon Braga Grand Prix), kept for reference and for the tests |
 | `src/track/track.ts` | sim | `buildTrack`: the road sampled every metre. `locate`: where a point is relative to the road |
-| `src/car/car.ts` | sim | `stepCar`: the handling (grip, drift, mini-turbo, boost pads, flying, landing, walls, falling off), on a `Ground`; `trackGround`, the race's track as one |
+| `src/car/car.ts` | sim | `stepCar`: the handling (grip, drift, mini-turbo, boost pads, flying, landing, walls, falling off), on a `Ground`; `trackGround`, a track's own road as one (the first track's, and the tests') |
 | `src/world/land.ts` | sim | `makeLand`: the land as it's drawn and driven on (braga-map's ground, held down at the tunnels' mouths, the stadium's bowl, the river's bed); `mouths` |
 | `src/world/ground.ts` | sim | `worldGround`: the world as a ground, for the open world: the land, every street at its level, and the walls (buildings, parapets, tunnels, trees, the area's edge); and what the game stands on it (the plinth) |
+| `src/world/race.ts` | sim | `raceGround`: the world's ground for a race, with the race's walls (its road's outline, braga-map's `road`), its ramp and the fences where its road drops away; `reachable`, for the tests: whether a race is closed |
 | `src/car/autopilot.ts` | sim | Drives the track by itself: for the bots, `?autodrive` and the tests |
 | `src/race.ts` | sim | Laps, checkpoints, splits, respawning |
 | `src/game/arena.ts` | sim | `Arena`: one browser's view of a race. `FLAG`: status bits sent with positions |
@@ -106,14 +107,13 @@ top speed and acceleration, for power-ups and catch-up.
 and whether it's a boost pad before the car moves, and `contact`, after it moves, stands it on its
 surface (`settle`, which holds it to anything within 5 cm, so it hugs the road) or lets it fly
 (`fly`), pushes it out of walls (`bounce`), and says whether it has fallen off. The handling is the
-same on any ground. The race's is `trackGround(track)`: the car is on the road within its width and
-not far under it, walls stand at its edges, and `locate` keeps its sample (`idx`) and how far right
-of the centre line it is (`lat`). In a ramp's flight (`air` samples, braga-map's `ramps`: the jump
-over the Rio Este into the dead end, task 039) there's no road and no walls: the car flies on to the
-landing, and one 3 m under the flight's line has fallen short. The ramp itself is the track's
-samples rising from its foot to its lip, drawn as planks on rubble with the race's marks
-(`raceMarks`), so it's up only in a race; `track.ramps` has its foot, lip and landing by sample, and
-`rampSpeed` how fast to take it.
+same on any ground. A track's own, `trackGround(track)`, is the first track's and the tests': the
+car is on the road within its width and not far under it, walls stand at its edges, and `locate`
+keeps its sample (`idx`) and how far right of the centre line it is (`lat`). In a ramp's flight
+(`air` samples, braga-map's `ramps`: the jump over the Rio Este into the dead end, task 039) there's
+no road and no walls: the car flies on to the landing, and one 3 m under the flight's line has fallen
+short. `track.ramps` has its foot, lip and landing by sample, and `rampSpeed` how fast to take it.
+The race on the Volta dos Amigos runs on the world's (below), with the race's walls and ramp.
 
 The open world's (braga-map's decision 019) is `worldGround(world, open?)` in `src/world/ground.ts`,
 built once (about 0.2 s for the Volta dos Amigos' area) from braga-map's `loadWorld`. Everything
@@ -153,10 +153,24 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
   leaves out to keep clear round the plinth, an egg or the Tourigalo, so there's no wall where
   nothing is drawn. `surface(x, z, y)` says whether the street under a car is cobbled, for the
   tyres' rumble round the city.
-- **For a race,** `ground.race(track, walls)` is the same world, sharing what was built, keeping each
-  car's `idx` and `lat` along the track and adding walls only it has (the race's, task 037). Until
-  then the race runs on `trackGround`, and `test/drive.test.ts` drives the route on the world's
-  ground wherever its line is on the real streets.
+- **For a race** (braga-map's task 037), `raceGround` (`src/world/race.ts`) makes `ground.race(track,
+  walls, ramps, road)`: the same world, sharing what was built, keeping each car's `idx` and `lat`
+  along the track, and adding what only the race has. Its walls are the race's road's outline
+  (braga-map's `road`: the route's own streets at their real widths, as they're drawn, and the
+  jump's flight, on past its landing as far as a kart flat out comes down), in pieces up to 2 m long, each standing from 1.5 m under the road beside it to 3 m
+  over it, at the route's level (on a deck, the deck): every kerb along the route, and across each
+  side street, and between a road's two carriageways drawn as one, where braga-map's `closures` say
+  a row of barriers is drawn. In front of a tunnel's mouth, where the land is held down and the
+  route's street runs by it, a fence stands where the road drops more than 1.5 m under the route
+  (`raceDips`: 7 m at the Avenida da Liberdade's underpass, a few metres at the Avenida João XXI's).
+  The ramp is a slope a car stands on (`floor`'s `ramp`), from the street at its foot to its lip,
+  its sides walls a step short of its planks; its boost pads give a boost as wide as they're drawn.
+  A car that comes down on what's under a ramp's flight, or 3 m under the flight's line, has fallen
+  short; one that comes down off the race's road (launched over a wall) has left the race: both are
+  lost, and `respawn` puts them back (on the jump's run-up, at
+  the speed that clears it). A car the race makes on the track (the grid, a respawn) is put on what's
+  under it (`place`). `reachable` floods the race's road from its line, a metre at a time, for the
+  tests: nothing off it is reachable. Built with the city (`world.race`), in about 60 ms.
 
 **A lap.** `advance` in `race.ts` checks whether the step from sample `from` to `to` crossed the next
 checkpoint, or the line once every checkpoint is done. It returns `cp` or `lap` events with splits
@@ -192,7 +206,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk33-` plus a five-character room code, and the invite link is `?room=<code>`, which
+`partykart-pk34-` plus a five-character room code, and the invite link is `?room=<code>`, which
 opens the game straight into the room. A room is made only when someone invites friends ("Convidar
 amigos") or starts a race; until then the game is alone, with no network at all.
 
@@ -379,12 +393,12 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     part, outside the bake), with its restaurant's sign behind; 9 draw calls and about 25,000
     triangles.
 - **The road** (`render/road.ts`): what the race adds to the streets (`raceMarks`): the start
-  line, the gates at the start and the checkpoints, the boost pads and the barriers at the start,
-  laid on the streets as they're drawn. They're the city's `marks`, up only while a race is on
-  (`startRace`, `endRace`): round the city, and in `?scenery`, the streets are as they are. The race
-  still drives the track's own road, at least 9 m
-  wide, until braga-map's task 037 puts it on the streets. `buildRoad` draws the first track's road
-  (its ribbon, lines, kerbs, pavements and skirts), which had no streets under it.
+  line, the gates at the start and the checkpoints, the boost pads, the barriers at the start and in
+  rows across the side streets (braga-map's `closures`, and the fences where the race's road drops
+  away), and the ramp, laid on the streets as they're drawn at the route's level. They're the city's
+  `marks`, up only while a race is on (`startRace`, `endRace`): round the city, and in `?scenery`,
+  the streets are as they are. `buildRoad` draws the first track's road (its ribbon, lines, kerbs,
+  pavements and skirts), which had no streets under it.
 - **The first track's world** (`render/world.ts`, with `landmarks.ts`, `braga.ts` and
   `buildTrees`) is kept for reference, and nothing builds it.
 - **Few draw calls**: `mat()` shares one material per colour and settings, and `bake()` merges each
@@ -517,7 +531,14 @@ Pedrinha round the loop's new stretch, and the decks at the LiDAR's height) take
 a viewpoint, `robert-smith` the most at 227 on High and 209 on Low, up to 0.16 M more triangles
 (1.73 M on High, 0.98 M on Low, there too), textures 97 MB on High and 45 on Low (91 and 42: the
 ground's painted map is bigger), and the city built in 2.8 s on High where it took 2.6. The ramp
-is about 10 draw calls and a few hundred triangles, in a race only.
+is about 10 draw calls and a few hundred triangles, in a race only. braga-map's task 037 (the race
+on the streets at their real widths) takes the download to 7.30 MB, 2.21 MB gzipped: the track's
+race road and its rows of barriers, 36 KB more in the track's file. Round the city nothing changes
+(`shots/2026-10-15-task037/` against `rampa`: the same draw calls but 2 at `fujacal-start`, where
+the plinth moved with the start line, and within 3,000 triangles everywhere, the city built in
+3.0–3.2 s on High on a busier desktop). In a race its 188 rows of barriers are about 1,000
+triangles and no draw call more (they share the start's barriers' material, baked into one mesh),
+and its ground's 10,000 wall pieces take about 60 ms to build with the city.
 
 - **Textures**, on High: the ground's painted map is 44 MB (3330 × 2600 pixels, a metre each; 22 MB
   on Medium, 11 on Low), the sun's shadows 16 MB (4 on Medium), the street plates 10.5 MB, the sky's

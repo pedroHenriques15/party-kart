@@ -141,8 +141,28 @@ export function makeLand(map: Braga, B: Box, track?: Track): Land {
   const pads = map.sights.flatMap((s) => (s.kind === 'stadium' ? [{ x: s.x, z: s.z, c: Math.cos(s.angle), s: Math.sin(s.angle), rx: s.L + s.W + 30, rz: s.W + 36, y: nat(s.x, s.z) }] : []));
   // In front of a tunnel's mouth, and in its throat, the land is down at the tunnel's road: the
   // LiDAR's ground slopes up there from the cutting's floor to whatever is over the tunnel, which
-  // would bury the opening (levels.ts).
+  // would bury the opening (levels.ts). But not in front of it on another street's carriageway, one
+  // that runs by the cutting at the street's level (none of its ends at the mouth): the race takes
+  // one by the Avenida da Liberdade's underpass, 4 m wide, which the held land dug into to 1 m from
+  // its middle (task 037).
   const openings = mouths(map);
+  const beside = openings.map((m) =>
+    map.lines
+      .filter((l) => l.level === 'ground' && l.kind <= 8 && l.pts.some(([x, z]) => Math.abs(x - m.x) < 40 && Math.abs(z - m.z) < 40))
+      .filter((l) => ![l.pts[0], l.pts[l.pts.length - 1]].some(([x, z]) => Math.hypot(x - m.x, z - m.z) < m.w / 2 + 1.5)),
+  );
+  const onStreet = (lines: typeof map.lines, x: number, z: number) =>
+    lines.some((l) => {
+      for (let k = 1; k < l.pts.length; k++) {
+        const [ax, az] = l.pts[k - 1];
+        const [bx, bz] = l.pts[k];
+        const dx = bx - ax;
+        const dz = bz - az;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+        if (Math.hypot(ax + dx * t - x, az + dz * t - z) < l.w / 2 + 0.3) return true;
+      }
+      return false;
+    });
   const firm = (x: number, z: number): number => {
     let h = nat(x, z);
     for (const p of pads) {
@@ -151,15 +171,16 @@ export function makeLand(map: Braga, B: Box, track?: Track): Land {
       const e = Math.hypot((dx * p.c + dz * p.s) / p.rx, (-dx * p.s + dz * p.c) / p.rz);
       if (e < 1.3) h = p.y + (h - p.y) * smooth(0.9, 1.3, e);
     }
-    for (const m of openings) {
+    openings.forEach((m, k) => {
       const dx = x - m.x;
       const dz = z - m.z;
-      if (Math.abs(dx) > 16 || Math.abs(dz) > 16) continue;
+      if (Math.abs(dx) > 16 || Math.abs(dz) > 16) return;
       const a = dx * m.ux + dz * m.uz;
       const b = -dx * m.uz + dz * m.ux;
       const half = Math.max(6, m.w + 1) / 2;
-      if ((a > 0 && a < 12 && Math.abs(b) < half + 1.5) || (a > -THROAT - 2 && a <= 0 && Math.abs(b) < half + 0.5)) h = Math.min(h, m.y - 0.05 + Math.max(0, a - 6) * 0.4);
-    }
+      const front = a > 0 && a < 12 && Math.abs(b) < half + 1.5 && !onStreet(beside[k], x, z);
+      if (front || (a > -THROAT - 2 && a <= 0 && Math.abs(b) < half + 0.5)) h = Math.min(h, m.y - 0.05 + Math.max(0, a - 6) * 0.4);
+    });
     return h;
   };
   const land = (x: number, z: number): number => {

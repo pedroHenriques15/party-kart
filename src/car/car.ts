@@ -49,9 +49,10 @@ export interface Mods {
 const NO_MODS: Mods = { vmax: 1, acc: 1 };
 
 // What a car drives on. It says where the car's surface is and what it has run into; the handling
-// (stepCar) is the same on any of them. The track's (trackGround) is the race's today: the road's
-// samples, walled at its edges. The world's (worldGround in src/world/ground.ts) is the land and the
-// streets at their levels, and what stands on them.
+// (stepCar) is the same on any of them. The world's (worldGround in src/world/ground.ts) is the land
+// and the streets at their levels, and what stands on them; a race's is the world's with the race's
+// walls and ramp (src/world/race.ts). The track's own (trackGround) is the road's samples, walled at
+// its edges: the first track's, kept for reference, which has no world round it, and the tests'.
 export interface Ground {
   // The surface under the car where it is, before it moves: its normal, and whether it's a boost pad.
   under(c: Car): { n: V; boost: boolean };
@@ -59,6 +60,12 @@ export interface Ground {
   // stops it at walls (bounce), and says whether it has fallen off or is stuck, which counts
   // towards a respawn.
   contact(c: Car, from: V, dt: number): boolean;
+  // Puts a car made on the track (newCar, at the track's own height) on what's really under it.
+  // The track's ground has no need: its road is the track's.
+  place?(c: Car): Car;
+  // A car moved from `from` by something besides its own driving (bumped by another): out of any
+  // wall that took it through. The track's walls hold it wherever it is.
+  nudge?(c: Car, from: V): void;
 }
 
 export interface Car {
@@ -210,7 +217,7 @@ export function bounce(c: Car, n: V, d: number): void {
   }
 }
 
-// The race's track as a ground: the car is on the road where it's within its width and not far
+// A track as a ground: the car is on the road where it's within its width and not far
 // under it, the walls stand at its edges where it has any, and it has fallen off when it's well off
 // the road and below it. The car's sample (idx) keeps it on the stretch it was on, so a road that
 // passes over another is never taken for it. In a ramp's flight (s.air) there's no road and no

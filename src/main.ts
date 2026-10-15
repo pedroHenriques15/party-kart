@@ -66,7 +66,12 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(68, 1, 0.3, 30000);
 const look = new Look(renderer, scene, camera);
-let quality = stored('pk-quality', PHONE ? 'medium' : 'high') as Quality;
+// A phone or a tablet starts at medium, and one with 4 GB or less at low: Braga takes some 500 MB to build.
+const SMALL = ((navigator as { deviceMemory?: number }).deviceMemory ?? 8) <= 4;
+let quality = stored('pk-quality', PHONE ? (SMALL ? 'low' : 'medium') : 'high') as Quality;
+// A phone that runs out of memory for the graphics loses them: the canvas goes blank and stays so,
+// under the HUD. Say so, and open a step lower the next time.
+canvas.addEventListener('webglcontextlost', lostGraphics, { once: true });
 const building = performance.now();
 const world = await buildCity(track, amigos, quality);
 // What's round every part of the city, for its sound: from the map the karts drive on, once the city
@@ -82,6 +87,20 @@ const skids = new Skids();
 scene.add(fx.points, glow.points, smoke.points, skids.mesh);
 addEventListener('resize', () => look.resize());
 
+function lostGraphics(e: Event): void {
+  e.preventDefault();
+  const lower: Quality = quality === 'high' ? 'medium' : 'low';
+  remember('pk-quality', lower);
+  const lost = document.createElement('div');
+  lost.id = 'lost';
+  const say = document.createElement('p');
+  say.textContent = 'O telemóvel ficou sem memória para os gráficos. ' + (lower !== quality ? 'Ao recarregar, o jogo abre com gráficos mais leves.' : 'Fecha as outras abas e apps, e recarrega.');
+  const again = document.createElement('button');
+  again.textContent = 'Recarregar';
+  again.onclick = () => location.reload();
+  lost.append(say, again);
+  document.body.append(lost);
+}
 function stored(k: string, fallback: string): string {
   try {
     return localStorage.getItem(k) ?? fallback;

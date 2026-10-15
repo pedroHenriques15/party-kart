@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-Party Kart is a kart game played in the browser, for racing friends round Braga's real streets. It is
+Party Kart is a kart game played in the browser, for driving round Braga's real streets with friends
+and racing them there. It is
 TypeScript, three.js and PeerJS (WebRTC), built with Vite and served from GitHub Pages. There is no
 server and no accounts, and hardly an asset file: every texture is drawn on a canvas, and every
 sound is synthesized but the city's round the track, eight short CC0 recordings in `src/sounds/`
@@ -42,13 +43,18 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
 
 ### Trying it in a browser
 
-- `?autodrive` lets the autopilot drive your car and use its items. It also exposes
-  `window.__kart` (lap, place, item, draw calls, triangles) and `window.__scene`, for checking a
-  change with Playwright. Add `&at=<sample>` and your car starts the race there, to look at one part
-  of the track without driving a lap to it.
-- To play alone, create a room and start it: the empty places fill with bots. To test with other
-  players, open a second tab with the invite link (`?room=<code>`). Rooms go through PeerJS's public
-  server, so this needs internet access.
+- The game opens driving round the city (free roam), alone, where you last were (`localStorage`'s
+  `pk-where`; clear it to start on the plinth). Esc opens the menu over the world.
+- `?autodrive` lets the autopilot drive your car in a race and use its items. It also exposes
+  `window.__kart` and `window.__scene`, for checking a change with Playwright: round the city
+  `mode: 'roam'`, where you are, the room, its members and the others where you see them; in a race
+  `mode: 'race'`, lap, place, item, draw calls, triangles. Add `&at=<sample>` and your car starts
+  the race there, to look at one part of the track without driving a lap to it.
+- To race alone, the menu's "🏁 Corrida": it opens a room of your own, and the empty places on the
+  grid fill with bots. To test with other players, "Convidar amigos" and open the invite link
+  (`?room=<code>`) in a second browser, or a Playwright context of its own (a second tab shares the
+  first's `localStorage`, its name and driver). Rooms go through PeerJS's public server, so this needs
+  internet access.
 - `?exp= ?sun= ?hemi= ?env= ?fog=` override the lighting (`src/render/look.ts`), for tuning.
 - `?view=x,y,z,tx,ty,tz` holds the race's camera at (x, y, z), looking at (tx, ty, tz), to look at
   the scenery from anywhere (the sights on the hills, say). A seventh number sets its vertical
@@ -69,11 +75,11 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   whatever `localStorage['pk-quality']` says. `window.__kart` has the build time, draw calls,
   triangles, textures and geometries, and `__kart.timeFrames(60)` the milliseconds a frame takes.
 - `?stats` shows what the game costs in a corner, for measuring it on a phone (`src/stats.ts`): the
-  frame rate and the race's worst second (after its first two), the graphics level, draw calls,
+  frame rate and the worst second (of the race, or round the city since the last; after its first two), the graphics level, draw calls,
   triangles, the textures' memory, how long the city took to build and the page to be ready, what
   it downloaded, the graphics card and the pixels drawn. A screenshot of it is the measurement.
 - `node scripts/download.mjs` builds the game as it's shipped, opens it and adds up what the page
-  fetched before the city was ready, as it is and gzipped.
+  fetched before you can drive, as it is and gzipped.
 - `node scripts/shots.mjs <label>` shoots braga-map's viewpoints (`../braga-map/refs/viewpoints.json`)
   with `?scenery`, at High and Low (and Medium with `--medium`), into `shots/<date>-<label>/` (ignored
   by git): a PNG each, the shape of its photo and 720 pixels high, `stats.json` with each one's cost
@@ -95,6 +101,11 @@ these files imports `three` or touches `window`/`document`, the tests can no lon
 `src/main.ts` (screens, the frame loop and the glue), `src/hud.ts`, `src/audio.ts` and
 `src/input.ts`.
 
+Outside a race the game is free roam (braga-map's decision 019): your `Roamer`
+(`src/game/roamer.ts`) on the world's ground (`world.drive`), anywhere in the open world's area, the
+room's players drawn where they are from the same snapshots as in a race. The race is something the
+host starts from the menu, and everyone goes back to where they were when it's over.
+
 How a race runs:
 
 - `buildTrack(amigos.points)` turns the points of `braga-map/tracks/amigos.js` (Braga's real
@@ -108,9 +119,9 @@ How a race runs:
   if you host.
 - Each browser simulates only its own cars. Everyone else is drawn from snapshots, interpolated
   110 ms behind.
-- The host is the hub of a star network. It relays positions 15 times a second, relays item events,
-  runs the bots, keeps the leaderboard and decides when the race ends. If the host leaves, the room
-  closes.
+- The host is the hub of a star network. It relays positions 15 times a second, round the city as in
+  a race, relays item events, runs the bots, keeps the leaderboard and decides when the race ends. If
+  the host leaves, the room closes and everyone else drives on alone.
 - Item events are deterministic. A projectile is its start (`t0`, `p0`, `lat`, `v`), so every
   browser draws it in the same place without sending positions. **A hit is decided by the browser
   of the car that gets hit**, which then tells the others.
@@ -178,7 +189,7 @@ How a race runs:
   animate needs `userData.moves = true` on it or a parent, or it gets frozen into the merged mesh.
 - **`mat()` caches materials by colour and settings**, so changing one changes every mesh that
   uses it. A kart's body paint is its own because gold plating recolours it.
-- **The peer id prefix** `partykart-pk30-` in `src/session.ts` decides which builds can see each
+- **The peer id prefix** `partykart-pk32-` in `src/session.ts` decides which builds can see each
   other's rooms. The deployed game and a dev build share rooms while it matches. Change it when the
   message format changes incompatibly, or the track changes.
 - **Item rolls and bot patience use `Math.random`.** That's fine because only one browser ever
@@ -193,9 +204,17 @@ How a race runs:
   place in the race, and eight bots all finishing a lap within 60 s of each other. A change to the
   track, the physics or the item odds has to keep them passing.
 - **A race's time limit follows the track's length.** `setLapLimit` (`session.ts`), set in
-  `main.ts`, allows a lap at 60 km/h. The lobby offers 1–3 laps, and time attack 5–15 minutes.
-- **Graphics step down a level by themselves**, as far as Low, each time a race runs under 35 fps
-  for 6 s (`watchSpeed` in `main.ts`). `?autodrive` turns this off. Phones start on Medium.
+  `main.ts`, allows a lap at 60 km/h. The race's settings offer 1–3 laps, and time attack 5–15
+  minutes.
+- **What the race adds to the streets is up only in a race.** The start line, the gates, the boost
+  pads and the barriers along the start (`raceMarks`) are the city's `marks`, shown by `startRace`
+  and hidden by `endRace`. `?scenery` shoots the city without them.
+- **The plinth at the start is part of the karts' ground**, added to `world.drive` once the city is
+  built (`stand` in `ground.ts`), and so are the walls of the buildings the city leaves out round the
+  plinth, the eggs and the Tourigalo taken away (`unwall`). A test that builds its own
+  `worldGround` has neither.
+- **Graphics step down a level by themselves**, as far as Low, each time the game runs under 35 fps
+  for 6 s, round the city or in a race (`watchSpeed` in `main.ts`). `?autodrive` turns this off. Phones start on Medium.
 - **On a touch screen the kart accelerates by itself.** `TouchPad` in `src/input.ts` holds the
   throttle down unless Brake is held, and its controls are merged with the keyboard's in
   `stepRace`. `body.touch` is set while the touch controls are in use (from the first touch until

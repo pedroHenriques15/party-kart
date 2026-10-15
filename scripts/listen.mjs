@@ -116,7 +116,11 @@ try {
     try {
       const seconds = take.seconds ?? SECONDS;
       await page.goto(`${url}?autodrive&record=${seconds}${take.at ? `&at=${take.at}` : ''}`);
-      await page.getByRole('button', { name: 'Criar uma sala' }).click();
+      // The game opens driving round the city: the race is the menu's "Corrida", in a room of
+      // your own.
+      await page.waitForFunction(() => window.__kart?.mode === 'roam', null, { timeout: 120_000 });
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: '🏁 Corrida' }).click();
       const bots = page.locator('label', { hasText: 'Bots' }).locator('select');
       await bots.waitFor({ timeout: 30_000 });
       await bots.selectOption(String(take.bots));

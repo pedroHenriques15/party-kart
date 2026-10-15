@@ -1,12 +1,13 @@
-// Rooms over WebRTC (PeerJS). Everyone drives their own car in their own browser; the host relays
-// where everyone is and what they throw, drives the bots, keeps the leaderboard and the clock.
+// Rooms over WebRTC (PeerJS). Everyone drives their own car in their own browser, round the city or
+// in a race; the host relays where everyone is (always) and what they throw (in a race), drives the
+// bots, keeps the leaderboard and the clock.
 import Peer, { type DataConnection } from 'peerjs';
 import type { ItemEv } from './game/items.ts';
 import { driverById, DRIVERS, repeatOf } from './render/drivers.ts';
 
-// Builds see each other's rooms only while this matches: pk30 is the Volta dos Amigos by the rules
-// of the road, one-way streets the way they go.
-const PREFIX = 'partykart-pk31-';
+// Builds see each other's rooms only while this matches: pk32 is free roam, the room's positions
+// sent whether or not a race is on, and your name changeable in it.
+const PREFIX = 'partykart-pk32-';
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 export const HOST_ID = 'host';
 export const MAX_RACERS = 8;
@@ -73,6 +74,7 @@ export interface Entry {
 type ToHost =
   | { t: 'hello'; name: string; driver: string }
   | { t: 'pick'; driver: string }
+  | { t: 'name'; name: string }
   | { t: 'pos'; s: Snap }
   | { t: 'lap'; ms: number }
   | { t: 'fin'; ms: number }
@@ -133,6 +135,7 @@ export interface Room {
   onEv: (ev: ItemEv) => void;
   onClose: (why: string) => void;
   pick(driver: string): void;
+  rename(name: string): void;
   sendPos(s: Snap): void;
   sendLap(ms: number, id?: string): void;
   sendFin(ms: number, id?: string): void;
@@ -246,9 +249,9 @@ export class HostRoom implements Room {
           }
         }
       }, PING_MS),
-      // Everyone's positions, 15 times a second.
+      // Everyone's positions, 15 times a second, round the city as in a race.
       setInterval(() => {
-        if (!this.lobby.racing || this.remotes.size === 0) return;
+        if (this.remotes.size === 0) return;
         const list = [...this.latest.values()];
         for (const r of this.remotes.values()) this.send(r.conn, { t: 'cars', list });
       }, 1000 / 15),
@@ -328,6 +331,8 @@ export class HostRoom implements Room {
       return;
     } else if (m.t === 'pick') {
       this.pickFor(c.peer, m.driver);
+    } else if (m.t === 'name') {
+      this.nameFor(c.peer, m.name);
     } else if (m.t === 'pos' && m.s && typeof m.s === 'object') {
       const s = cleanSnap(c.peer, m.s);
       this.latest.set(c.peer, s);
@@ -387,6 +392,14 @@ export class HostRoom implements Room {
     if (this.humans().some((x) => x.id !== id && x.driver === d)) return;
     m.driver = d;
     this.syncBots();
+    this.entry(id);
+    this.changed();
+  }
+
+  private nameFor(id: string, name: string): void {
+    const m = this.lobby.members.find((x) => x.id === id);
+    if (!m || m.bot || this.lobby.racing) return;
+    m.name = cleanName(name);
     this.entry(id);
     this.changed();
   }
@@ -463,6 +476,12 @@ export class HostRoom implements Room {
 
   private finish(): void {
     this.lobby.racing = false;
+    // The bots stop with the race: nothing of theirs is relayed round the city.
+    for (const m of this.lobby.members) {
+      if (!m.bot) continue;
+      this.latest.delete(m.id);
+      this.cars.delete(m.id);
+    }
     this.sortBoard();
     this.broadcast({ t: 'end', list: this.board });
     this.syncBots();
@@ -481,6 +500,10 @@ export class HostRoom implements Room {
 
   pick(driver: string): void {
     this.pickFor(HOST_ID, driver);
+  }
+
+  rename(name: string): void {
+    this.nameFor(HOST_ID, name);
   }
 
   // Ours, or a bot's.
@@ -596,6 +619,7 @@ export class ClientRoom implements Room {
         break;
       case 'end':
         this.board = m.list;
+        for (const x of this.lobby.members) if (x.bot) this.cars.delete(x.id);
         this.onEnd(m.list);
         break;
       case 'ev':
@@ -612,6 +636,10 @@ export class ClientRoom implements Room {
 
   pick(driver: string): void {
     this.send({ t: 'pick', driver });
+  }
+
+  rename(name: string): void {
+    this.send({ t: 'name', name });
   }
 
   sendPos(s: Snap): void {

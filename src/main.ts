@@ -1,17 +1,18 @@
 import amigos from 'braga-map/tracks/amigos.js';
-import { loadWorld } from 'braga-map';
 import * as THREE from 'three';
 import './style.css';
 import { ambienceOf } from './ambience.ts';
 import { beep, checkpointSound, cityHeard, cityIs, citySound, engines, horn, isMuted, lapSound, listen, measureAudio, played, readMeter, recordAudio, recordState, resetMeter, sfx, thud, toggleMute, unlockAudio, type Kart } from './audio.ts';
 import { autopilot } from './car/autopilot.ts';
-import { clampSteer, newCar, speedOf, stepCar, stopInput, trackGround, type Car } from './car/car.ts';
+import { carAt, clampSteer, newCar, speedOf, stopInput, type Car, type Input } from './car/car.ts';
 import { Arena, FLAG, type ArenaFx, type CarInfo, type Rules } from './game/arena.ts';
 import { botControls, newBrain, type Brain } from './game/bot.ts';
 import { ITEMS } from './game/items.ts';
 import { NO_CONTROLS, Racer, type Controls, type Note } from './game/racer.ts';
-import { fmt, fmtDiff, Hud, ordinal } from './hud.ts';
+import { Roamer } from './game/roamer.ts';
+import { fmt, fmtDiff, Hud, ordinal, RoamHud } from './hud.ts';
 import { Keyboard, TouchPad } from './input.ts';
+import { v3 } from './math.ts';
 import { buildKart, driverById, DRIVERS, type KartModel } from './render/drivers.ts';
 import { Particles } from './render/fx.ts';
 import { ItemsView } from './render/items3d.ts';
@@ -20,22 +21,23 @@ import { Skids } from './render/skids.ts';
 import { nameTag } from './render/textures.ts';
 import { buildCity } from './render/city.ts';
 import type { EggEvent } from './render/eggs.ts';
-import { ClientRoom, cleanName, HostRoom, MAX_RACERS, setLapLimit, type Entry, type Room, type Snap } from './session.ts';
+import { ClientRoom, cleanName, HOST_ID, HostRoom, MAX_RACERS, setLapLimit, type Entry, type Room, type Snap } from './session.ts';
 import { Stats, textureBytes } from './stats.ts';
-import { buildTrack } from './track/track.ts';
+import { buildTrack, locate } from './track/track.ts';
 
 const DT = 1 / 120;
-// ?autodrive: the autopilot drives your car (for testing the game in a browser). With &at=<sample>
-// as well, your car starts the race there, to look at one part of the track.
+// ?autodrive: the autopilot drives your car in a race (for testing the game in a browser), and
+// window.__kart says where you are, round the city or in the race. With &at=<sample> as well, your
+// car starts the race there, to look at one part of the track.
 const AUTODRIVE = new URLSearchParams(location.search).has('autodrive');
-// ?view=x,y,z,tx,ty,tz holds the race's camera at (x, y, z) looking at (tx, ty, tz), for looking
-// at the scenery. A seventh number sets its vertical field of view, in degrees.
+// ?view=x,y,z,tx,ty,tz holds the camera at (x, y, z) looking at (tx, ty, tz), for looking at the
+// scenery. A seventh number sets its vertical field of view, in degrees.
 const VIEW = new URLSearchParams(location.search).get('view')?.split(',').map(Number) ?? null;
 const START_AT = AUTODRIVE ? Number(new URLSearchParams(location.search).get('at')) || 0 : 0;
 // ?record=60 records the first 60 s of the next race's sound, from its countdown, and offers it as a
 // file, to judge the sound by ear (scripts/listen.mjs records the takes it's judged by).
 const RECORD = Number(new URLSearchParams(location.search).get('record')) || 0;
-// ?scenery: the city alone, built as a race builds it and seen from ?view=, with no menus, room or
+// ?scenery: the city alone, built as the game builds it and seen from ?view=, with no menus, room or
 // karts, for shooting the viewpoints (scripts/shots.mjs). The textures' noise comes out the same
 // every time and nothing moves, so two shots of the same city match. What a frame costs is in
 // window.__kart.
@@ -47,7 +49,6 @@ if (SCENERY) {
   Math.random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 }
 const track = buildTrack(amigos.points);
-const onTrack = trackGround(track);
 const N = track.samples.length;
 // A race ends at the latest after this long a lap (and a minute), at 60 km/h on average.
 setLapLimit(Math.ceil(track.length / 16.7));
@@ -68,9 +69,9 @@ const look = new Look(renderer, scene, camera);
 let quality = stored('pk-quality', PHONE ? 'medium' : 'high') as Quality;
 const building = performance.now();
 const world = await buildCity(track, amigos, quality);
-// What's round the track, for the city's sound: from the map again, once the city is up and the menus
-// are running, so it never holds the page.
-if (!SCENERY) setTimeout(() => void loadWorld(amigos.box).then((w) => cityIs(ambienceOf(track, w, amigos))), 1500);
+// What's round every part of the city, for its sound: from the map the karts drive on, once the city
+// is up and the game is running, so it never holds the page.
+if (!SCENERY) setTimeout(() => cityIs(ambienceOf(world.drive.d.world, amigos)), 1500);
 const buildMs = performance.now() - building;
 scene.add(world.group);
 const stats = STATS ? new Stats(renderer, scene, buildMs, performance.now()) : null;
@@ -104,6 +105,7 @@ interface Shown {
   model: KartModel;
   tag: THREE.Sprite | null;
   driver: string;
+  label: string | null;
 }
 
 function showKart(driverId: string, label: string | null, ghost = false): Shown {
@@ -126,7 +128,7 @@ function showKart(driverId: string, label: string | null, ghost = false): Shown 
     model.group.add(tag);
   }
   scene.add(model.group);
-  return { model, tag, driver: driverId };
+  return { model, tag, driver: driverId, label };
 }
 
 function hide(s: Shown | null | undefined): void {
@@ -176,16 +178,31 @@ function kartEffects(id: string, s: Shown, x: number, y: number, z: number, yaw:
   }
 }
 
+// Smoke from the café's cigarette, going along with the kart as it rises away above the driver.
+function cigarette(k: Shown, c: Car, dt: number): void {
+  if (Math.random() >= dt * 5) return;
+  const tip = k.model.ember.getWorldPosition(new THREE.Vector3());
+  fx.add(tip.x, tip.y + 0.1, tip.z, c.v.x * 0.97 + (Math.random() - 0.5) * 0.3, 1.6, c.v.z * 0.97 + (Math.random() - 0.5) * 0.3, 0.7, '#ececea', 1.2);
+}
+
 // ---- State ----
 
+// The room you're in, if any: made when you invite friends, or joined from a link or a code.
 let room: Room | null = null;
+// What the menu says about the room: why it closed, or what went wrong.
 let notice = '';
+// What the menu is waiting on: a room opening, or joining one.
+let busy = '';
 let results: Entry[] | null = null;
+// The menu, over the world; and its page: the main one, or the race's settings.
+let menu = false;
+let page: 'main' | 'race' = 'main';
 
 interface RaceCtx {
   arena: Arena;
   rules: Rules;
   me: Racer;
+  kart: Shown;
   bots: { racer: Racer; brain: Brain; steer: number; throttle: number }[];
   goAt: number; // performance.now() of the green light
   endAt: number;
@@ -211,30 +228,53 @@ interface RaceCtx {
 
 let race: RaceCtx | null = null;
 
-// Bots driving round behind the menus.
-const attract: { car: Car; shown: Shown; caution: number }[] = [];
-function startAttract(): void {
-  if (attract.length) return;
-  const picks = [...DRIVERS].sort(() => Math.random() - 0.5).slice(0, 5);
-  picks.forEach((d, k) => attract.push({ car: newCar(track, (world.stageAt - 160 + k * 37 + N) % N), shown: showKart(d.id, null), caution: 1 + k * 0.06 }));
+// Driving round the city, alone or with the room (braga-map's decision 019): your car on the
+// world's ground, the others where they are, the screen and the sound round you.
+interface RoamCtx {
+  me: Roamer;
+  kart: Shown;
+  karts: Map<string, Shown>; // the others'
+  cars: Map<string, CarInfo>; // the others, where they're drawn, for bumping into
+  hud: RoamHud;
+  acc: number;
+  cam: number;
+  steer: number;
+  throttle: number;
+  shake: number;
+  vice: number;
+  idx: number | null; // the track's sample you're by while you're on the route, for the eggs
+  street: string; // the street whose name was shown last
+  kept: number; // performance.now() when where you are was last kept
 }
-function stopAttract(): void {
-  for (const a of attract) hide(a.shown);
-  attract.length = 0;
-}
+
+let roam: RoamCtx | null = null;
+// Where you were when the race started, to go back to when it's over.
+let before: Car | null = null;
+// Whether a friend who has just joined has been put beside the host yet.
+let besideHost = true;
 
 const roomFromUrl = () => (new URLSearchParams(location.search).get('room') ?? '').trim().toLowerCase();
 const inviteLink = (code: string) => `${location.origin}${location.pathname}?room=${code}`;
+const myName = () => cleanName(stored('pk-name', ''));
+// The driver you last picked, kept in this browser.
+let picked = driverById(stored('pk-driver', DRIVERS[0].id)).id;
+// Your driver: the room's say, as it gives another when someone else has yours; else your pick.
+function myDriver(): string {
+  return room?.lobby.members.find((x) => x.id === room!.you)?.driver ?? picked;
+}
+const colorOf = (id: string) => driverById(room?.lobby.members.find((m) => m.id === id)?.driver ?? '').color;
+// A line in the feed of whichever screen is up.
+const feed = (text: string, cls = '') => (race?.hud ?? roam?.hud)?.feed(text, cls);
 
-// On a phone, a race wants the whole screen. Browsers only allow that in answer to a tap, so the
-// buttons that lead to a race ask for it. (An iPhone can't; added to the home screen, it opens
-// without the browser round it anyway.)
+// On a phone, the game wants the whole screen. Browsers only allow that in answer to a tap, so the
+// first tap asks for it, and the buttons that lead to driving. (An iPhone can't; added to the home
+// screen, it opens without the browser round it anyway.)
 function fullScreen(): void {
   if (!PHONE || !document.fullscreenEnabled || document.fullscreenElement) return;
   document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
 }
 
-// Sideways for a race, where the browser allows it (Android, in full screen).
+// Sideways while in full screen, where the browser allows it (Android).
 function sideways(on: boolean): void {
   const o = screen.orientation as unknown as { lock?: (to: string) => Promise<void>; unlock?: () => void } | undefined;
   if (!PHONE || !o) return;
@@ -299,80 +339,92 @@ function qualityPicker(): HTMLElement {
   return h('label', { class: 'inline' }, 'Gráficos ', sel);
 }
 
-function homeScreen(): HTMLElement {
-  let driver = stored('pk-driver', DRIVERS[0].id);
-  const name = h('input', { maxLength: 16, placeholder: 'O teu nome', value: stored('pk-name', ''), autocomplete: 'off' });
-  const code = h('input', { class: 'code-in', maxLength: 5, placeholder: 'Código da sala', value: roomFromUrl(), autocomplete: 'off', spellcheck: false });
-  const err = h('p', { class: 'err' }, notice);
-  const grid = h('div', {});
-  const drawGrid = () =>
-    grid.replaceChildren(
-      driverGrid(driver, new Map(), (id) => {
-        driver = id;
-        remember('pk-driver', id);
-        drawGrid();
-      }),
-    );
-  drawGrid();
-  const busy = (b: boolean) => panel.querySelectorAll('button').forEach((x) => (x.disabled = b));
-  const who = () => {
-    const n = cleanName(name.value);
-    remember('pk-name', n);
-    return n;
-  };
-  const enter = (r: Room) => {
-    room = r;
-    notice = '';
-    wire(r);
-    render();
-  };
-  const host = async () => {
-    unlockAudio();
-    fullScreen();
-    busy(true);
-    err.textContent = 'A abrir uma sala…';
-    try {
-      enter(await HostRoom.create(who(), driver));
-    } catch (e) {
-      busy(false);
-      err.textContent = `Não foi possível abrir uma sala (${(e as { type?: string }).type ?? 'erro'}). Tenta outra vez daqui a pouco.`;
-    }
-  };
-  const join = async () => {
-    const c = code.value.trim().toLowerCase();
-    if (!/^[a-z0-9]{5}$/.test(c)) {
-      err.textContent = 'O código da sala tem 5 letras e números.';
-      return;
-    }
-    unlockAudio();
-    fullScreen();
-    busy(true);
-    err.textContent = 'A entrar…';
-    try {
-      enter(await ClientRoom.join(c, who(), driver));
-    } catch (e) {
-      busy(false);
-      err.textContent = (e as Error).message;
-    }
-  };
-  code.addEventListener('keydown', (e) => e.key === 'Enter' && void join());
-  const invited = roomFromUrl();
-  const panel = h(
+// The invite, to send the friends: shared on a phone, copied elsewhere.
+function inviteButton(code: string): HTMLElement {
+  const share = PHONE && 'share' in navigator;
+  const copy = h(
+    'button',
+    {
+      onclick: async () => {
+        if (share) {
+          try {
+            await navigator.share({ title: 'Party Kart', text: 'Vem conduzir comigo por Braga no Party Kart', url: inviteLink(code) });
+            return;
+          } catch (e) {
+            if ((e as Error).name === 'AbortError') return;
+          }
+        }
+        try {
+          await navigator.clipboard.writeText(inviteLink(code));
+          copy.textContent = 'Copiado!';
+        } catch {
+          prompt('Envia esta ligação aos teus amigos:', inviteLink(code));
+        }
+      },
+    },
+    share ? 'Partilhar o convite' : 'Copiar o convite',
+  );
+  return copy;
+}
+
+function members(r: Room, bots: boolean): HTMLElement {
+  return h(
     'div',
-    { class: 'panel home' },
+    { class: 'members' },
+    ...r.lobby.members
+      .filter((m) => bots || !m.bot)
+      .map((m) => h('span', { class: `chip${m.bot ? ' bot' : ''}`, style: `--c:${driverById(m.driver).color}` }, m.bot ? '🤖 ' : '', m.id === r.you ? `${m.name} (tu)` : m.name, h('small', {}, m.bot ? 'bot' : driverById(m.driver).name))),
+  );
+}
+
+// The menu, over the world while it goes on: your name and driver, the friends, the race, back on
+// the street, the graphics and the help.
+function menuScreen(): HTMLElement {
+  const r = room;
+  if (page === 'race' && r) return raceScreen(r);
+  const taken = new Map(r ? r.lobby.members.filter((m) => m.id !== r.you && !m.bot).map((m) => [m.driver, m.name] as const) : []);
+  const name = h('input', {
+    maxLength: 16,
+    placeholder: 'O teu nome',
+    value: stored('pk-name', ''),
+    autocomplete: 'off',
+    oninput: () => remember('pk-name', name.value.trim()),
+    onchange: () => room?.rename(myName()),
+  });
+  const code = h('input', { class: 'code-in', maxLength: 5, placeholder: 'Código da sala', autocomplete: 'off', spellcheck: false });
+  code.addEventListener('keydown', (e) => e.key === 'Enter' && void join(code.value));
+  const friends = r
+    ? h(
+        'div',
+        { class: 'friends' },
+        h('div', { class: 'room' }, h('div', {}, h('span', { class: 'label' }, 'Sala'), h('b', { class: 'code' }, r.lobby.code)), inviteButton(r.lobby.code)),
+        members(r, false),
+        h('div', { class: 'row' }, h('p', { class: 'wait' }, 'Quem abrir o convite aparece ao lado do anfitrião.'), h('button', { class: 'ghost', onclick: leave }, r.isHost ? 'Fechar a sala' : 'Sair da sala')),
+      )
+    : h(
+        'div',
+        { class: 'friends' },
+        h('button', { onclick: () => void invite(), disabled: !!busy }, 'Convidar amigos'),
+        h('div', { class: 'or' }, 'ou entra na sala de alguém'),
+        h('div', { class: 'row' }, code, h('button', { onclick: () => void join(code.value), disabled: !!busy }, 'Entrar')),
+      );
+  return h(
+    'div',
+    { class: 'panel menu' },
+    h('button', { class: 'ghost small close', title: 'Voltar a conduzir (Esc)', onclick: closeMenu }, '✕'),
     h('h1', {}, 'Party Kart', h('span', {}, '.')),
-    h('p', { class: 'tag' }, 'A Volta dos Amigos, pelas ruas verdadeiras de Braga e à porta dos amigos. Corre contra eles e atira-lhes com coisas.'),
+    h('p', { class: 'tag' }, 'Braga como ela é, para conduzires por onde quiseres, sozinho ou com os amigos. E a Volta dos Amigos, para correres contra eles e lhes atirares com coisas.'),
     h('label', {}, 'O teu nome', name),
     h('label', {}, 'O teu piloto'),
-    grid,
-    invited ? h('button', { class: 'primary', onclick: join }, `Entrar na sala ${invited}`) : h('button', { class: 'primary', onclick: host }, 'Criar uma sala'),
-    h('div', { class: 'or' }, invited ? 'ou' : 'ou entra numa'),
-    invited ? h('button', { onclick: host }, 'Criar a minha sala') : h('div', { class: 'row' }, code, h('button', { onclick: join }, 'Entrar')),
-    err,
+    driverGrid(myDriver(), taken, pickDriver),
+    h('button', { class: 'primary', onclick: closeMenu }, 'Conduzir'),
+    h('label', {}, 'Amigos'),
+    friends,
+    h('div', { class: 'row' }, h('button', { onclick: () => void openRace(), disabled: !!busy }, '🏁 Corrida'), h('button', { onclick: reposition }, '↺ Reposicionar')),
+    h('p', { class: 'err' }, busy || notice),
     h('div', { class: 'row foot' }, qualityPicker()),
     howTo(),
   );
-  return panel;
 }
 
 function howTo(): HTMLElement {
@@ -383,14 +435,16 @@ function howTo(): HTMLElement {
     h(
       'ul',
       {},
-      h('li', { class: 'keys-only' }, h('b', {}, 'Conduzir:'), ' setas ou WASD. ', h('b', {}, 'Derrapar:'), ' mantém o Espaço numa curva; quando as faíscas ficarem azuis, e depois laranja, larga para um mini-turbo.'),
-      h('li', { class: 'keys-only' }, h('b', {}, 'Itens:'), ' passa pelas caixas ?; ', h('b', {}, 'E'), ' ou ', h('b', {}, 'Shift'), ' usa o que te saiu (com ↓ atiras para trás). Quanto mais atrás fores, melhor o que te sai.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Conduzir:'), ' setas ou WASD, por onde quiseres dentro da zona (o mapa mostra o limite a vermelho). ', h('b', {}, 'Derrapar:'), ' mantém o Espaço numa curva; quando as faíscas ficarem azuis, e depois laranja, larga para um mini-turbo.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Virar:'), ' com o polegar esquerdo, a arrastar para a esquerda e para a direita em qualquer sítio dessa metade do ecrã. O kart anda sozinho; ', h('b', {}, 'Travar'), ' abranda, e faz marcha-atrás depois de parar. Melhor com o telemóvel deitado.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Derrapar:'), ' mantém-no numa curva; quando as faíscas ficarem azuis, e depois laranja, larga para um mini-turbo.'),
-      h('li', { class: 'touch-only' }, h('b', {}, 'Itens:'), ' passa pelas caixas ? e toca no botão do item (arrasta-o para baixo para atirar para trás). Quanto mais atrás fores, melhor o que te sai.'),
+      h('li', {}, h('b', {}, 'Amigos:'), ' Convidar amigos dá-te uma ligação para lhes mandares; quem a abrir aparece ao teu lado, no teu mundo.'),
+      h('li', {}, h('b', {}, 'Corrida:'), ' a Volta dos Amigos, com toda a gente da sala e bots nos lugares vazios. O anfitrião escolhe as voltas e os itens e dá a partida; no fim voltas para onde estavas.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Itens, na corrida:'), ' passa pelas caixas ?; ', h('b', {}, 'E'), ' ou ', h('b', {}, 'Shift'), ' usa o que te saiu (com ↓ atiras para trás). Quanto mais atrás fores, melhor o que te sai.'),
+      h('li', { class: 'touch-only' }, h('b', {}, 'Itens, na corrida:'), ' passa pelas caixas ? e toca no botão do item (arrasta-o para baixo para atirar para trás). Quanto mais atrás fores, melhor o que te sai.'),
       h('li', {}, h('b', {}, 'Cone de aspiração:'), ' cola-te atrás de um carro e ele puxa-te, com mais força quanto mais perto; sai para ultrapassar e a velocidade a mais vai-se em poucos segundos.'),
-      h('li', { class: 'keys-only' }, h('b', {}, 'Enter'), ' volta ao último ponto de controlo. ', h('b', {}, 'H'), ' buzina · ', h('b', {}, 'C'), ' câmara · ', h('b', {}, 'M'), ' som.'),
-      h('li', { class: 'touch-only' }, h('b', {}, '↺'), ' volta ao último ponto de controlo. A buzina, a câmara e o som estão lá em cima.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Enter'), ' volta à rua (na corrida, ao último ponto de controlo). ', h('b', {}, 'H'), ' buzina · ', h('b', {}, 'C'), ' câmara · ', h('b', {}, 'M'), ' som · ', h('b', {}, 'Esc'), ' menu.'),
+      h('li', { class: 'touch-only' }, h('b', {}, '↺'), ' volta à rua (na corrida, ao último ponto de controlo). O menu, a buzina, a câmara e o som estão lá em cima.'),
       h(
         'li',
         {},
@@ -400,40 +454,16 @@ function howTo(): HTMLElement {
           .map((i) => `${i.icon} ${i.name}`)
           .join(' · '),
       ),
-      h('li', {}, h('b', {}, 'O percurso'), ' são 9 km de Braga como ela é: as ruas, os prédios e os montes, e o Tourigalo. Em casa de cada amigo há uma surpresa. Mapa: © OpenStreetMap contributors (ODbL). Relevo: informação geográfica cedida pela Direção-Geral do Território. Horizonte: Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers.'),
+      h('li', {}, h('b', {}, 'Braga'), ' como ela é: as ruas, os prédios e os montes, e o Tourigalo. A Volta dos Amigos são 9 km dela, e em casa de cada amigo há uma surpresa. Mapa: © OpenStreetMap contributors (ODbL). Relevo: informação geográfica cedida pela Direção-Geral do Território. Horizonte: Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers.'),
     ),
   );
 }
 
-function lobbyScreen(r: Room): HTMLElement {
+// The race's settings, from the menu's "Corrida": the host chooses and starts it, the others see
+// what's chosen and wait.
+function raceScreen(r: Room): HTMLElement {
   const L = r.lobby;
-  const me = L.members.find((m) => m.id === r.you);
-  const taken = new Map(L.members.filter((m) => m.id !== r.you && !m.bot).map((m) => [m.driver, m.name] as const));
-  if (me) showroom(me.driver);
   const host = r.isHost ? (r as HostRoom) : null;
-  const share = PHONE && 'share' in navigator;
-  const copy = h(
-    'button',
-    {
-      onclick: async () => {
-        if (share) {
-          try {
-            await navigator.share({ title: 'Party Kart', text: 'Corre contra mim no Party Kart', url: inviteLink(L.code) });
-            return;
-          } catch (e) {
-            if ((e as Error).name === 'AbortError') return;
-          }
-        }
-        try {
-          await navigator.clipboard.writeText(inviteLink(L.code));
-          copy.textContent = 'Copiado!';
-        } catch {
-          prompt('Envia esta ligação aos teus amigos:', inviteLink(L.code));
-        }
-      },
-    },
-    share ? 'Partilhar o convite' : 'Copiar o convite',
-  );
   const select = <T extends string | number>(value: T, options: [T, string][], set: (v: T) => void) => {
     const s = h(
       'select',
@@ -470,28 +500,36 @@ function lobbyScreen(r: Room): HTMLElement {
   return h(
     'div',
     { class: 'panel lobby' },
-    h('div', { class: 'room' }, h('div', {}, h('span', { class: 'label' }, 'Sala'), h('b', { class: 'code' }, L.code)), copy),
-    h(
-      'div',
-      { class: 'members' },
-      ...L.members.map((m) =>
-        h('span', { class: `chip${m.bot ? ' bot' : ''}`, style: `--c:${driverById(m.driver).color}` }, m.bot ? '🤖 ' : '', m.id === r.you ? `${m.name} (tu)` : m.name, h('small', {}, m.bot ? 'bot' : driverById(m.driver).name)),
-      ),
-    ),
-    h('label', {}, 'O teu piloto'),
-    driverGrid(me?.driver ?? '', taken, (id) => {
-      remember('pk-driver', id);
-      r.pick(id);
-    }),
+    h('h2', {}, '🏁 Corrida'),
+    h('p', { class: 'tag' }, 'A Volta dos Amigos: 9 km de Braga, à porta dos amigos. Corre toda a gente da sala, e os lugares vazios são bots.'),
+    h('div', { class: 'room' }, h('div', {}, h('span', { class: 'label' }, 'Sala'), h('b', { class: 'code' }, L.code)), inviteButton(L.code)),
+    members(r, true),
     settings,
     host ? h('button', { class: 'primary', onclick: () => (fullScreen(), host.start()) }, L.mode === 'race' ? 'Começar a corrida' : 'Começar a ronda') : h('p', { class: 'wait' }, 'À espera que o anfitrião comece…'),
-    h('div', { class: 'row foot' }, qualityPicker(), h('button', { class: 'ghost', onclick: leave }, 'Sair da sala')),
-    howTo(),
+    h(
+      'div',
+      { class: 'row foot' },
+      h(
+        'button',
+        {
+          class: 'ghost',
+          onclick: () => {
+            page = 'main';
+            render();
+          },
+        },
+        '← Voltar',
+      ),
+    ),
   );
 }
 
 function resultsScreen(r: Room, list: Entry[]): HTMLElement {
   const isRace = r.lobby.mode === 'race';
+  const back = () => {
+    results = null;
+    render();
+  };
   return h(
     'div',
     { class: 'panel results' },
@@ -510,43 +548,148 @@ function resultsScreen(r: Room, list: Entry[]): HTMLElement {
         ),
       ),
     ),
-    r.isHost
-      ? h(
-          'div',
-          { class: 'row' },
-          h('button', { class: 'primary', onclick: () => (fullScreen(), (r as HostRoom).start()) }, 'Correr outra vez'),
-          h(
-            'button',
-            {
-              onclick: () => {
-                results = null;
-                render();
-              },
-            },
-            'Voltar à sala',
-          ),
-        )
-      : h(
-          'div',
-          { class: 'row' },
-          h('p', { class: 'wait' }, 'À espera do anfitrião…'),
-          h(
-            'button',
-            {
-              onclick: () => {
-                results = null;
-                render();
-              },
-            },
-            'Mudar de piloto',
-          ),
-        ),
+    h('div', { class: 'row' }, r.isHost && h('button', { onclick: () => (fullScreen(), (r as HostRoom).start()) }, 'Correr outra vez'), h('button', { class: 'primary', onclick: back }, 'Voltar a conduzir')),
   );
 }
 
-function leave(): void {
+// The bar at the top while you drive: the menu, the room, and on a touch screen the keys Enter,
+// Backspace, H, C and M as buttons.
+function bar(): HTMLElement {
+  const touchBtn = (label: string, title: string, onclick: () => void) => h('button', { class: 'small ghost touch-only', title, onclick }, label);
+  const sound = touchBtn(isMuted() ? '🔇' : '🔊', 'Som', () => (sound.textContent = toggleMute() ? '🔇' : '🔊'));
+  if (race) {
+    return h(
+      'div',
+      { class: 'bar' },
+      h('span', { class: 'room-code' }, 'Sala ', h('b', {}, room?.lobby.code ?? '')),
+      touchBtn('↺', 'Voltar ao último ponto de controlo', () => pad.press('respawn')),
+      race.rules.mode === 'time' && touchBtn('Recomeçar volta', 'Recomeçar a volta', () => pad.press('restart')),
+      touchBtn('📢', 'Buzina', () => pad.press('horn')),
+      touchBtn('🎥', 'Câmara', () => pad.press('camera')),
+      sound,
+      room?.isHost ? h('button', { class: 'small ghost', onclick: () => (room as HostRoom).endNow() }, 'Acabar a corrida') : null,
+      h('button', { class: 'small ghost', onclick: leave }, 'Sair'),
+    );
+  }
+  const humans = room ? room.lobby.members.filter((m) => !m.bot).length : 0;
+  return h(
+    'div',
+    { class: 'bar' },
+    h('button', { class: 'small ghost', title: 'Menu (Esc)', onclick: openMenu }, '☰ Menu'),
+    room && h('span', { class: 'room-code' }, 'Sala ', h('b', {}, room.lobby.code), ` · ${humans} ${humans === 1 ? 'piloto' : 'pilotos'}`),
+    touchBtn('↺', 'Voltar à rua', () => pad.press('respawn')),
+    touchBtn('📢', 'Buzina', () => pad.press('horn')),
+    touchBtn('🎥', 'Câmara', () => pad.press('camera')),
+    sound,
+  );
+}
+
+function render(): void {
+  const panel = race ? null : results && room ? 'results' : menu ? 'menu' : null;
+  const driving = (!!race || !!roam) && !panel;
+  keys.enabled = driving;
+  pad.show(driving ? (race ? race.rules.mode : 'roam') : null);
+  document.body.classList.toggle('racing', !!race);
+  document.body.classList.toggle('driving', driving);
+  document.body.classList.toggle('paneled', !!panel);
+  if (panel === 'results') ui.replaceChildren(resultsScreen(room!, results!));
+  else if (panel === 'menu') ui.replaceChildren(menuScreen());
+  else ui.replaceChildren(bar());
+}
+
+// What the room says changed while you're typing in the menu waits until you've finished.
+function renderSoon(): void {
+  const f = document.activeElement;
+  if (f instanceof HTMLInputElement && ui.contains(f) && f.type !== 'checkbox') f.addEventListener('blur', () => render(), { once: true });
+  else render();
+}
+
+function openMenu(): void {
+  menu = true;
+  render();
+}
+
+function closeMenu(): void {
+  menu = false;
+  page = 'main';
+  (document.activeElement as HTMLElement | null)?.blur();
+  unlockAudio();
+  fullScreen();
+  render();
+}
+
+function pickDriver(id: string): void {
+  picked = id;
+  remember('pk-driver', id);
+  room?.pick(id);
+  render();
+}
+
+function reposition(): void {
+  roam?.me.respawn();
+  closeMenu();
+}
+
+// ---- The room ----
+
+function enter(r: Room): void {
+  room = r;
+  notice = '';
+  wire(r);
+}
+
+// "Convidar amigos": a room of your own, with you as its host, for the friends' invite link.
+async function invite(): Promise<void> {
+  if (room || busy) return;
+  unlockAudio();
+  busy = 'A abrir uma sala…';
+  render();
+  try {
+    enter(await HostRoom.create(myName(), myDriver()));
+  } catch (e) {
+    notice = `Não foi possível abrir uma sala (${(e as { type?: string }).type ?? 'erro'}). Tenta outra vez daqui a pouco.`;
+  }
+  busy = '';
+  render();
+}
+
+// "Corrida": the race's settings, in a room (one of your own if you aren't in one yet).
+async function openRace(): Promise<void> {
+  if (!room) await invite();
+  if (!room) return;
+  page = 'race';
+  render();
+}
+
+async function join(raw: string): Promise<void> {
+  const c = raw.trim().toLowerCase();
+  if (!/^[a-z0-9]{5}$/.test(c)) {
+    notice = 'O código da sala tem 5 letras e números.';
+    render();
+    return;
+  }
+  if (busy || (room && !leave())) return;
+  unlockAudio();
+  busy = 'A entrar na sala…';
+  feed(`A entrar na sala ${c}…`);
+  render();
+  try {
+    enter(await ClientRoom.join(c, myName(), myDriver()));
+    besideHost = false;
+    if (roomFromUrl() !== c) history.replaceState(null, '', `${location.pathname}?room=${c}`);
+  } catch (e) {
+    notice = (e as Error).message;
+    feed(notice, 'big');
+    history.replaceState(null, '', location.pathname);
+  }
+  busy = '';
+  render();
+}
+
+// Out of the room, and on driving alone. False if the host thought better of closing it on everyone.
+function leave(): boolean {
   if (room) {
-    if (room.isHost && room.lobby.members.some((m) => !m.bot && m.id !== room!.you) && !confirm('Fechar a sala para todos?')) return;
+    if (room.isHost && room.lobby.members.some((m) => !m.bot && m.id !== room!.you) && !confirm('Fechar a sala para todos?')) return false;
     room.onClose = () => {};
     room.leave();
   }
@@ -554,23 +697,38 @@ function leave(): void {
   endRace();
   results = null;
   notice = '';
+  page = 'main';
   history.replaceState(null, '', location.pathname);
   render();
+  return true;
 }
 
 function wire(r: Room): void {
+  // Who's in the room besides you, to say in the feed who came and went. A client hears the room's
+  // first lobby as it joins.
+  let known: Map<string, string> | null = r.isHost ? new Map() : null;
   r.onLobby = () => {
-    if (!race) render();
+    const now = new Map(r.lobby.members.filter((m) => !m.bot && m.id !== r.you).map((m) => [m.id, m.name] as const));
+    if (known) {
+      for (const [id, name] of now) if (!known.has(id)) feed(`👋 ${name} entrou na sala`, 'big');
+      for (const [id, name] of known) if (!now.has(id)) feed(`${name} saiu da sala`);
+    } else {
+      feed(`Entraste na sala de ${r.lobby.members.find((m) => m.id === HOST_ID)?.name ?? 'alguém'}`, 'big');
+    }
+    known = now;
+    if (!race) renderSoon();
   };
   r.onStart = (goIn, endIn, grid) => startRace(goIn, endIn, grid);
   r.onEnd = (list) => {
+    // Everyone goes back to where they were: none of the race's positions are wanted any more.
+    r.cars.clear();
     results = list;
     endRace();
     render();
   };
   r.onHonk = (id) => {
     const m = r.lobby.members.find((x) => x.id === id);
-    const k = race?.karts.get(id);
+    const k = (race?.karts ?? roam?.karts)?.get(id);
     if (m) horn(driverById(m.driver).horn, k ? 1 : 0.6, k?.model.group.position);
   };
   r.onBoard = () => {};
@@ -579,61 +737,169 @@ function wire(r: Room): void {
     room = null;
     endRace();
     results = null;
+    page = 'main';
     notice = why;
+    if (why) feed(`${why} Continuas a conduzir sozinho.`, 'big');
     history.replaceState(null, '', location.pathname);
     render();
   };
 }
 
-function render(): void {
-  keys.enabled = !!race;
-  pad.show(race ? race.rules.mode : null);
-  document.body.classList.toggle('racing', !!race);
-  if (race) {
-    // On a touch screen, the keys Enter, Backspace, H, C and M are buttons here.
-    const touchBtn = (label: string, title: string, onclick: () => void) => h('button', { class: 'small ghost touch-only', title, onclick }, label);
-    const sound = touchBtn(isMuted() ? '🔇' : '🔊', 'Som', () => (sound.textContent = toggleMute() ? '🔇' : '🔊'));
-    ui.replaceChildren(
-      h(
-        'div',
-        { class: 'bar' },
-        h('span', { class: 'room-code' }, 'Sala ', h('b', {}, room?.lobby.code ?? '')),
-        touchBtn('↺', 'Voltar ao último ponto de controlo', () => pad.press('respawn')),
-        race.rules.mode === 'time' && touchBtn('Recomeçar volta', 'Recomeçar a volta', () => pad.press('restart')),
-        touchBtn('📢', 'Buzina', () => pad.press('horn')),
-        touchBtn('🎥', 'Câmara', () => pad.press('camera')),
-        sound,
-        room?.isHost ? h('button', { class: 'small ghost', onclick: () => (room as HostRoom).endNow() }, 'Acabar a corrida') : null,
-        h('button', { class: 'small ghost', onclick: leave }, 'Sair'),
-      ),
-    );
-    return;
-  }
-  startAttract();
-  if (!room) {
-    hide(showroomCar);
-    showroomCar = null;
-    ui.replaceChildren(homeScreen());
-  } else if (results) ui.replaceChildren(resultsScreen(room, results));
-  else ui.replaceChildren(lobbyScreen(room));
+// ---- Driving round the city ----
+
+// The streets, the area's edge and the race's route, for the minimap round you.
+const mapLines = { lines: world.drive.d.world.lines, edge: world.drive.d.world.open.pts, route: track.samples.filter((_, i) => i % 4 === 0).map((s) => s.p) };
+
+// Where free roam starts: where you last were, kept in this browser, if a car can still be there;
+// else on the granite plinth at the start, facing the Rua do Fujacal.
+function startCar(): Car {
+  const d = world.drive;
+  const [x, y, z, yaw] = stored('pk-where', '').split(',').map(Number);
+  if ([x, y, z, yaw].every(Number.isFinite) && d.d.inside.has(x, z) && !d.floor(x, z, y + 1).buried) return d.place(carAt(v3(x, y, z), yaw, v3(0, 1, 0)));
+  const s = world.stage;
+  return d.place(carAt(v3(s.x, s.y, s.z), world.stageYaw, v3(0, 1, 0)), s.y + 0.5);
 }
 
-// The lobby's showroom: your car turning slowly on the plinth at the start.
-let showroomCar: Shown | null = null;
-function showroom(driverId: string): void {
-  if (showroomCar?.driver === driverId) return;
-  hide(showroomCar);
-  showroomCar = showKart(driverId, null);
+function keepWhere(c: Car): void {
+  remember('pk-where', [c.p.x.toFixed(1), c.p.y.toFixed(2), c.p.z.toFixed(1), c.yaw.toFixed(3)].join(','));
+}
+
+function startRoam(car: Car): void {
+  car.v = v3();
+  const me = new Roamer(world.drive, room?.you || 'me', myName(), car);
+  roam = { me, kart: showKart(myDriver(), null), karts: new Map(), cars: new Map(), hud: new RoamHud(hudRoot, mapLines), acc: 0, cam: 0, steer: 0, throttle: 0, shake: 0, vice: 0, idx: null, street: '', kept: 0 };
+  slow.frames = slow.time = 0;
+}
+
+function stopRoam(): Car | null {
+  const r = roam;
+  if (!r) return null;
+  hide(r.kart);
+  for (const k of r.karts.values()) hide(k);
+  hudRoot.replaceChildren();
+  roam = null;
+  return r.me.car;
+}
+
+// A friend who has just joined is put on the street nearest the host, once the host's position comes
+// in: a few metres back along it if that's where the host is, so as not to land on them.
+function besideTheHost(r: RoamCtx): void {
+  if (besideHost || !room || room.isHost) return;
+  const snaps = room.cars.get(HOST_ID);
+  const s = snaps?.[snaps.length - 1]?.s;
+  if (!s) return;
+  besideHost = true;
+  const d = world.drive;
+  try {
+    let c = d.spawn(s.x, s.z, s.y, s.yaw);
+    if (Math.hypot(c.p.x - s.x, c.p.z - s.z) < 6) c = d.place(carAt(v3(c.p.x - Math.cos(c.yaw) * 7, c.p.y, c.p.z - Math.sin(c.yaw) * 7), c.yaw, c.up), c.p.y + 1.5);
+    r.me.car = c;
+  } catch {
+    /* no street near the host: stay where you are */
+  }
+}
+
+function honk(k: Shown): void {
+  horn(k.model.driver.horn);
+  room?.honk();
+}
+
+function stepRoam(r: RoamCtx, now: number, dt: number): void {
+  const me = r.me;
+  me.id = room?.you || 'me';
+  syncOthers(r.karts, r.cars, (id) => id === me.id, true, dt);
+  besideTheHost(r);
+  const open = menu || !!results;
+
+  for (const act of [...keys.actions(), ...pad.actions()]) {
+    if (act === 'horn') honk(r.kart);
+    if (act === 'camera') r.cam = (r.cam + 1) % 2;
+    if (act === 'respawn') me.respawn();
+  }
+  r.acc += Math.min(0.25, dt);
+  while (r.acc >= DT) {
+    r.acc -= DT;
+    const k = keys.controls();
+    const p = pad.controls();
+    // With the menu open, the kart pulls up and waits.
+    const ctl: Input = open ? stopInput(me.car) : { throttle: Math.max(k.throttle, p.throttle), brake: Math.max(k.brake, p.brake), steer: clampSteer(k.steer + p.steer), drift: k.drift || p.drift };
+    r.steer = ctl.steer;
+    r.throttle = ctl.throttle;
+    me.step(r.cars.values(), ctl, DT);
+  }
+  for (const n of me.notes) {
+    if (n.k === 'respawn') r.hud.feed('De volta à rua');
+    else feel(r, n);
+  }
+  me.notes = [];
+  room?.sendPos(snapOf(me, r.steer));
+
+  // Your kart, with the driver the room gives you.
+  const c = me.car;
+  const driver = myDriver();
+  if (r.kart.driver !== driver) {
+    hide(r.kart);
+    r.kart = showKart(driver, null);
+  }
+  pose(r.kart.model.group, c.p.x, c.p.y, c.p.z, c.yaw, c.up);
+  const fwd = c.v.x * Math.cos(c.yaw) + c.v.z * Math.sin(c.yaw);
+  const flags = me.info().flags;
+  const vice = now < r.vice;
+  r.kart.model.update(speedOf(c) * Math.sign(fwd || 1), r.steer, dt, c.grounded, flags, vice);
+  kartEffects(me.id, r.kart, c.p.x, c.p.y, c.p.z, c.yaw, speedOf(c), flags, c.grounded, dt);
+  if (vice) cigarette(r.kart, c, dt);
+  hearRoam(r, dt);
+
+  // The friends' houses go off as you pass them on the route, as in a race.
+  const loc = locate(track, c.p, r.idx);
+  const s = track.samples[loc.i];
+  r.idx = Math.abs(loc.lateral) < s.w / 2 + 8 && Math.abs(loc.h) < 4 ? loc.i : null;
+  eggReact(r, world.eggs.update(now / 1000, dt, r.idx === null ? null : { idx: r.idx, speed: speedOf(c) }));
+
+  streetName(r);
+  r.hud.set({ speed: speedOf(c), boosting: c.boost > 0, slip: me.slip });
+  r.hud.minimap({ x: c.p.x, z: c.p.z, yaw: c.yaw }, [...r.cars.values()].map((o) => ({ x: o.x, z: o.z, color: colorOf(o.id) })));
+
+  if (now - r.kept > 3000) {
+    r.kept = now;
+    keepWhere(c);
+  }
+}
+
+// The route's street plates' names, as you come within 20 m of where the route turns into each
+// street. (braga-map's tiles have no other streets' names yet: its task 042.)
+function streetName(r: RoamCtx): void {
+  const c = r.me.car;
+  if (speedOf(c) < 3) return;
+  for (const s of amigos.streets) {
+    if (s.name === r.street || Math.hypot(s.x - c.p.x, s.z - c.p.z) > 20) continue;
+    r.street = s.name;
+    r.hud.street(s.name);
+    return;
+  }
+}
+
+// Your engine, tyres and wind, the others' engines, and the city round you.
+function hearRoam(r: RoamCtx, dt: number): void {
+  const c = r.me.car;
+  const others: Kart[] = [];
+  for (const o of r.cars.values()) {
+    const speed = Math.hypot(o.vx, o.vz);
+    others.push({ id: o.id, p: o, v: { x: o.vx, y: 0, z: o.vz }, speed, throttle: speed > 2 ? 1 : 0, grounded: true });
+  }
+  const slip = Math.abs(-c.v.x * Math.sin(c.yaw) + c.v.z * Math.cos(c.yaw));
+  engines({ id: r.me.id, p: c.p, v: c.v, speed: speedOf(c), throttle: r.throttle, grounded: c.grounded, drifting: c.drifting, slip, cobble: world.drive.surface(c.p.x, c.p.z, c.p.y) === 'setts' }, others, dt);
+  citySound(c.p, dt);
 }
 
 // ---- The race ----
 
 function startRace(goIn: number, endIn: number, grid: Record<string, number>): void {
   const r = room!;
-  endRace();
-  hide(showroomCar);
-  showroomCar = null;
-  stopAttract();
+  if (race) endRace(false);
+  else before = stopRoam() ?? before;
+  menu = false;
+  page = 'main';
   results = null;
   const L = r.lobby;
   const rules: Rules = { mode: L.mode, laps: L.laps, items: L.mode === 'race' && L.items, catchUp: L.mode === 'race' && L.catchUp };
@@ -652,12 +918,14 @@ function startRace(goIn: number, endIn: number, grid: Record<string, number>): v
   arena.send = (ev) => room?.sendEv(ev);
   const now = performance.now();
   const karts = new Map<string, Shown>();
-  karts.set(me.id, showKart(meMember.driver, null));
+  const kart = showKart(meMember.driver, null);
+  karts.set(me.id, kart);
   for (const b of bots) karts.set(b.racer.id, showKart(L.members.find((m) => m.id === b.racer.id)!.driver, b.racer.name));
   const ctx: RaceCtx = {
     arena,
     rules,
     me,
+    kart,
     bots,
     goAt: now + goIn,
     endAt: now + endIn,
@@ -683,23 +951,30 @@ function startRace(goIn: number, endIn: number, grid: Record<string, number>): v
   scene.add(ctx.items.group);
   arena.fx = (f) => onArenaFx(ctx, f);
   race = ctx;
+  world.marks.visible = true;
+  slow.frames = slow.time = 0;
   resetMeter();
   if (RECORD) recordAudio(RECORD);
   (document.activeElement as HTMLElement | null)?.blur();
-  sideways(true);
   render();
 }
 
-function endRace(): void {
+// The race over (or left): back to driving round the city where you were before it, unless another
+// race starts at once.
+function endRace(resume = true): void {
   if (!race) return;
   for (const k of race.karts.values()) hide(k);
   hide(race.ghost);
   scene.remove(race.items.group);
   race = null;
+  world.marks.visible = false;
   engines(null, [], 0);
   citySound(null, 0);
   hudRoot.replaceChildren();
-  sideways(false);
+  if (resume) {
+    startRoam(before ?? startCar());
+    before = null;
+  }
 }
 
 // The engines: yours, the others' from where they are (the bots' exact, the other players' as
@@ -715,7 +990,7 @@ function hearKarts(r: RaceCtx, dt: number): void {
   }
   const slip = Math.abs(-c.v.x * Math.sin(c.yaw) + c.v.z * Math.cos(c.yaw));
   engines({ id: r.me.id, p: c.p, v: c.v, speed: speedOf(c), throttle: r.throttle, grounded: c.grounded, drifting: c.drifting, slip, cobble: track.samples[c.idx].surface === 'cobble' }, others, dt);
-  citySound(c.idx, dt);
+  citySound(c.p, dt);
 }
 
 // How close a place is to your kart, from 1 there to nothing at 120 m: how hard an explosion shakes
@@ -765,12 +1040,24 @@ const howName = (how: string) => (HOW[how] ? `${HOW[how][0]} ${HOW[how][1]}` : h
 function flashSplit(r: RaceCtx, text: string, cls: string, ms = 2000): void {
   r.split = { text, cls, until: performance.now() + ms };
 }
-// The easter eggs along the track, when your kart passes them: the sounds, the sparkle, the word.
-function eggReact(r: RaceCtx | null, events: EggEvent[]): void {
+
+// Whatever you're driving, in a race or round the city, as the eggs, the notes and the camera need it.
+interface Driving {
+  me: { car: Car; slip: number };
+  kart: Shown;
+  hud: { feed(text: string, cls?: string): void };
+  cam: number;
+  shake: number;
+  vice: number;
+}
+
+// The easter eggs on the friends' houses, when your kart passes them: the sounds, the sparkle, the
+// word.
+function eggReact(r: Driving | null, events: EggEvent[]): void {
   for (const e of events) {
     if (e.kind === 'bark') sfx.bark(e.at);
     if (e.kind === 'dog') {
-      if (r) horn(r.karts.get(r.me.id)!.model.driver.horn);
+      if (r) horn(r.kart.model.driver.horn);
       sfx.bark(e.at);
       r?.hud.feed('🐕 O Faísca vai atrás de ti!', 'big');
     }
@@ -817,7 +1104,7 @@ function noteForMe(r: RaceCtx, n: Note): void {
       break;
     case 'lap':
       lapSound(n.best);
-      fx.burst(r.karts.get(me.id)!.model.group.position);
+      fx.burst(r.kart.model.group.position);
       if (race) {
         if (me.fin === null) {
           const lap = me.run.laps + 1;
@@ -871,6 +1158,16 @@ function noteForMe(r: RaceCtx, n: Note): void {
       flashCenter(r, `🔨 Martelada! O martelinho de ${n.by}`, 'hit', 1600);
       r.shake = Math.max(r.shake, 0.5);
       break;
+    default:
+      feel(r, n);
+  }
+}
+
+// What driving does to any kart of ours, in a race or round the city: bumps, slipstreams,
+// mini-turbos, walls and landings, on screen and in the speakers.
+function feel(r: { me: { car: Car }; shake: number }, n: Note): void {
+  const p = r.me.car.p;
+  switch (n.k) {
     case 'bump':
       sfx.bump(n.strength);
       r.shake = Math.max(r.shake, Math.min(0.4, n.strength * 0.03));
@@ -880,7 +1177,7 @@ function noteForMe(r: RaceCtx, n: Note): void {
       break;
     case 'turbo':
       sfx.turbo(n.level);
-      glow.spray(me.car.p, 40, n.level === 2 ? ['#ff9a2e', '#ffd04d'] : ['#5ad1ff', '#ffffff'], 5, 3, 0.4);
+      glow.spray(p, 40, n.level === 2 ? ['#ff9a2e', '#ffd04d'] : ['#5ad1ff', '#ffffff'], 5, 3, 0.4);
       break;
     case 'wall':
       thud(n.strength);
@@ -888,7 +1185,7 @@ function noteForMe(r: RaceCtx, n: Note): void {
       break;
     case 'land':
       thud(n.strength * 0.5);
-      smoke.spray(me.car.p, 14, ['#cfc6b6', '#e0d8c8'], 3, 1, 0.8, 0.3);
+      smoke.spray(p, 14, ['#cfc6b6', '#e0d8c8'], 3, 1, 0.8, 0.3);
       r.shake = Math.max(r.shake, Math.min(0.6, n.strength * 0.05));
       break;
   }
@@ -903,7 +1200,7 @@ function botNotes(b: Racer): void {
   b.notes = [];
 }
 
-function snapOf(x: Racer, steer: number): Snap {
+function snapOf(x: { id: string; car: Car; info(): CarInfo }, steer: number): Snap {
   const c = x.car;
   const info = x.info();
   return {
@@ -923,16 +1220,16 @@ function snapOf(x: Racer, steer: number): Snap {
   };
 }
 
-// The others, where they were a moment ago, smoothly; into the arena (for positions, bumps and
-// targets) and onto the screen.
-function syncOthers(r: RaceCtx, dt: number): void {
-  if (!room) return;
+// The others, where they were a moment ago, smoothly: into `cars` (for positions, bumps and
+// targets) and onto the screen as `karts`. `local` says which cars this browser drives itself; round
+// the city the bots aren't out.
+function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local: (id: string) => boolean, roaming: boolean, dt: number): void {
   const at = performance.now() - 110;
   const seen = new Set<string>();
-  for (const [id, snaps] of room.cars) {
-    if (id === r.me.id || r.bots.some((b) => b.racer.id === id)) continue;
-    const m = room.lobby.members.find((x) => x.id === id);
-    if (!m || snaps.length === 0) continue;
+  for (const [id, snaps] of room ? room.cars : []) {
+    if (local(id)) continue;
+    const m = room!.lobby.members.find((x) => x.id === id);
+    if (!m || snaps.length === 0 || (roaming && m.bot)) continue;
     seen.add(id);
     let i = snaps.length - 1;
     while (i > 0 && snaps[i - 1].at > at) i--;
@@ -946,23 +1243,23 @@ function syncOthers(r: RaceCtx, dt: number): void {
     const x = L(a.x, b.x);
     const y = L(a.y, b.y);
     const z = L(a.z, b.z);
-    const fin = room.board.find((e) => e.id === id)?.fin ?? null;
-    r.arena.cars.set(id, { id, name: m.name, P: L(a.P, b.P), x, y, z, vx: Math.cos(b.yaw) * b.spd, vz: Math.sin(b.yaw) * b.spd, flags: b.fl, fin });
-    let k = r.karts.get(id);
-    if (!k || k.driver !== m.driver) {
+    const fin = room!.board.find((e) => e.id === id)?.fin ?? null;
+    cars.set(id, { id, name: m.name, P: L(a.P, b.P), x, y, z, vx: Math.cos(b.yaw) * b.spd, vz: Math.sin(b.yaw) * b.spd, flags: b.fl, fin });
+    let k = karts.get(id);
+    if (!k || k.driver !== m.driver || k.label !== m.name) {
       hide(k);
       k = showKart(m.driver, m.name);
-      r.karts.set(id, k);
+      karts.set(id, k);
     }
     pose(k.model.group, x, y, z, yaw, { x: L(a.ux, b.ux), y: L(a.uy, b.uy), z: L(a.uz, b.uz) });
     k.model.update(b.spd, b.st, dt, !!b.g, b.fl);
     kartEffects(id, k, x, y, z, yaw, Math.abs(b.spd), b.fl, !!b.g, dt);
   }
-  for (const [id, k] of r.karts) {
-    if (id === r.me.id || r.bots.some((b) => b.racer.id === id) || seen.has(id)) continue;
+  for (const [id, k] of karts) {
+    if (local(id) || seen.has(id)) continue;
     hide(k);
-    r.karts.delete(id);
-    r.arena.cars.delete(id);
+    karts.delete(id);
+    cars.delete(id);
   }
 }
 
@@ -971,13 +1268,10 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
   const me = r.me;
   const raceMs = now - r.goAt;
   a.started = raceMs >= 0;
-  syncOthers(r, dt);
+  syncOthers(r.karts, a.cars, (id) => id === me.id || r.bots.some((b) => b.racer.id === id), false, dt);
 
   for (const act of [...keys.actions(), ...pad.actions()]) {
-    if (act === 'horn' && room) {
-      horn(r.karts.get(me.id)!.model.driver.horn);
-      room.honk();
-    }
+    if (act === 'horn') honk(r.kart);
     if (act === 'camera') r.cam = (r.cam + 1) % 2;
     if (!a.started || r.timeUp) continue;
     if (act === 'use' || act === 'useBack') {
@@ -1040,11 +1334,7 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
     const vice = x === me && now < r.vice;
     k.model.update(speedOf(c) * Math.sign(fwd || 1), x === me ? r.steer : (r.bots.find((b) => b.racer === x)?.steer ?? 0), dt, c.grounded, info.flags, vice);
     kartEffects(x.id, k, c.p.x, c.p.y, c.p.z, c.yaw, speedOf(c), info.flags, c.grounded, dt);
-    // Smoke from the cigarette, going along with the kart as it rises away above the driver.
-    if (vice && Math.random() < dt * 5) {
-      const tip = k.model.ember.getWorldPosition(new THREE.Vector3());
-      fx.add(tip.x, tip.y + 0.1, tip.z, c.v.x * 0.97 + (Math.random() - 0.5) * 0.3, 1.6, c.v.z * 0.97 + (Math.random() - 0.5) * 0.3, 0.7, '#ececea', 1.2);
-    }
+    if (vice) cigarette(k, c, dt);
   }
   r.items.update(a, me.taken, now / 1000, dt);
   hearKarts(r, dt);
@@ -1055,7 +1345,7 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
     const k = Math.floor(lapMs / 50);
     if (r.rec.length <= k) r.rec[k] = [me.car.p.x, me.car.p.y, me.car.p.z, me.car.yaw, me.car.up.x, me.car.up.y, me.car.up.z];
     if (r.ghostLap) {
-      if (!r.ghost) r.ghost = showKart(r.karts.get(me.id)!.driver, null, true);
+      if (!r.ghost) r.ghost = showKart(r.kart.driver, null, true);
       const g = r.ghostLap[Math.min(r.ghostLap.length - 1, k)] ?? r.ghostLap.find(Boolean);
       if (g) pose(r.ghost.model.group, g[0], g[1], g[2], g[3], { x: g[4], y: g[5], z: g[6] });
     }
@@ -1076,7 +1366,6 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
   // The HUD.
   const isRace = r.rules.mode === 'race';
   const order = a.order();
-  const colorOf = (id: string) => driverById(room?.lobby.members.find((m) => m.id === id)?.driver ?? '').color;
   const center = !a.started
     ? { text: left <= 3 ? String(left) : 'Prepara-te', cls: 'big' }
     : r.center && now < r.center.until
@@ -1133,7 +1422,17 @@ function holdView(v: number[]): void {
   }
 }
 
-function chase(r: RaceCtx, dt: number): void {
+// The field of view eased towards fov, opened up on a phone held upright, or the road is a slot down
+// the middle.
+function widen(fov: number, dt: number): void {
+  if (camera.aspect < 1) fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(fov / 2)) / Math.sqrt(camera.aspect)));
+  if (Math.abs(camera.fov - fov) > 0.1) {
+    camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);
+    camera.updateProjectionMatrix();
+  }
+}
+
+function chase(r: Driving, dt: number): void {
   if (VIEW && VIEW.length >= 6) {
     holdView(VIEW);
     return;
@@ -1145,6 +1444,8 @@ function chase(r: RaceCtx, dt: number): void {
   const dist = close ? 4.8 : 7.6 + spd * 0.045;
   const want = new THREE.Vector3(c.p.x, c.p.y, c.p.z).addScaledVector(f, -dist).add(new THREE.Vector3(0, close ? 2.0 : 3.2, 0));
   want.y = Math.max(want.y, world.ground(want.x, want.z) + 1.2);
+  // Somewhere else altogether (the game opening, a friend's side): straight there.
+  if (camPos.distanceTo(want) > 150) camPos.copy(want);
   camPos.lerp(want, 1 - Math.exp(-dt * (close ? 14 : 8)));
   camLook.set(c.p.x, c.p.y + 1.3, c.p.z).addScaledVector(f, 5);
   camera.position.copy(camPos);
@@ -1154,13 +1455,25 @@ function chase(r: RaceCtx, dt: number): void {
     r.shake *= Math.exp(-dt * 6);
   }
   camera.lookAt(camLook);
-  let fov = 66 + Math.min(20, spd * 0.32) + (c.boost > 0 ? 6 : 0) + r.me.slip * 4;
-  // On a phone held upright, open the view up, or the road is a slot down the middle.
-  if (camera.aspect < 1) fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(fov / 2)) / Math.sqrt(camera.aspect)));
-  if (Math.abs(camera.fov - fov) > 0.1) {
-    camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);
-    camera.updateProjectionMatrix();
+  widen(66 + Math.min(20, spd * 0.32) + (c.boost > 0 ? 6 : 0) + r.me.slip * 4, dt);
+}
+
+// With the menu open: the camera turns slowly round your kart, which stands on the right of the
+// screen, clear of the menu.
+function orbit(c: Car, t: number, dt: number): void {
+  if (VIEW && VIEW.length >= 6) {
+    holdView(VIEW);
+    return;
   }
+  const ang = c.yaw + Math.PI * 0.8 + Math.sin(t * 0.2) * 0.6;
+  const want = new THREE.Vector3(c.p.x + Math.cos(ang) * 7.5, c.p.y + 2.6, c.p.z + Math.sin(ang) * 7.5);
+  want.y = Math.max(want.y, world.ground(want.x, want.z) + 1.2);
+  if (camPos.distanceTo(want) > 150) camPos.copy(want);
+  camPos.lerp(want, 1 - Math.exp(-dt * 2.5));
+  camera.position.copy(camPos);
+  const toKart = new THREE.Vector3(c.p.x - camPos.x, 0, c.p.z - camPos.z).normalize();
+  camera.lookAt(c.p.x + toKart.z * 2.4, c.p.y + 1.1, c.p.z - toKart.x * 2.4);
+  widen(58, dt);
 }
 
 // The sounds' listener, on the camera.
@@ -1175,11 +1488,10 @@ function hear(): void {
 // ---- The loop ----
 
 let last = performance.now();
-let attractAcc = 0;
-// If a race runs slowly, step the graphics down a level (as far as Low), and say so.
+// If the game runs slowly, step the graphics down a level (as far as Low), and say so.
 const slow = { frames: 0, time: 0 };
 function watchSpeed(dt: number): void {
-  if (!race || quality === 'low' || AUTODRIVE) return;
+  if ((!race && !roam) || quality === 'low' || AUTODRIVE) return;
   slow.frames++;
   slow.time += dt;
   if (slow.time < 6) return;
@@ -1187,63 +1499,53 @@ function watchSpeed(dt: number): void {
     quality = quality === 'high' ? 'medium' : 'low';
     remember('pk-quality', quality);
     look.setQuality(quality);
-    race.hud.feed(`Gráficos baixados para ${QUALITY_NAME[quality]}, para o jogo não engasgar`, 'big');
+    feed(`Gráficos baixados para ${QUALITY_NAME[quality]}, para o jogo não engasgar`, 'big');
   }
   slow.frames = 0;
   slow.time = 0;
 }
+
 function frame(now: number): void {
   const dt = Math.min(0.25, (now - last) / 1000);
   last = now;
   const t = now / 1000;
   world.update(t);
+  watchSpeed(dt);
 
   if (race) {
-    watchSpeed(dt);
     stepRace(race, now, dt);
     const me = race.me;
     eggReact(race, world.eggs.update(t, dt, race.arena.started && !race.timeUp && me.fin === null ? { idx: me.car.idx, speed: speedOf(me.car) } : null));
     chase(race, dt);
     fitTags(race.karts.values());
     look.follow(race.me.car.p);
-    if (AUTODRIVE) (window as unknown as { __kart: object }).__kart = { idx: race.me.car.idx, lap: race.me.run.laps, fin: race.me.fin, item: race.me.item?.kind ?? null, place: race.arena.rankOf(race.me.id), cars: race.arena.cars.size, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, audio: { ...readMeter(), record: recordState(), played, city: cityHeard } };
-  } else {
-    // The menus: bots lapping, the camera on one of them; in the lobby, your car on the stage.
-    world.eggs.update(t, dt, null);
-    attractAcc += dt;
-    while (attractAcc >= DT) {
-      attractAcc -= DT;
-      for (const a of attract) if (stepCar(a.car, autopilot(a.car, track, a.caution), onTrack, DT)) a.car = newCar(track, a.car.idx);
-    }
-    for (const a of attract) {
-      pose(a.shown.model.group, a.car.p.x, a.car.p.y, a.car.p.z, a.car.yaw, a.car.up);
-      a.shown.model.update(speedOf(a.car), 0, dt, a.car.grounded, a.car.boost > 0 ? FLAG.boost : 0);
-      kartEffects(`attract-${a.shown.driver}`, a.shown, a.car.p.x, a.car.p.y, a.car.p.z, a.car.yaw, speedOf(a.car), a.car.boost > 0 ? FLAG.boost : 0, a.car.grounded, dt);
-    }
-    if (showroomCar && room) {
-      const p = world.stage;
-      const s = track.samples[world.stageAt];
-      showroomCar.model.group.position.copy(p);
-      showroomCar.model.group.rotation.set(0, t * 0.6, 0);
-      showroomCar.model.update(0, Math.sin(t) * 0.5, dt, true, 0);
-      // From the road's side, so the plinth's wall with Braga's arms is behind the car, and the car
-      // on the right of the screen, clear of the menus.
-      const toRoad = new THREE.Vector3(s.p.x - p.x, 0, s.p.z - p.z).normalize();
-      const right = new THREE.Vector3().crossVectors(toRoad, new THREE.Vector3(0, -1, 0));
-      camera.position.set(p.x + toRoad.x * 7.5 + right.x * 1.5, p.y + 2.6, p.z + toRoad.z * 7.5 + right.z * 1.5);
-      camera.lookAt(p.x - right.x * 2.4, p.y + 1.1, p.z - right.z * 2.4);
-      look.follow(p);
-    } else if (attract[0]) {
-      const c = attract[0].car;
-      // Swing round the lead car slowly.
-      const ang = t * 0.25;
-      const f = new THREE.Vector3(Math.cos(c.yaw + Math.PI + Math.sin(ang) * 0.9), 0, Math.sin(c.yaw + Math.PI + Math.sin(ang) * 0.9));
-      const want = new THREE.Vector3(c.p.x, c.p.y + 3.5, c.p.z).addScaledVector(f, 10);
-      want.y = Math.max(want.y, world.ground(want.x, want.z) + 1.5);
-      camPos.lerp(want, 1 - Math.exp(-dt * 3));
-      camera.position.copy(camPos);
-      camera.lookAt(c.p.x, c.p.y + 1, c.p.z);
-      look.follow(c.p);
+    if (AUTODRIVE) (window as unknown as { __kart: object }).__kart = { mode: 'race', driver: race.kart.driver, idx: race.me.car.idx, lap: race.me.run.laps, fin: race.me.fin, item: race.me.item?.kind ?? null, place: race.arena.rankOf(race.me.id), cars: race.arena.cars.size, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, audio: { ...readMeter(), record: recordState(), played, city: cityHeard } };
+  } else if (roam) {
+    const r = roam;
+    stepRoam(r, now, dt);
+    if (menu || results) orbit(r.me.car, t, dt);
+    else chase(r, dt);
+    fitTags(r.karts.values());
+    look.follow(r.me.car.p);
+    if (AUTODRIVE) {
+      const c = r.me.car;
+      (window as unknown as { __kart: object }).__kart = {
+        mode: 'roam',
+        driver: r.kart.driver,
+        x: c.p.x,
+        y: c.p.y,
+        z: c.p.z,
+        yaw: c.yaw,
+        speed: speedOf(c),
+        room: room?.lobby.code ?? null,
+        host: room?.isHost ?? false,
+        members: room?.lobby.members.filter((m) => !m.bot).map((m) => m.name) ?? [],
+        others: [...r.cars.values()].map((o) => ({ id: o.id, name: o.name, x: o.x, y: o.y, z: o.z })),
+        street: r.street,
+        calls: renderer.info.render.calls,
+        tris: renderer.info.render.triangles,
+        audio: { city: cityHeard },
+      };
     }
   }
   hear();
@@ -1251,7 +1553,7 @@ function frame(now: number): void {
   glow.update(dt);
   smoke.update(dt);
   look.render();
-  stats?.frame(quality, !!race);
+  stats?.frame(quality, race ? 'race' : roam ? 'roam' : null);
   requestAnimationFrame(frame);
 }
 
@@ -1304,17 +1606,43 @@ if (AUTODRIVE) {
 
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyM' && !(e.target instanceof HTMLInputElement)) toggleMute();
+  // Esc opens the menu over the world, and closes it (or the results, or goes back from the race's
+  // settings).
+  if (e.code === 'Escape' && roam && !race) {
+    e.preventDefault();
+    if (results) results = null;
+    else if (menu && page === 'race') page = 'main';
+    else if (menu) return closeMenu();
+    else menu = true;
+    render();
+  }
 });
 // A phone suspends the sound when the page goes to the background; the next touch brings it back.
 addEventListener('pointerdown', unlockAudio);
 addEventListener('touchend', unlockAudio);
+// The first tap on a phone asks for the whole screen, and sideways once it has it.
+addEventListener('pointerup', fullScreen, { once: true });
+document.addEventListener('fullscreenchange', () => sideways(!!document.fullscreenElement));
+// Where you are, for the next time the game opens.
+addEventListener('pagehide', () => roam && keepWhere(roam.me.car));
 
-if (SCENERY) requestAnimationFrame(sceneryFrame);
-else {
-  render();
-  // Prepare every driver's materials now, rather than freezing when a race starts.
+if (SCENERY) {
+  document.getElementById('loading')?.remove();
+  requestAnimationFrame(sceneryFrame);
+} else {
+  // The game opens driving, alone, where you last were or on the plinth at the start.
+  startRoam(startCar());
+  // Prepare every driver's materials now, and the race's marks', rather than freezing when a race
+  // starts or a friend joins.
   const warm = DRIVERS.map((d) => showKart(d.id, d.name));
+  world.marks.visible = true;
   renderer.compile(scene, camera);
+  world.marks.visible = false;
   warm.forEach(hide);
+  render();
+  document.getElementById('loading')?.remove();
+  feed(pad.on ? 'Bem-vindo a Braga! O ☰ lá em cima abre o menu: o teu nome, o piloto, os amigos e a corrida.' : 'Bem-vindo a Braga! Esc abre o menu: o teu nome, o piloto, os amigos e a corrida.', 'big');
+  const invited = roomFromUrl();
+  if (invited) void join(invited);
   requestAnimationFrame(frame);
 }

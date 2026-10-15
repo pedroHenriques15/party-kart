@@ -8,10 +8,49 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Party Kart</title>
-    <meta name="description" content="A Volta dos Amigos: uma corrida de karts pelas ruas verdadeiras de Braga, à porta dos amigos, para jogar com eles no browser." />
+    <meta name="description" content="Braga como ela é, para conduzir um kart por onde quiseres com os amigos, no browser. E a Volta dos Amigos, para correr contra eles." />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='3' y='13' width='26' height='8' rx='3' fill='%231d4f9c'/><circle cx='9' cy='23' r='4' fill='%23111'/><circle cx='23' cy='23' r='4' fill='%23111'/><circle cx='15' cy='9' r='5' fill='%23e2a98a'/></svg>" />
+    <!-- What shows while the city is fetched and built: up to 20 s on a phone. Its own style, as the
+         game's stylesheet comes with the game. -->
+    <style>
+      #loading {
+        position: fixed;
+        inset: 0;
+        z-index: 5;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        gap: 18px;
+        background: #0d0f14;
+        color: #f4f7fb;
+        font: 600 17px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        text-align: center;
+      }
+      #loading b {
+        font-size: 44px;
+        font-weight: 900;
+        letter-spacing: -1.5px;
+      }
+      #loading b span {
+        color: #d4af37;
+      }
+      #loading i {
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        border: 8px solid #2a2d35;
+        border-top-color: #d4af37;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="loading"><b>Party Kart<span>.</span></b><i></i>A construir Braga…</div>
     <canvas id="view"></canvas>
     <div id="hud"></div>
     <div id="ui"></div>

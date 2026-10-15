@@ -714,7 +714,7 @@ async function loadCity(c: AudioContext): Promise<void> {
   }
 }
 
-// What's round the track, worked out from the map once the city is built (src/ambience.ts).
+// What's round the city, worked out from the map once it's built (src/ambience.ts).
 let around: Ambience | null = null;
 export function cityIs(a: Ambience): void {
   around = a;
@@ -749,7 +749,7 @@ function bed(k: CitySound, placed: boolean): Bed | null {
   return (beds[k] = { src, level, pan });
 }
 
-// Silences the city once it has faded: nothing plays it outside a race.
+// Silences the city once it has faded: nothing plays it with no kart driving.
 function quietCity(): void {
   for (const [k, b] of Object.entries(beds) as [CitySound, Bed][]) {
     b.src.stop();
@@ -786,13 +786,13 @@ const nearest = (spots: Spot[]) => {
 // The time in Braga, as "hh:mm".
 const braga = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Lisbon', hour: '2-digit', minute: '2-digit', hour12: false });
 
-// Every frame of a race, with the sample your kart is on; null once it's over. The beds follow the
-// place every half second, slowly enough not to pump; the river, the crowd, the bells and the buses
-// are heard from where they are.
-export function citySound(idx: number | null, dt: number): void {
+// Every frame while you drive, in a race or round the city, with where your kart is; null when no
+// kart is. The beds follow the place every half second, slowly enough not to pump; the river, the
+// crowd, the bells and the buses are heard from where they are.
+export function citySound(at: { x: number; z: number } | null, dt: number): void {
   if (!ctx || !bus || !recorded || !around) return;
   const t = ctx.currentTime;
-  if (idx === null) {
+  if (at === null) {
     for (const b of Object.values(beds)) b.level.gain.setTargetAtTime(0, t, 0.5);
     if (!quieting && Object.keys(beds).length) quieting = window.setTimeout(() => ((quieting = 0), quietCity()), 3000);
     return;
@@ -804,7 +804,7 @@ export function citySound(idx: number | null, dt: number): void {
   cityClock += dt;
   if (cityClock < 0.5) return;
   cityClock = 0;
-  const s = surroundAt(around, idx);
+  const s = surroundAt(around, at.x, at.z);
   // Traffic where the streets are busy; the town's hum under it where there are houses; birds in
   // the parks and gardens; insects and birds where it's wooded.
   const want: [CitySound, number][] = [

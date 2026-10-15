@@ -14,19 +14,20 @@ change things, read [making-changes.md](making-changes.md).
 | `src/track/track.ts` | sim | `buildTrack`: the road sampled every metre. `locate`: where a point is relative to the road |
 | `src/car/car.ts` | sim | `stepCar`: the handling (grip, drift, mini-turbo, boost pads, flying, landing, walls, falling off), on a `Ground`; `trackGround`, the race's track as one |
 | `src/world/land.ts` | sim | `makeLand`: the land as it's drawn and driven on (braga-map's ground, held down at the tunnels' mouths, the stadium's bowl, the river's bed); `mouths` |
-| `src/world/ground.ts` | sim | `worldGround`: the world as a ground, for the open world: the land, every street at its level, and the walls (buildings, parapets, tunnels, trees, the area's edge) |
-| `src/car/autopilot.ts` | sim | Drives the track by itself: for the bots, the menu screens, `?autodrive` and the tests |
+| `src/world/ground.ts` | sim | `worldGround`: the world as a ground, for the open world: the land, every street at its level, and the walls (buildings, parapets, tunnels, trees, the area's edge); and what the game stands on it (the plinth) |
+| `src/car/autopilot.ts` | sim | Drives the track by itself: for the bots, `?autodrive` and the tests |
 | `src/race.ts` | sim | Laps, checkpoints, splits, respawning |
 | `src/game/arena.ts` | sim | `Arena`: one browser's view of a race. `FLAG`: status bits sent with positions |
 | `src/game/racer.ts` | sim | `Racer`: a car this browser drives (laps, boxes, items, hits, bumps, slipstream, catch-up) |
 | `src/game/items.ts` | sim | What the items are, the odds by place, the events, where a projectile is at a given time |
 | `src/game/bot.ts` | sim | The bots' driving (each on its own line across the road, moving out to pass) and when they use their items |
+| `src/game/roamer.ts` | sim | `Roamer`: your car round the city, outside a race, on the world's ground (bumps and slipstreams, back on the street when lost) |
 | `src/session.ts` | browser | Rooms over PeerJS: `HostRoom` and `ClientRoom` |
-| `src/main.ts` | browser | The screens, the race loop, the cameras, and the glue between all of it |
-| `src/hud.ts` | browser | The race screen: place, lap, item slot, clock, minimap, order, feed |
+| `src/main.ts` | browser | Free roam, the menu over it, the race and its screens, the loop, the cameras, and the glue between all of it |
+| `src/hud.ts` | browser | What's on the screen while you drive: in a race (`Hud`: place, lap, item slot, clock, minimap, order, feed), and round the city (`RoamHud`: speed, the street's name, a minimap round you, feed) |
 | `src/stats.ts` | browser | `?stats`: what the game costs on this screen, in a corner, for measuring it on a phone |
 | `src/audio.ts` | browser | Every sound and the mix it goes through (buses, a limiter, places): synthesized with Web Audio, but the city's, recorded (`src/sounds/`) |
-| `src/ambience.ts` | sim | What's round every 10 m of the track (traffic, town, park, woods) and where the churches, the rivers, the bus stops and the stadium are, from the map, for the city's sound |
+| `src/ambience.ts` | sim | What's round any point of the city on a grid every 10 m (traffic, town, park, woods), each point worked out the first time it's needed, and where the churches, the rivers, the bus stops and the stadium are, from the map, for the city's sound |
 | `src/input.ts` | browser | The keyboard and the touch screen: held controls, plus actions counted once per press |
 | `src/render/` | browser | three.js: the look, the city round the track (`city.ts`, its land on `lattice.ts`), every street in the open world's area (`streets.ts`, laid on the ground by `tin.ts`), what the race adds to them (`road.ts`), the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
 
@@ -35,8 +36,30 @@ tests in `test/` drive real cars round the real track with them.
 
 ## One frame
 
-`frame()` in `main.ts`, every animation frame. On the menus it laps a few autopilot cars for the
-background, or turns your kart on the stage in the lobby. In a race it calls `stepRace`:
+`frame()` in `main.ts`, every animation frame. The game is always one of two things: driving round
+the city (free roam, braga-map's decision 019), or a race.
+
+**Round the city** it calls `stepRoam`. The game opens this way, alone, your car where you were when
+you last played (kept in `localStorage` every 3 s and as the page goes) or on the plinth at the
+start; and goes back to it after a race, where you were before it.
+
+1. **`syncOthers`**, as in a race (below), but for the room's players only: the bots are out only
+   in a race. A friend who has just joined is put on the street nearest the host once the host's
+   first position comes in (`besideTheHost`).
+2. **Key actions**: horn, camera, back on the street.
+3. **Fixed steps** of `DT`: your `Roamer` on the world's ground (`world.drive`), bumping into the
+   others where they're drawn. With a panel open (the menu, the results) it pulls up and waits.
+4. **Notes**: the bumps, slipstreams, mini-turbos, walls and landings, through `feel` as in a race.
+5. **`sendPos`**: your snapshot, if you're in a room.
+6. **Drawing and sound**: your kart (its driver the room's, which gives you another if someone has
+   yours), the engines and the city round you (`hearRoam`), the eggs (the track's sample you're by,
+   from `locate`, while you're within 8 m of the route's edge), the street's name within 20 m of
+   where the route turns into one of its streets, and the `RoamHud` with its minimap.
+
+The chase camera follows, or with a panel open the camera turns slowly round your kart (`orbit`),
+which stands on the right of the screen, clear of the menu.
+
+**In a race** it calls `stepRace`:
 
 1. **`syncOthers`**: for every car this browser doesn't drive, finds the two snapshots either side
    of *now − 110 ms* and interpolates between them. A jump of more than 30 m, such as a respawn,
@@ -119,6 +142,12 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
 - **Lost:** a car in the land, in the river, wedged between walls or out of the world counts towards
   a respawn, and `spawn` puts it on the nearest street's carriageway at its level (in a tunnel,
   in the tunnel), facing along the street. A car never turns over in this handling.
+- **What the game stands on it:** `stand(pts, y)` adds a flat block a car stands on and drives off,
+  its sides walls a step short of its top (the plinth at the start, free roam's first spot, with
+  `wall()` for the wall at its back); and `unwall(ring)` takes away the walls of a building the city
+  leaves out to keep clear round the plinth, an egg or the Tourigalo, so there's no wall where
+  nothing is drawn. `surface(x, z, y)` says whether the street under a car is cobbled, for the
+  tyres' rumble round the city.
 - **For a race,** `ground.race(track, walls)` is the same world, sharing what was built, keeping each
   car's `idx` and `lat` along the track and adding walls only it has (the race's, task 037). Until
   then the race runs on `trackGround`, and `test/drive.test.ts` drives the route on the world's
@@ -156,7 +185,9 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk30-` plus a five-character room code, and the invite link is `?room=<code>`.
+`partykart-pk32-` plus a five-character room code, and the invite link is `?room=<code>`, which
+opens the game straight into the room. A room is made only when someone invites friends ("Convidar
+amigos") or starts a race; until then the game is alone, with no network at all.
 
 ### Messages
 
@@ -165,7 +196,8 @@ To the host (`ToHost` in `session.ts`):
 | `t` | | |
 |---|---|---|
 | `hello` | name, driver | Join. A room with 8 humans already gets `bye` |
-| `pick` | driver | Change driver, in the lobby only, if nobody else has it |
+| `pick` | driver | Change driver, outside a race, if nobody else has it |
+| `name` | name | Change my name, outside a race |
 | `pos` | `Snap` | Where my car is. Clients send at most 15 a second |
 | `lap` | ms | I finished a lap in this time |
 | `fin` | ms | I finished the race at this race time |
@@ -177,8 +209,8 @@ To the clients (`ToClient`):
 
 | `t` | | |
 |---|---|---|
-| `lobby` | lobby, you | The whole lobby (members, settings, racing or not) and your id in it |
-| `cars` | `Snap[]` | Everyone's latest position, 15 times a second during a race |
+| `lobby` | lobby, you | The whole room (members, the race's settings, racing or not) and your id in it |
+| `cars` | `Snap[]` | Everyone's latest position, 15 times a second, round the city as in a race |
 | `board` | `Entry[]` | The leaderboard: best laps, laps, finish times |
 | `start` | goIn, endIn, grid | The race starts in `goIn` ms and ends at the latest in `endIn` ms. `grid` gives each id's slot |
 | `end` | `Entry[]` | The results |
@@ -230,7 +262,7 @@ sequenceDiagram
 | Your car's position, laps and finish time | Your browser |
 | Whether your car was hit | Your browser |
 | The bots: driving, items, laps | The host's browser |
-| The lobby: members, drivers, settings, bots | The host |
+| The room: members, names, drivers, the race's settings, bots | The host |
 | The leaderboard and results | The host, from the laps and finishes it's told |
 | When the race ends | The host: when everyone's finished, 30 s after the first finisher, or at the time limit (for a race, the laps times the lap limit, plus 60 s; the lap limit is the track's length at 60 km/h, set by `setLapLimit`. For time attack, the chosen minutes) |
 
@@ -240,15 +272,21 @@ host does guard against is malformed or hostile input that could break other peo
 and overwrite `owner`/`victim` with the sender's id, so nobody can throw things in someone else's
 name. On screen, names only ever go in as text (the `h()` helper in `main.ts`).
 
-Someone joining mid-race is put straight in at the back of the grid. If the host leaves, it sends
-everyone a `bye`, the connections close and every client goes back to the home screen. Only a
+Someone joining mid-race is put straight in at the back of the grid. When a race ends the host
+drops the bots' positions, and everyone the race's: round the city only the players are out. If the
+host leaves, it sends everyone a `bye`, the connections close, and every client drives on alone,
+where it is (the feed says so). Only a
 client's connection to the host ends its room: once in, its socket to PeerJS's server can drop (the
 server restarting, a phone changing networks) and the race carries on.
 
-## The two modes
+## The modes
 
-**Race**: 1 to 5 laps from a random starting grid, with positions. Power-ups and catch-up can each
-be turned off in the lobby.
+**Free roam**: the game outside a race. No laps, items or catch-up; karts bump and slipstream as in
+a race. The menu's "Corrida" gives the host the race's settings, and starting it takes everyone in
+the room (braga-map's decision 019).
+
+**Race**: 1 to 3 laps from a random starting grid, with positions. Power-ups and catch-up can each
+be turned off in the race's settings.
 
 **Time attack**: a round of so many minutes, with no items and no catch-up. Your best lap counts.
 Backspace restarts the lap. Your browser records each lap every 50 ms, and replays your best one
@@ -297,8 +335,8 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     draw only the squares near the camera.
   - Then the trees (`plantTrees`, plain crowns in 800 m tiles, plainer still on Low), the Rio Este,
     the decks' pillars and abutments and the tunnels' mouths (`levels.ts`), brown signs to
-    landmarks on the pavement, the granite plinth with Braga's arms at the start (where the lobby
-    shows your car), and the easter eggs on the friends' houses (`eggs.ts`). Neither buildings nor
+    landmarks on the pavement, the granite plinth with Braga's arms at the start (free roam's first
+    spot: its top is a block the karts stand on, `stand` in `ground.ts`), and the easter eggs on the friends' houses (`eggs.ts`). Neither buildings nor
     trees stand on the plinth or in an egg's ground.
 - **The streets** (`render/streets.ts`): every street in the open world's area as braga-map gives
   it (`world.streets`, its task 033), on the ground the karts drive on (`ground.ts`): a carriageway
@@ -335,7 +373,9 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     triangles.
 - **The road** (`render/road.ts`): what the race adds to the streets (`raceMarks`): the start
   line, the gates at the start and the checkpoints, the boost pads and the barriers at the start,
-  laid on the streets as they're drawn. The race still drives the track's own road, at least 9 m
+  laid on the streets as they're drawn. They're the city's `marks`, up only while a race is on
+  (`startRace`, `endRace`): round the city, and in `?scenery`, the streets are as they are. The race
+  still drives the track's own road, at least 9 m
   wide, until braga-map's task 037 puts it on the streets. `buildRoad` draws the first track's road
   (its ribbon, lines, kerbs, pavements and skirts), which had no streets under it.
 - **The first track's world** (`render/world.ts`, with `landmarks.ts`, `braga.ts` and
@@ -354,16 +394,19 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   shrink and the martelinho's bonk, the filigrana's gold paint, the guarda-chuva, the exhaust
   flames on a boost, and what moves on the car (Vale's clock and hourglass, Capelas's bumper and
   wobbling spare, Pedro's antenna light).
-- **Warm-up**: at startup `main.ts` builds every driver's kart once and calls `renderer.compile`,
-  so the first race doesn't freeze while shaders compile.
+- **Warm-up**: at startup `main.ts` builds every driver's kart once and calls `renderer.compile`
+  with the race's marks up, so neither a friend joining nor the first race freezes while shaders
+  compile.
 
 ## Sound
 
 Every sound is in `audio.ts`, and plays through one mix. All are synthesized but the city's:
 
-- **The city round the track** is recordings (`src/sounds/`, braga-map's `docs/SOURCES.md` has
-  them), fetched once the sound is unlocked, and heard by what's near (`ambienceOf` in
-  `src/ambience.ts`, worked out from the map's world once the city is built, 0.2 s here). Four beds
+- **The city round you** is recordings (`src/sounds/`, braga-map's `docs/SOURCES.md` has
+  them), fetched once the sound is unlocked, and heard by what's near your kart, wherever it is
+  (`ambienceOf` in `src/ambience.ts`, from the map the karts drive on, once the city is built: a grid
+  every 10 m over the world, each point worked out the first time a kart comes near it, about a
+  quarter of a millisecond each, and what's between them blended from the four round it). Four beds
   loop in your head on the ambience bus, re-weighted every half second by what's within 150 m of
   your kart and crossfaded over a second and a half: traffic by the streets' classes and how near,
   the town's hum where there are houses, birds in the parks and gardens, insects and birds where
@@ -456,7 +499,11 @@ calls on High and Medium, 3 on Low, and up to 19 k triangles (the decks and mout
 rest the land's small cells round them). braga-map 1.7.0 (2026-10-14, for the open world's ground,
 its task 034) takes the download to 6.79 MB, 2.07 MB gzipped (the tiles 1.75 MB): every street as
 surfaces and the ground every 2 m under the open world's area, which the game draws since task 035
-and drives on from task 036. Task 035's code takes it to 6.81 MB, 2.08 MB gzipped.
+and drives on from task 036. Task 035's code takes it to 6.81 MB, 2.08 MB gzipped, and free roam's
+(task 036) to 6.83 MB, 2.08 MB gzipped, measured since then on the page as a player opens it, until
+the loading screen goes and you can drive. Free roam took 3 to 16 draw calls off every viewpoint
+(`shots/2026-10-15-task036/`): the race's marks, one mesh along the whole route, are up only in a
+race.
 
 - **Textures**, on High: the ground's painted map is 44 MB (3330 × 2600 pixels, a metre each; 22 MB
   on Medium, 11 on Low), the sun's shadows 16 MB (4 on Medium), the street plates 10.5 MB, the sky's
@@ -471,7 +518,7 @@ and drives on from task 036. Task 035's code takes it to 6.81 MB, 2.08 MB gzippe
   aren't merged, and are drawn again for the shadows), so 8 karts are two or three times the city.
 - **The frame time on the PC** is 0.4–2.6 ms on every level, so it can't tell them apart. Only a
   phone gives the frame rate.
-- **Stepping down a level in a race** (`watchSpeed`) changes the pixel ratio and the shadows only.
+- **Stepping down a level** (`watchSpeed`, round the city or in a race) changes the pixel ratio and the shadows only.
   The city stays as it was built (`buildCity` runs once), so a phone that starts on Medium and drops
   to Low keeps Medium's triangles and textures.
 

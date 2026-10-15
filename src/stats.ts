@@ -1,5 +1,5 @@
-// ?stats: what the game costs on this screen, in a corner. The frame rate and the race's worst
-// second, the graphics level, draw calls, triangles, the textures' memory, how long the city took
+// ?stats: what the game costs on this screen, in a corner. The frame rate and the worst second
+// (of the race, or of driving round the city since the last race), the graphics level, draw calls, triangles, the textures' memory, how long the city took
 // to build and the page to be ready, what it downloaded, and the graphics card. It's for measuring
 // the game on a phone, which has no developer tools: a screenshot of the corner is the measurement.
 import * as THREE from 'three';
@@ -65,10 +65,12 @@ export class Stats {
   private time = 0;
   private last = performance.now();
   private fps = 0;
-  // The race's slowest whole second, after its first two, and the level it started on.
+  // The slowest whole second since you began driving round the city or the race began, after its
+  // first two, and the level it began on.
   private worst = Infinity;
   private skip = 0;
   private from: Quality | null = null;
+  private what: 'roam' | 'race' | null = null;
 
   // buildMs: how long the city took to build; readyMs: from opening the page until it was built.
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, buildMs: number, readyMs: number) {
@@ -81,20 +83,22 @@ export class Stats {
     document.body.append(this.el);
   }
 
-  // Once a frame, after it's drawn.
-  frame(quality: Quality, racing: boolean): void {
-    if (racing && !this.from) {
-      this.from = quality;
+  // Once a frame, after it's drawn, with what you're doing: driving round the city, racing, or
+  // neither.
+  frame(quality: Quality, what: 'roam' | 'race' | null): void {
+    if (what !== this.what) {
+      this.what = what;
+      this.from = what ? quality : null;
       this.worst = Infinity;
       this.skip = 2;
-    } else if (!racing) this.from = null;
+    }
     const now = performance.now();
     this.frames++;
     this.time += (now - this.last) / 1000;
     this.last = now;
     if (this.time < 1) return;
     this.fps = this.frames / this.time;
-    if (racing && this.skip-- <= 0) this.worst = Math.min(this.worst, this.fps);
+    if (what && this.skip-- <= 0) this.worst = Math.min(this.worst, this.fps);
     this.frames = 0;
     this.time = 0;
     const r = this.renderer.info.render;

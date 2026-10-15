@@ -85,13 +85,13 @@ const SWIPE = 28;
 // The touch screen, for phones and tablets: drag anywhere on the left half to steer, and the
 // buttons on the right drift, brake and use the item. There's no thumb spare for a pedal, so the
 // kart accelerates by itself. Brake slows it down, and reverses once stopped, as ↓ does. The rarer
-// actions (checkpoint, restart, horn, camera) are buttons in the race's bar, out of the thumbs' way.
+// actions (back on the street, restart, horn, camera) are buttons in the bar, out of the thumbs' way.
 export class TouchPad {
   readonly el: HTMLElement;
   // Whether the touch controls show: from the start on a touch screen, from the first touch on
   // anything else, and until a key is pressed.
   on = false;
-  private racing = false;
+  private driving = false;
   private steer = 0;
   private drift = false;
   private brake = false;
@@ -154,13 +154,13 @@ export class TouchPad {
       const p = this.flick;
       if (!p || p.id !== e.pointerId || p.done || e.clientY - p.y < SWIPE) return;
       p.done = true;
-      if (this.racing) this.pending.push('useBack');
+      if (this.driving) this.pending.push('useBack');
     });
     for (const k of ends) {
       item.addEventListener(k, (e) => {
         const p = this.flick;
         if (p?.id !== e.pointerId) return;
-        if (!p.done && k === 'pointerup' && this.racing) this.pending.push('use');
+        if (!p.done && k === 'pointerup' && this.driving) this.pending.push('use');
         this.flick = null;
         item.classList.remove('down');
       });
@@ -220,10 +220,10 @@ export class TouchPad {
     for (const b of this.el.querySelectorAll('.down')) b.classList.remove('down');
   }
 
-  // Shown for a race ('race' has the item button, 'time' doesn't), or hidden (null).
-  show(mode: 'race' | 'time' | null): void {
+  // Shown for driving ('race' has the item button, time attack and free roam don't), or hidden (null).
+  show(mode: 'race' | 'time' | 'roam' | null): void {
     if (mode === (this.el.dataset.mode || null)) return;
-    this.racing = mode !== null;
+    this.driving = mode !== null;
     this.el.dataset.mode = mode ?? '';
     this.letGo();
     this.pending = [];
@@ -242,7 +242,7 @@ export class TouchPad {
   }
 
   controls(): Held {
-    if (!this.on || !this.racing) return { throttle: 0, brake: 0, steer: 0, drift: false };
+    if (!this.on || !this.driving) return { throttle: 0, brake: 0, steer: 0, drift: false };
     return { throttle: this.brake ? 0 : 1, brake: this.brake ? 1 : 0, steer: this.steer, drift: this.drift };
   }
 
@@ -252,8 +252,8 @@ export class TouchPad {
     return a;
   }
 
-  // For the race bar's buttons.
+  // For the bar's buttons.
   press(act: Action): void {
-    if (this.racing) this.pending.push(act);
+    if (this.driving) this.pending.push(act);
   }
 }

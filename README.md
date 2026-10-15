@@ -1,29 +1,49 @@
 # Party Kart
 
-The Volta dos Amigos, round Braga's real streets and past the friends' houses. A kart game to race
-your friends in the browser, on a keyboard or a phone, with power-ups and bots. A throwaway game: no
-server, no accounts, nothing to maintain. The drivers are the friends, and all faces are cartoons.
+Braga's real streets, to drive round in a kart with your friends, and the Volta dos Amigos to race
+them on, past the friends' houses. In the browser, on a keyboard or a phone, with power-ups and bots
+in a race. A throwaway game: no server, no accounts, nothing to maintain. The drivers are the
+friends, and all faces are cartoons.
 
 ## Playing
 
 The game speaks Portuguese, Portugal's.
 
-1. Open the page, pick a driver, click **Criar uma sala**.
-2. **Copiar o convite** and send it to your friends. They open it, pick a driver, **Entrar**.
-3. Choose the mode and **Começar a corrida**. Empty places on the grid are bots (you choose how many).
+The game opens with you driving in Braga, alone: on the granite plinth at the start on the Rua do
+Fujacal, or where you were when you last played. Drive anywhere in the Volta dos Amigos' area: down
+every street, over the pavements, across the squares, as far as the road-works barriers where the
+streets leave it. The minimap round you shows the streets, the race's route in gold and the area's
+edge in red, the way you face at the top; a blue-and-white plate names each of the route's streets
+as you turn into it.
+
+**Esc**, or **☰ Menu** at the top, opens the menu over the world, which goes on behind it: your name
+and driver, the graphics, the help, and
+
+1. **Convidar amigos**: a room of your own, and its link to send your friends (**Copiar o convite**,
+   or **Partilhar o convite** on a phone). Whoever opens it drives into your world, on the street
+   next to you. Each of you sees the others where they are, their names over them, and the feed says
+   who came and went. **Entrar** joins a friend's room by its code.
+2. **🏁 Corrida**: the host chooses the mode, the laps or minutes, the items, catch-up and the bots,
+   and **Começar a corrida** puts everyone in the room on the grid, the empty places filled with
+   bots. When it's over the results show over the world, and everyone is back where they were,
+   driving.
+3. **↺ Reposicionar**: back on the street nearest.
+
+If the host leaves, everyone else drives on, alone.
 
 **Race**: 1 to 3 laps (a lap is about four and a half minutes), a starting grid, positions, power-ups, catch-up. **Time attack**: everyone
 drives at once, through each other; your best lap before the clock runs out counts, against
-the ghost of your best.
+the ghost of your best. Round the city there are no items.
 
 | Key | |
 |---|---|
 | Arrows or WASD | Drive |
 | Space | Drift. Hold it through a corner: blue sparks, then orange; let go for a mini-turbo |
-| E or Shift | Use your item (hold ↓ to throw backwards) |
-| Enter | Back to your last checkpoint |
+| E or Shift | Use your item, in a race (hold ↓ to throw backwards) |
+| Enter | Back on the street (in a race, back to your last checkpoint) |
 | Backspace | Restart the lap (time attack) |
 | H · C · M | Horn · camera · sound |
+| Esc | The menu |
 
 **On a phone or a tablet**, turned sideways, the kart goes by itself:
 
@@ -32,11 +52,11 @@ the ghost of your best.
 | Left half of the screen | Steer: put your thumb down anywhere and drag left or right |
 | Derrapar | Hold it through a corner, as with Space |
 | Travar | Slows you down, and reverses once you've stopped |
-| Item | Tap to use what it shows; swipe it down to throw backwards |
-| ↺ · 📢 · 🎥 · 🔊 (at the top) | Back to your last checkpoint · horn · camera · sound |
+| Item | In a race: tap to use what it shows; swipe it down to throw backwards |
+| ☰ · ↺ · 📢 · 🎥 · 🔊 (at the top) | The menu · back on the street (in a race, to your last checkpoint) · horn · camera · sound |
 
-On Android the game goes full screen when you create, join or start a race. On an iPhone, add the
-page to the home screen (Share → Add to Home Screen) for the same.
+On Android the game goes full screen at the first tap. On an iPhone, add the page to the home screen
+(Share → Add to Home Screen) for the same.
 
 The power-ups, from the **?** boxes. The further behind you are, the better what you get:
 
@@ -55,7 +75,7 @@ Also: get right behind a car and its **slipstream** builds up over a second or s
 along, harder the closer you are, and when you pull out to pass the extra speed wears off over a
 few seconds; karts **bump**; and with
 **catch-up** on, the further behind the leader, the more top speed. All of it can be switched off
-in the lobby.
+in the race's settings. Karts bump, and slipstream, round the city too.
 
 **The track, the Volta dos Amigos**: 9.3 km of Braga as it is, through five friends' neighbourhoods
 south and east of the centre, the way the traffic goes. Every street, building, park and tree round
@@ -74,7 +94,8 @@ Every street round it is drawn as it is, at its real width: its lanes painted wh
 crossings, traffic lights and lamps, calçada pavements behind granite kerbs, central reservations
 and islands where it has them, granite setts where it's cobbled, its bridges and tunnels, and
 road-works barriers where it leaves the Volta dos Amigos' area. The race takes its streets at least
-9 m wide, so eight karts fit. A blue-and-white plate names each street as you turn into it, and
+9 m wide, so eight karts fit, and only while it's on do its start line, gates, boost pads and the
+barriers along the start stand in them. A blue-and-white plate names each street as you turn into it, and
 its bus stops stand on the pavement. Bom Jesus and the
 Sameiro stand on the hills to the east, drawn twice their size so you can find them, and the cross
 on top of the Picoto. By the Avenida Doutor António Alves Palha's roundabout stands the Tourigalo, the
@@ -91,14 +112,15 @@ Capelas's car for sale for parts (rusty, roofless, its bumper hanging off), and 
 giant alarm clock on the back, because he's always late. With more than five on the grid, the bots
 drive the same cars again in a second paint ("Pedro II").
 
-**Graphics** (*Gráficos*): *Alta*, *Média* or *Baixa*, on the first screen and in the lobby. Phones start on Medium. If
-a race runs slowly, the game steps down a level by itself, as far as Low.
+**Graphics** (*Gráficos*): *Alta*, *Média* or *Baixa*, in the menu. Phones start on Medium. If
+the game runs slowly, it steps down a level by itself, as far as Low.
 
 ## How it works
 
 - Everyone drives their own car in their own browser, so there's no lag on your own driving.
-  Whoever creates the room is the host: their browser drives the bots, relays where everyone is
-  (15 times a second) and what they throw, keeps the order and the clock.
+  Whoever creates the room is the host: their browser relays where everyone is (15 times a second,
+  round the city as in a race), and in a race drives the bots, relays what they throw, keeps the
+  order and the clock.
 - What's thrown is deterministic: a bola is where it started, how fast and when, so every
   browser draws it in the same place without sending positions. A hit is decided by the one
   who gets hit, in their own browser, and told to the others: what you see is what happened.
@@ -111,7 +133,10 @@ a race runs slowly, the game steps down a level by itself, as far as Low.
   The Volta dos Amigos itself comes from the map of Braga, below.
 - `src/car/`: the handling (drifts, mini-turbos, jumps), and an autopilot.
 - `src/game/`: a race: the arena (clock, cars, items in flight, order), a racer (laps, boxes,
-  items, hits, bumps, slipstreams, catch-up), the items' rules, and the bots.
+  items, hits, bumps, slipstreams, catch-up), the items' rules, and the bots; and a car driving round
+  the city (`roamer.ts`).
+- `src/world/`: the world as the karts' ground: the land, every street at its level, and the
+  walls (`ground.ts`).
 - `src/render/`: the look (sky, sun, shadows, quality); the city round the track (`city.ts`,
   from the map), every street in its area (`streets.ts`), what the race adds to them (`road.ts`),
   the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs (`eggs.ts`); trees, karts and
@@ -120,11 +145,13 @@ a race runs slowly, the game steps down a level by itself, as far as Low.
 - The map of Braga is its own repo, [braga-map](https://github.com/pedroHenriques15/braga-map),
   shared with the games to come: the city in sections, and the tracks planned on its streets. The
   game installs it as a package.
-- `src/session.ts`: rooms. `src/hud.ts`: the race's screen. `src/main.ts`: the screens and the loop.
+- `src/session.ts`: rooms. `src/hud.ts`: what's on the screen while you drive, in a race and round
+  the city. `src/main.ts`: the menu, the race's screens, and the loop.
 - `src/audio.ts`: every sound, through one mix. The karts' engines are a race car's V8 through six
   gears, synthesized, as is everything else but the city round the track: recordings of traffic,
   a town, birds, woods, a river, bells, a bus and a crowd (CC0, from Freesound, listed in
-  braga-map's `docs/SOURCES.md`), in `src/sounds/`, heard by what's near (`src/ambience.ts`).
+  braga-map's `docs/SOURCES.md`), in `src/sounds/`, heard by what's near your kart wherever it is
+  (`src/ambience.ts`).
 
 How it fits together, the network messages included, is in [docs/architecture.md](docs/architecture.md).
 How to change the track, add an item or a driver, and what to watch out for is in
@@ -135,8 +162,8 @@ The tests run the TypeScript straight in Node, which needs Node 22.18 or later.
 
 ```sh
 npm install
-npm run dev      # http://localhost:5173; ?autodrive lets the autopilot drive, for testing
-npm test         # the track; the first track's jump; items, catch-up, slipstreams; eight bots
+npm run dev      # http://localhost:5173; ?autodrive lets the autopilot drive a race, for testing
+npm test         # the track; the world's ground and free roam; the first track's jump; items, catch-up, slipstreams; eight bots
 npm run check    # the type check (Node runs the tests without one)
 npm run build
 npm run deploy   # publish to GitHub Pages (the gh-pages branch)

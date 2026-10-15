@@ -1,8 +1,8 @@
-// What the game downloads before a race, built as it's shipped. It builds the game into a folder of
-// its own, serves it, opens the city (?scenery, which loads what a race loads) and adds up every
-// file the page fetched: as it is, and gzipped. GitHub Pages compresses a little less: 1.47 MB live
-// on 2026-10-14, when this said 1.41. For the budget (task 004 in braga-map): a phone on 4G waits
-// for all of it before the race.
+// What the game downloads before you can drive, built as it's shipped. It builds the game into a
+// folder of its own, serves it, opens it as a player does (it opens driving round the city, once the
+// loading screen goes) and adds up every file the page fetched: as it is, and gzipped. GitHub Pages
+// compresses a little less: 1.47 MB live on 2026-10-14, when this said 1.41. For the budget (task
+// 004 in braga-map): a phone on 4G waits for all of it before it can drive.
 //
 // node scripts/download.mjs
 import fs from 'node:fs';
@@ -23,15 +23,22 @@ const browser = await chromium.launch({ args: process.platform === 'win32' ? ['-
 const files = [];
 try {
   const page = await browser.newPage();
-  page.on('response', async (r) => {
+  // Each response's body is read as it comes, and all of them before adding up.
+  const reading = [];
+  page.on('response', (r) => {
     if (new URL(r.url()).origin !== origin) return;
-    const body = await r.body().catch(() => null);
-    if (body) files.push({ name: new URL(r.url()).pathname.split('/').pop() || 'index.html', raw: body.length, gz: zlib.gzipSync(body).length });
+    reading.push(
+      r
+        .body()
+        .catch(() => null)
+        .then((body) => body && files.push({ name: new URL(r.url()).pathname.split('/').pop() || 'index.html', raw: body.length, gz: zlib.gzipSync(body).length })),
+    );
   });
   const started = Date.now();
-  await page.goto(`${url}?scenery`);
-  await page.waitForFunction(() => window.__kart?.frames >= 1, null, { timeout: 120_000 });
-  console.log(`The city was ready ${((Date.now() - started) / 1000).toFixed(1)} s after opening, on this computer, from a server on it.\n`);
+  await page.goto(url);
+  await page.waitForFunction(() => !document.getElementById('loading'), null, { timeout: 120_000 });
+  console.log(`Driving ${((Date.now() - started) / 1000).toFixed(1)} s after opening, on this computer, from a server on it.\n`);
+  await Promise.all(reading);
 } finally {
   await browser.close();
   await server.close();

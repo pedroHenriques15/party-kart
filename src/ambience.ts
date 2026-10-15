@@ -1,10 +1,9 @@
-// What's round every stretch of the track, for the city's sound: how much traffic, town, park and
-// woods there is within about 150 m, from the map's streets, areas and buildings, every 10 m of the
-// track; and where the sounds with a place are, the churches, the rivers, the bus stops and the
-// stadium. Worked out once, from the map's world, after the city is built. No three.js and no DOM,
-// so the tests can load it.
+// What's round any point of the city, for its sound: how much traffic, town, park and woods there
+// is within about 150 m, from the map's streets, areas and buildings, on a grid every 10 m over the
+// world, each point worked out the first time a kart comes near it; and where the sounds with a place
+// are, the churches, the rivers, the bus stops and the stadium. No three.js and no DOM, so the tests
+// can load it.
 import type { Track as Course, World } from 'braga-map';
-import type { Track } from './track/track.ts';
 
 export interface Surround {
   traffic: number;
@@ -20,8 +19,8 @@ export interface Spot {
 }
 
 export interface Ambience {
-  // One every EVERY samples of the track, from the start line.
-  at: Surround[];
+  // What's round the grid's point (i·EVERY, j·EVERY), worked out the first time it's asked for.
+  node: (i: number, j: number) => Surround;
   churches: Spot[];
   // The rivers' courses, a point every 10 m or so, at the water.
   water: Spot[];
@@ -94,7 +93,7 @@ const inside = (x: number, z: number, pts: [number, number][]) => {
   return c;
 };
 
-export function ambienceOf(track: Track, world: World, course: Course): Ambience {
+export function ambienceOf(world: World, course: Course): Ambience {
   const lines = buckets<{ w: number; pts: [number, number][] }>(100);
   for (const l of world.lines) {
     const w = TRAFFIC[l.kind] ?? 0;
@@ -121,11 +120,9 @@ export function ambienceOf(track: Track, world: World, course: Course): Ambience
     houses.add(x, z, x, z, { x, z });
   }
 
-  const at: Surround[] = [];
-  for (let i = 0; i < track.samples.length; i += EVERY) {
-    const { x, z } = track.samples[i].p;
+  const around = (x: number, z: number): Surround => {
     // Traffic: each street near, by its class and how close, added up and eased towards 1. The
-    // Avenida da Liberdade comes to 0.87, a street of houses in Fujacal 0.44, the Picoto 0.14.
+    // Avenida da Liberdade comes to about 0.9, a street of houses in Fujacal 0.44, the Picoto 0.14.
     let sum = 0;
     for (const l of lines.near(x, z, REACH)) {
       let d = Infinity;
@@ -154,8 +151,17 @@ export function ambienceOf(track: Track, world: World, course: Course): Ambience
     // Woods, too, where trees stand thick, as the map draws most of its woods as parks and trees.
     let n = 0;
     for (const t of trees.near(x, z, 80)) if (Math.hypot(t.x - x, t.z - z) < 80) n++;
-    at.push({ traffic: 1 - Math.exp(-sum / 4), town: s.town / all, park: s.park / all, woods: Math.max(s.woods / all, Math.min(1, n / 50) * 0.7) });
-  }
+    return { traffic: 1 - Math.exp(-sum / 4), town: s.town / all, park: s.park / all, woods: Math.max(s.woods / all, Math.min(1, n / 50) * 0.7) };
+  };
+  // About a quarter of a millisecond a point, so a kart driving at top speed needs one or two a
+  // frame at most.
+  const grid = new Map<number, Surround>();
+  const node = (i: number, j: number): Surround => {
+    const k = (i + 32768) * 65536 + (j + 32768);
+    let s = grid.get(k);
+    if (!s) grid.set(k, (s = around(i * EVERY, j * EVERY)));
+    return s;
+  };
 
   const churches = world.buildings
     .filter((b) => b.kind === 3)
@@ -171,7 +177,7 @@ export function ambienceOf(track: Track, world: World, course: Course): Ambience
   }
   const st = world.sights.find((s) => s.kind === 'stadium');
   return {
-    at,
+    node,
     churches,
     water,
     stops: course.stops.map((s) => ({ x: s.x, y: world.height(s.x, s.z), z: s.z })),
@@ -179,13 +185,18 @@ export function ambienceOf(track: Track, world: World, course: Course): Ambience
   };
 }
 
-// What's round a sample of the track, between the two entries either side of it.
-export function surroundAt(a: Ambience, idx: number): Surround {
-  const f = idx / EVERY;
-  const i = Math.floor(f) % a.at.length;
-  const j = (i + 1) % a.at.length;
-  const t = f - Math.floor(f);
-  const p = a.at[i];
-  const q = a.at[j];
-  return { traffic: p.traffic + (q.traffic - p.traffic) * t, town: p.town + (q.town - p.town) * t, park: p.park + (q.park - p.park) * t, woods: p.woods + (q.woods - p.woods) * t };
+// What's round (x, z), between the grid's four points round it.
+export function surroundAt(a: Ambience, x: number, z: number): Surround {
+  const fx = x / EVERY;
+  const fz = z / EVERY;
+  const i = Math.floor(fx);
+  const j = Math.floor(fz);
+  const u = fx - i;
+  const v = fz - j;
+  const p = a.node(i, j);
+  const q = a.node(i + 1, j);
+  const r = a.node(i, j + 1);
+  const s = a.node(i + 1, j + 1);
+  const mix = (k: keyof Surround) => (p[k] * (1 - u) + q[k] * u) * (1 - v) + (r[k] * (1 - u) + s[k] * u) * v;
+  return { traffic: mix('traffic'), town: mix('town'), park: mix('park'), woods: mix('woods') };
 }

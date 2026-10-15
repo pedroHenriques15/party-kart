@@ -78,6 +78,16 @@ class Cells<T> {
   at(x: number, z: number): T[] | undefined {
     return this.m.get(key(cellOf(x), cellOf(z)));
   }
+  // Takes t out of the cells its box overlaps, as it was added.
+  remove(x0: number, z0: number, x1: number, z1: number, t: T): void {
+    for (let i = cellOf(x0); i <= cellOf(x1); i++) {
+      for (let j = cellOf(z0); j <= cellOf(z1); j++) {
+        const l = this.m.get(key(i, j));
+        const k = l ? l.indexOf(t) : -1;
+        if (k >= 0) l!.splice(k, 1);
+      }
+    }
+  }
   // Everything in the cells round a box, once each time it turns up in one: callers don't mind
   // seeing a thing twice.
   near(x0: number, z0: number, x1: number, z1: number, out: T[]): T[] {
@@ -256,10 +266,17 @@ export class Piece {
   }
 }
 
+// A flat block a car can stand on, as high as it's drawn: the granite plinth at the start (city.ts),
+// where free roam begins. Its sides are walls up to its top.
+interface Block {
+  pts: [number, number][];
+  y: number;
+}
+
 // What a car at a point stands on.
 export interface Floor {
   y: number;
-  kind: 'land' | 'road' | 'pavement' | 'deck' | 'tunnel';
+  kind: 'land' | 'road' | 'pavement' | 'deck' | 'tunnel' | 'block';
   // How far it's over the land (or its piece's level): a kerb's height on a pavement, ramped down
   // to a dropped kerb.
   raise: number;
@@ -289,6 +306,7 @@ interface Data {
   land: Land;
   roads: Rings;
   paves: Rings;
+  setts: Rings; // the carriageways on the ground paved with granite setts
   pieces: Piece[];
   pieceCells: Cells<Piece>;
   walls: Cells<Wall>;
@@ -298,6 +316,7 @@ interface Data {
   lines: Cells<{ ax: number; az: number; bx: number; bz: number; ya: number; yb: number; ground: boolean }>;
   sides: Side[];
   inside: Rings; // the open world's area
+  blocks: Cells<Block>;
   counts: Record<string, number>;
 }
 
@@ -356,6 +375,10 @@ export class WorldGround implements Ground {
       if (yp > y + STEP || (best && yp <= best.y && !under)) continue;
       best = { y: yp, kind: p.level === 'bridge' ? 'deck' : 'tunnel', raise: p.raise, piece: p, buried: false };
     }
+    for (const b of d.blocks.at(x, z) ?? []) {
+      if (b.y > y + STEP || (best && b.y <= best.y) || !inRing(b.pts, x, z)) continue;
+      best = { y: b.y, kind: 'block', raise: 0, piece: null, buried: false };
+    }
     // Under the land, and not on a piece just under the car (in a tunnel, or a deck in a cutting).
     if (ground > y + STEP && (!best || best.y < y - 2)) return { y: ground, kind, raise, piece: null, buried: true };
     return best!;
@@ -363,7 +386,8 @@ export class WorldGround implements Ground {
 
   // The floor's normal at (x, z), over about a car's length.
   normal(f: Floor, x: number, z: number): V {
-    const h = f.piece ? (a: number, b: number) => f.piece!.height(a, b) : f.kind === 'land' ? this.d.land.land : this.d.land.firm;
+    if (f.kind === 'block') return v3(0, 1, 0);
+    const h =f.piece ? (a: number, b: number) => f.piece!.height(a, b) : f.kind === 'land' ? this.d.land.land : this.d.land.firm;
     const gx = (h(x + SMOOTH, z) - h(x - SMOOTH, z)) / (2 * SMOOTH);
     const gz = (h(x, z + SMOOTH) - h(x, z - SMOOTH)) / (2 * SMOOTH);
     return norm(v3(-gx, 1, -gz));
@@ -392,7 +416,7 @@ export class WorldGround implements Ground {
     const top = Math.max(c.p.y, from.y);
     // The land in front: one the car would be in, or too steep to climb off the carriageway.
     let f = this.floor(c.p.x, c.p.z, top);
-    if (!f.piece && (f.buried || f.kind !== 'road')) {
+    if (!f.piece && f.kind !== 'block' && (f.buried || f.kind !== 'road')) {
       const g = this.slope(c.p.x, c.p.z, f.kind === 'land' ? this.d.land.land : this.d.land.firm);
       const mx = c.p.x - from.x;
       const mz = c.p.z - from.z;
@@ -552,6 +576,54 @@ export class WorldGround implements Ground {
     return c;
   }
 
+  // A flat block standing on the land, its top at y, outlined by pts: a car stands on its top and
+  // drives off its edges, and from below its sides are walls. For whatever the game builds that the
+  // map hasn't (the plinth at the start), and shared with every ground made from this one.
+  stand(pts: [number, number][], y: number): void {
+    const xs = pts.map((p) => p[0]);
+    const zs = pts.map((p) => p[1]);
+    this.d.blocks.add(Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs), { pts, y });
+    // The sides stand a step short of the top, so a car on it never meets them.
+    const foot = Math.min(...pts.map(([x, z]) => this.d.land.land(x, z))) - 1;
+    for (let k = 0; k < pts.length; k++) {
+      const [ax, az] = pts[k];
+      const [bx, bz] = pts[(k + 1) % pts.length];
+      this.wall({ ax, az, bx, bz, y0: foot, y1: y - STEP });
+    }
+  }
+
+  // A wall the game adds, shared as the block is.
+  wall(w: Wall): void {
+    this.d.walls.add(Math.min(w.ax, w.bx), Math.min(w.az, w.bz), Math.max(w.ax, w.bx), Math.max(w.az, w.bz), w);
+  }
+
+  // Takes away the walls of a building the game leaves out, to keep the ground clear round what it
+  // stands there instead (the plinth, an egg, the Tourigalo): its outline as trimmed() left it, one
+  // wall an edge, so a neighbour's wall on an edge they share stays. Returns how many went.
+  unwall(ring: [number, number][]): number {
+    const same = (x: number, z: number, u: number, v: number) => Math.abs(x - u) < 0.02 && Math.abs(z - v) < 0.02;
+    let n = 0;
+    for (let k = 0; k < ring.length; k++) {
+      const [ax, az] = ring[k];
+      const [bx, bz] = ring[(k + 1) % ring.length];
+      const box = [Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz)] as const;
+      const w = this.d.walls.near(...box, []).find((w) => (same(w.ax, w.az, ax, az) && same(w.bx, w.bz, bx, bz)) || (same(w.ax, w.az, bx, bz) && same(w.bx, w.bz, ax, az)));
+      if (!w) continue;
+      this.d.walls.remove(Math.min(w.ax, w.bx), Math.min(w.az, w.bz), Math.max(w.ax, w.bx), Math.max(w.az, w.bz), w);
+      n++;
+    }
+    return n;
+  }
+
+  // What the street a car at height y is on at (x, z) is paved with: granite setts or not, for the
+  // tyres' rumble. Off a carriageway, null.
+  surface(x: number, z: number, y: number): 'asphalt' | 'setts' | 'paving' | 'dirt' | null {
+    const f = this.floor(x, z, y + 0.5);
+    if (f.piece) return f.piece.surface;
+    if (f.kind !== 'road') return null;
+    return this.d.setts.has(x, z) ? 'setts' : 'asphalt';
+  }
+
   // How much there is in it, for the tests and for the docs.
   get counts(): Record<string, number> {
     return this.d.counts;
@@ -679,6 +751,7 @@ export function worldGround(world: Braga): WorldGround {
 
   const roads = new Rings(S.carriageways.filter((p) => p.level === 'ground').flatMap((p) => p.rings));
   const paves = new Rings(S.pavements.filter((p) => p.level === 'ground').flatMap((p) => p.rings));
+  const setts = new Rings(S.carriageways.filter((p) => p.level === 'ground' && p.surface === 'setts').flatMap((p) => p.rings));
   const pieces: Piece[] = [];
   for (const p of [...S.carriageways, ...S.pavements]) {
     if (p.level === 'ground' || !p.ys) continue;
@@ -818,5 +891,5 @@ export function worldGround(world: Braga): WorldGround {
   }
 
   counts.pieces = pieces.length;
-  return new WorldGround({ world, land, roads, paves, pieces, pieceCells, walls, posts, dropped, kerbs, lines, sides, inside, counts });
+  return new WorldGround({ world, land, roads, paves, setts, pieces, pieceCells, walls, posts, dropped, kerbs, lines, sides, inside, blocks: new Cells<Block>(), counts });
 }

@@ -100,7 +100,7 @@ function groundMaterial(map: THREE.Texture): THREE.MeshStandardMaterial {
 // ---- The world ----
 
 // Besides the city, the world as the karts' ground (ground.ts), built for it and kept for driving on.
-export async function buildCity(track: Track, course: Course, quality: Quality): Promise<World & { eggs: Eggs; drive: WorldGround }> {
+export async function buildCity(track: Track, course: Course, quality: Quality): Promise<World & { eggs: Eggs; drive: WorldGround; stageYaw: number; marks: THREE.Object3D }> {
   const map = await loadWorld(course.box);
   const B = course.box;
   const group = new THREE.Group();
@@ -355,13 +355,17 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   updates.push(streets.update);
 
   // ---- What only the race adds to the streets: the start line, the gates, the boost pads, the
-  // barriers at the start; the Rio Este's stone bridges under the streets crossing it; the decks, their
-  // pillars and the tunnels' mouths (levels.ts). Baked together at the end, being many small meshes.
-  const statics = new THREE.Group();
+  // barriers at the start. Up only while a race is on (main.ts): round the city the streets are as
+  // they are. ----
   const top = (x: number, z: number) => wg.floor(x, z, firm(x, z) + 1).y;
   const road = raceMarks(track, { start: tex.sign('VOLTA DOS AMIGOS', 'BRAGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('PONTO DE CONTROLO', '', '#111318', '#ffe14d', 1024, 160) }, top);
-  statics.add(road.group);
+  const marks = Object.assign(bake(road.group), { name: 'race marks', visible: false });
+  group.add(marks);
   updates.push(road.update);
+
+  // ---- The Rio Este's stone bridges under the streets crossing it; the decks, their pillars and
+  // the tunnels' mouths (levels.ts). Baked together at the end, being many small meshes. ----
+  const statics = new THREE.Group();
   statics.add(riverBridges(map, firm, riverAt, HW));
   // A mouth's concrete keeps under a street over its tunnel, and under a deck's underside.
   const under = (x: number, z: number) => {
@@ -399,6 +403,9 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   // ---- Buildings, clear of the plinth, the eggs and the Tourigalo. ----
   const keepOut = [plinth.clear, ...spots.map((s) => s.clear), ...map.sights.filter((s) => s.kind === 'tourigalo').map((s) => ({ x: s.x, z: s.z, r: TOURIGALO_CLEAR }))];
   const list = all.filter((b) => !keepOut.some((k) => b.pts.some(([x, z]) => Math.hypot(x - k.x, z - k.z) < k.r) || Math.hypot(b.cx - k.x, b.cz - k.z) < k.r));
+  // Those left out aren't walls for the karts either.
+  const kept = new Set(list);
+  for (const b of all) if (!kept.has(b)) wg.unwall(b.pts);
   group.add(Object.assign(buildBuildings(list), { name: 'buildings' }));
 
   // ---- Trees, from the map and filling its parks and woods. In the area every one the karts can
@@ -441,12 +448,23 @@ export async function buildCity(track: Track, course: Course, quality: Quality):
   for (const l of course.landmarks) statics.add(landmarkSign(track, ground, streets.kerbNear, l));
   group.add(Object.assign(bake(statics), { name: 'statics' }));
 
+  // The plinth as the karts find it, once everything is built on the ground without it: free roam
+  // starts on its top, and drives off it.
+  wg.stand(plinth.top, plinth.y);
+  for (let k = 0; k < 4; k++) {
+    const [ax, az] = plinth.back[k];
+    const [bx, bz] = plinth.back[(k + 1) % 4];
+    wg.wall({ ax, az, bx, bz, y0: plinth.y - 0.5, y1: plinth.y + 7 });
+  }
+
   return {
     group,
     update: (t) => updates.forEach((u) => u(t)),
     ground,
     stage: plinth.stage,
     stageAt: plinth.at,
+    stageYaw: plinth.yaw,
+    marks,
     eggs,
     drive: wg,
   };
@@ -982,10 +1000,20 @@ function startPlinth(track: Track, ground: (x: number, z: number) => number, cro
   g.add(plinth);
   const front = surfacePoint(s, best.side * (s.w / 2 + 7), 0);
   const spot = new THREE.Vector3(front.x, ground(at.x, at.z) + 1.2, front.z);
+  // Its top and the wall at its back, on the ground, for the karts (ground.ts).
+  const corner = (x: number, z: number): [number, number] => {
+    const v = new THREE.Vector3(x, 0, z).applyAxisAngle(new THREE.Vector3(0, 1, 0), plinth.rotation.y);
+    return [at.x + v.x, at.z + v.z];
+  };
   return {
     group: g,
     stage: spot,
     at: best.i,
+    // Facing the road, for a kart to drive off it.
+    yaw: Math.atan2(s.p.z - spot.z, s.p.x - spot.x),
+    top: [corner(-7.2, -4.7), corner(7.2, -4.7), corner(7.2, 4.7), corner(-7.2, 4.7)],
+    y: ground(at.x, at.z) + 1.22,
+    back: [corner(-6.8, -4.65), corner(6.8, -4.65), corner(6.8, -3.35), corner(-6.8, -3.35)],
     clear: { x: at.x, z: at.z, r: 16 },
   };
 }

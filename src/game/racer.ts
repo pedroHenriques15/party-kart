@@ -55,8 +55,8 @@ const CAR_RADIUS = 1.1;
 // you are, and when you pull out to pass it wears off over a few seconds, so the speed bleeds away
 // instead of stopping dead.
 const SLIP_FAR = 30; // m behind a car where it starts
-const SLIP_VMAX = 0.15; // extra top speed at full strength
-const SLIP_ACC = 0.9; // extra pull at full strength
+export const SLIP_VMAX = 0.15; // extra top speed at full strength
+export const SLIP_ACC = 0.9; // extra pull at full strength
 const SLIP_CHARGE = 0.7; // strength gained a second in it
 const SLIP_FADE = 0.3; // strength lost a second out of it
 
@@ -333,49 +333,12 @@ export class Racer {
     this.notes.push({ k: 'shrunk', by: a.nameOf(ev.owner) });
   }
 
-  // Bumping into the others (each car pushes only itself away, so it's fair on both sides), a
-  // gold car spinning you, and the slipstream behind a car ahead.
+  // Bumping into the others, a gold car spinning you, and the slipstream behind a car ahead.
   private contact(a: Arena, dt: number): void {
-    const c = this.car;
-    const fx = Math.cos(c.yaw);
-    const fz = Math.sin(c.yaw);
-    const speed = speedOf(c);
-    let pull = 0;
-    for (const o of a.cars.values()) {
-      if (o.id === this.id) continue;
-      const dx = c.p.x - o.x;
-      const dz = c.p.z - o.z;
-      const d = Math.hypot(dx, dz);
-      if (d < CAR_RADIUS * 2 && Math.abs(c.p.y - o.y) < 1.6 && d > 0.01) {
-        const nx = dx / d;
-        const nz = dz / d;
-        const push = (CAR_RADIUS * 2 - d) / 2;
-        c.p.x += nx * push;
-        c.p.z += nz * push;
-        const vn = (c.v.x - o.vx) * nx + (c.v.z - o.vz) * nz;
-        if (vn < 0) {
-          c.v.x -= nx * vn * 0.8;
-          c.v.z -= nz * vn * 0.8;
-          this.notes.push({ k: 'bump', strength: -vn });
-        }
-        if (o.flags & FLAG.gold && this.gold <= 0 && this.spin <= 0) this.hit(a, '', o.name, 'filigrana');
-      }
-      // In the slipstream: up to 30 m behind someone going the same way, close to their line. It's
-      // strongest within 8 m.
-      const along = -(dx * fx + dz * fz);
-      const side = Math.abs(-dx * fz + dz * fx);
-      const theirs = o.vx * fx + o.vz * fz;
-      if (along > 2.5 && along < SLIP_FAR && side < 2.2 + along * 0.03 && theirs > 12 && Math.abs(c.p.y - o.y) < 3) {
-        pull = Math.max(pull, 1 - 0.6 * clamp((along - 8) / (SLIP_FAR - 8), 0, 1));
-      }
-    }
-    if (pull > 0 && speed > 15 && this.spin <= 0) {
-      if (this.slip === 0) this.notes.push({ k: 'slip' });
-      // Up towards how strong it is here, or slowly down to it when you drop back.
-      this.slip = this.slip < pull ? Math.min(pull, this.slip + dt * SLIP_CHARGE) : Math.max(pull, this.slip - dt * SLIP_FADE);
-    } else {
-      this.slip = Math.max(0, this.slip - dt * SLIP_FADE);
-    }
+    const speed = speedOf(this.car);
+    const { pull, gold } = bump(this.car, this.id, a.cars.values(), this.notes);
+    if (gold && this.gold <= 0 && this.spin <= 0) this.hit(a, '', gold.name, 'filigrana');
+    this.slip = slipstream(this.slip, pull, speed, this.spin > 0, dt, this.notes);
   }
 
   // Time attack's restart: back to the line, the lap's clock reset.
@@ -386,6 +349,55 @@ export class Racer {
   respawn(a: Arena): void {
     this.car = respawn(this.run, this.track, a.t);
   }
+}
+
+// Bumping into the others: each car pushes only itself away, so it's fair on both sides, in a race
+// or driving round the city. Returns how strongly the slipstream of a car ahead pulls (0 to 1), and
+// a gold car it touched, if any.
+export function bump(c: Car, id: string, cars: Iterable<CarInfo>, notes: Note[]): { pull: number; gold: CarInfo | null } {
+  const fx = Math.cos(c.yaw);
+  const fz = Math.sin(c.yaw);
+  let pull = 0;
+  let gold: CarInfo | null = null;
+  for (const o of cars) {
+    if (o.id === id) continue;
+    const dx = c.p.x - o.x;
+    const dz = c.p.z - o.z;
+    const d = Math.hypot(dx, dz);
+    if (d < CAR_RADIUS * 2 && Math.abs(c.p.y - o.y) < 1.6 && d > 0.01) {
+      const nx = dx / d;
+      const nz = dz / d;
+      const push = (CAR_RADIUS * 2 - d) / 2;
+      c.p.x += nx * push;
+      c.p.z += nz * push;
+      const vn = (c.v.x - o.vx) * nx + (c.v.z - o.vz) * nz;
+      if (vn < 0) {
+        c.v.x -= nx * vn * 0.8;
+        c.v.z -= nz * vn * 0.8;
+        notes.push({ k: 'bump', strength: -vn });
+      }
+      if (o.flags & FLAG.gold) gold ??= o;
+    }
+    // In the slipstream: up to 30 m behind someone going the same way, close to their line. It's
+    // strongest within 8 m.
+    const along = -(dx * fx + dz * fz);
+    const side = Math.abs(-dx * fz + dz * fx);
+    const theirs = o.vx * fx + o.vz * fz;
+    if (along > 2.5 && along < SLIP_FAR && side < 2.2 + along * 0.03 && theirs > 12 && Math.abs(c.p.y - o.y) < 3) {
+      pull = Math.max(pull, 1 - 0.6 * clamp((along - 8) / (SLIP_FAR - 8), 0, 1));
+    }
+  }
+  return { pull, gold };
+}
+
+// The slipstream's strength after dt, from what it was and how strongly a car ahead pulls: up
+// towards that, or slowly down to it when you drop back.
+export function slipstream(slip: number, pull: number, speed: number, spinning: boolean, dt: number, notes: Note[]): number {
+  if (pull > 0 && speed > 15 && !spinning) {
+    if (slip === 0) notes.push({ k: 'slip' });
+    return slip < pull ? Math.min(pull, slip + dt * SLIP_CHARGE) : Math.max(pull, slip - dt * SLIP_FADE);
+  }
+  return Math.max(0, slip - dt * SLIP_FADE);
 }
 
 // The starting grid: two columns, a row every 7 m behind the line.

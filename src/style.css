@@ -59,7 +59,7 @@ body {
   pointer-events: auto;
 }
 
-body.racing #ui {
+body.driving #ui {
   place-items: start end;
   padding: 0;
 }
@@ -200,6 +200,35 @@ button.small {
 .or {
   text-align: center;
   color: var(--muted);
+  font-size: 13px;
+}
+
+/* The menu's ✕, back to driving: on a phone the menu fills the screen. */
+.panel.menu {
+  position: relative;
+}
+
+.panel .close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-size: 18px;
+  line-height: 1;
+  padding: 8px 11px;
+}
+
+.friends {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+
+.friends .wait {
+  margin: 0;
   font-size: 13px;
 }
 
@@ -687,6 +716,46 @@ button.small {
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
 }
 
+/* Round the city: the minimap round you, the way you face at the top. */
+.minimap.round {
+  width: 200px;
+  border-radius: 50%;
+}
+
+/* With the menu or the results over the world, only the feed is left of what's on the screen. */
+body.paneled #hud .minimap,
+body.paneled #hud .keys,
+body.paneled #hud .speed,
+body.paneled #hud .speedlines {
+  display: none;
+}
+
+/* The street's name as you turn into it, on a plate as Braga's are: white on blue, a white rule
+   inside its edge. */
+.plate {
+  padding: 5px 18px;
+  border-radius: 6px;
+  background: #1d4f9c;
+  box-shadow: inset 0 0 0 2px #1d4f9c, inset 0 0 0 4px #f4f7fb, 0 4px 14px rgba(0, 0, 0, 0.35);
+  color: #f4f7fb;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-shadow: none;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.4s, transform 0.4s;
+}
+
+.plate:empty {
+  display: none;
+}
+
+.plate.on {
+  opacity: 1;
+  transform: none;
+}
+
 .keys {
   position: absolute;
   bottom: calc(14px + var(--sb));
@@ -798,7 +867,7 @@ body.touch .keys-only {
   }
 }
 
-body.racing {
+body.driving {
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
@@ -815,7 +884,7 @@ body.racing {
   -webkit-tap-highlight-color: transparent;
 }
 
-body.touch.racing .t-pad {
+body.touch.driving .t-pad {
   display: block;
 }
 
@@ -930,7 +999,8 @@ body.touch.racing .t-pad {
   opacity: 0.6;
 }
 
-.t-pad[data-mode='time'] .t-item {
+.t-pad[data-mode='time'] .t-item,
+.t-pad[data-mode='roam'] .t-item {
   display: none;
 }
 
@@ -1001,6 +1071,10 @@ body.touch .speed {
 body.touch .minimap {
   bottom: auto;
   top: 190px;
+}
+
+body.touch .minimap.round {
+  top: calc(60px + var(--st));
 }
 
 /* The race bar is wider with its touch buttons, so what's in the middle goes below it. */
@@ -1113,6 +1187,16 @@ body.touch .tc {
   }
   body.touch .minimap {
     top: 112px;
+  }
+  .minimap.round {
+    width: 130px;
+  }
+  body.touch .minimap.round {
+    top: calc(48px + var(--st));
+  }
+  .plate {
+    font-size: 15px;
+    padding: 3px 12px;
   }
   body.touch .tc {
     top: calc(46px + var(--st));

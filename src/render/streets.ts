@@ -2,13 +2,15 @@
 // 019): the carriageways in asphalt or setts, the pavements in calçada, the central reservations and
 // islands, a granite kerb wherever a pavement stands over the road, and the lines painted on them; the
 // decks' and tunnels' roads at their levels, with their parapets; and where a street meets the land,
-// a skirt down to it or a granite retaining wall up to it. Each lies on the ground the karts drive on
-// (src/world/ground.ts): a carriageway on it, a pavement a kerb over it, a deck at its height. Along
-// them stand the lamps, the traffic lights at the stop lines, the route's bus stops and street plates,
-// and across every street where it leaves the area, road-works barriers. A tile's surfaces and faces
-// are one mesh, their textures layers of one, and its paint another, so whole tiles out of view are
-// skipped.
-import type { Track as Course, Streets, World as Braga } from 'braga-map';
+// a skirt down to it or a granite retaining wall up to it. And every footway, path, cycleway and
+// flight of steps (its task 050): each in what it's paved with, a cycleway's asphalt red, each step a
+// tread with its riser, the handrails where the map has them. Each lies on the ground the karts drive
+// on (src/world/ground.ts): a carriageway or a path on it, a pavement a kerb over it, a tread or a
+// deck at its height. Along them stand the lamps, the traffic lights at the stop lines, the route's
+// bus stops and street plates, and across every street and path where it leaves the area, road-works
+// barriers. A tile's surfaces and faces are one mesh, their textures layers of one, and its paint
+// another, so whole tiles out of view are skipped.
+import type { Track as Course, Path, Streets, World as Braga } from 'braga-map';
 import * as THREE from 'three';
 import { distanceToRoad, type Track } from '../track/track.ts';
 import type { Piece, WorldGround } from '../world/ground.ts';
@@ -42,12 +44,12 @@ function area2(r: Ring): number {
   return a;
 }
 
-// Every edge of every street piece, at any level, by its two ends in order: a piece's edge that another
-// runs back along is shared (a kerb's line, a tile's cut, a deck's end); one that isn't is the edge of
-// the streets, where the land is beside them.
+// Every edge of every street and path piece, at any level, by its two ends in order: a piece's edge
+// that another runs back along is shared (a kerb's line, a tile's cut, a deck's end); one that isn't
+// is the edge of the streets, where the land is beside them.
 export function streetEdges(S: Streets): Set<string> {
   const edges = new Set<string>();
-  for (const p of [...S.carriageways, ...S.pavements]) {
+  for (const p of [...S.carriageways, ...S.pavements, ...S.paths]) {
     for (const r of p.rings) for (let k = 0; k < r.length; k++) edges.add(key(r[k][0], r[k][1], r[(k + 1) % r.length][0], r[(k + 1) % r.length][1]));
   }
   return edges;
@@ -91,12 +93,22 @@ const WORLD: Frame = { ax: 0, az: 0, tx: 1, tz: 0, L: 0, s0: 0 };
 
 // The streets' textures, as layers of one texture: a tile's surfaces and faces are one mesh, whatever
 // they're made of.
-const LAYERS = ['asphalt', 'setts', 'calcada', 'verge', 'dirt', 'granite', 'skirt', 'concrete'] as const;
+const LAYERS = ['asphalt', 'setts', 'calcada', 'verge', 'dirt', 'granite', 'skirt', 'concrete', 'paving', 'cycle', 'gravel'] as const;
 type Layer = (typeof LAYERS)[number];
+
+// What a path is drawn in (braga-map's task 050): its surface's, a cycleway's asphalt red, a metal
+// footbridge's deck grey and a wooden one's as packed earth.
+const PATH_LAYER: Record<Path['surface'], Layer> = { calcada: 'calcada', paving: 'paving', setts: 'setts', asphalt: 'asphalt', concrete: 'concrete', gravel: 'gravel', dirt: 'dirt', metal: 'skirt', wood: 'dirt' };
+const pathLayer = (p: Path): Layer => (p.kind === 'cycleway' && p.surface === 'asphalt' ? 'cycle' : PATH_LAYER[p.surface]);
+
+// The paths at the ground's level: on it, or under something there (a passage under a building).
+export function groundPaths(S: Streets): Path[] {
+  return S.paths.filter((p) => p.level === 'ground' || p.level === 'under');
+}
 
 function layers(): THREE.DataArrayTexture {
   const S = 256;
-  const art: Partial<Record<Layer, () => THREE.CanvasTexture>> = { asphalt: tex.asphalt, setts: tex.setts, calcada: tex.calcada, verge: tex.ground, dirt: tex.rock, granite: tex.granite };
+  const art: Partial<Record<Layer, () => THREE.CanvasTexture>> = { asphalt: tex.asphalt, setts: tex.setts, calcada: tex.calcada, verge: tex.ground, dirt: tex.rock, granite: tex.granite, paving: tex.paving, cycle: tex.cycleway, gravel: tex.gravel };
   const tint: Partial<Record<Layer, string>> = { dirt: '#c9b79c', skirt: '#77736b', concrete: '#bcb7ae' };
   const images = LAYERS.map((name) => {
     const c = document.createElement('canvas');
@@ -246,6 +258,8 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   const rise = quality === 'low' ? 0.25 : 0.12;
   const { firm } = wg.d.land;
   const group = new THREE.Group();
+  // What stands along them, baked at the end.
+  const things = new THREE.Group();
   const updates: ((t: number) => void)[] = [];
   const counts: Record<string, number> = {};
   const edges = streetEdges(S);
@@ -255,7 +269,7 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   const surfaces = surfaceMaterial();
   const paintMat = new THREE.MeshStandardMaterial({ color: '#efefe8', roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 });
   // Metres a tile of each texture: along the street's rows for the setts and the calçada.
-  const SCALE: Partial<Record<Layer, number>> = { asphalt: 8, setts: 2, calcada: 2.5, verge: 2, dirt: 6, granite: 1 };
+  const SCALE: Partial<Record<Layer, number>> = { asphalt: 8, setts: 2, calcada: 2.5, verge: 2, dirt: 6, granite: 1, paving: 2, cycle: 8, gravel: 4 };
   const tiles = new Map<string, { surf: Batch; paint: Batch }>();
   const tileOf = (x: number, z: number) => {
     const k = `${Math.floor(x / TILE)},${Math.floor(z / TILE)}`;
@@ -370,9 +384,14 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   const yields = (x: number, z: number) => (pieceCells.at(x, z) ?? []).some((p) => p.rings.has(x, z) && Math.abs(p.height(x, z) - firm(x, z) - 0.15) < 0.5);
   for (const c of S.carriageways) if (c.level === 'ground') lay(c.rings, roadY, onCarriageway(c.surface), true, null);
   for (const p of S.pavements) if (p.level === 'ground') lay(p.rings, paveY, besides(p.kind, p.rings), false, null, yields);
+  // The paths on the ground (braga-map's task 050): on the land, flush with a pavement, or a flight's
+  // treads, each at its height.
+  const flat = groundPaths(S);
+  const pathY = (p: Path): Height => (p.kind === 'steps' ? () => p.ys![0][0] + LIFT : p.raised ? paveY : roadY);
+  for (const p of flat) lay(p.rings, pathY(p), pathLayer(p), false, null);
   for (const p of wg.d.pieces) {
     const h: Height = (x, z) => p.height(x, z) + LIFT;
-    lay(p.outline, h, p.surface ? onCarriageway(p.surface) : 'calcada', !!p.surface, p);
+    lay(p.outline, h, p.path ? pathLayer(p.path) : p.surface ? onCarriageway(p.surface) : 'calcada', !!p.surface && !p.path, p);
     // A deck's underside.
     if (p.level === 'bridge') {
       const under: Height = (x, z) => p.height(x, z) - DEEP;
@@ -395,6 +414,9 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
     const p = wg.d.pieces.find((q) => q.outline === c.rings);
     return p ? (x, z) => p.height(x, z) + LIFT : isRoad ? roadY : paveY;
   };
+  // Of a carriageway, a pavement or a path: a path flush with a pavement is as high, one on the
+  // ground on it.
+  const heightOfAny = (c: { level: string; rings: Ring[] }): Height => ('kind' in c && 'raised' in c && (c.level === 'ground' || c.level === 'under') ? pathY(c as Path) : heightOf(c, 'surface' in c || ('raised' in c && !c.raised)));
   // A vertical face along a line, between two heights at each of its points; uv along it and up it.
   const face = (m: Layer, pts: [number, number, number, number][], nx: number, nz: number) => {
     let u = 0;
@@ -422,20 +444,24 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
 
   // ---- Kerbs: where a pavement (a reservation, an island) meets a carriageway, a granite face from
   // the road up to it, and the kerbstones' tops along its edge. Where the kerb's dropped at a crossing
-  // the pavement comes down to the road, and so does the face. ----
+  // the pavement comes down to the road, and so does the face. And so where a path flush with a
+  // pavement meets a carriageway, or a pavement or a path flush with one meets a cycle lane or a path
+  // on the ground. ----
   {
-    const roads = new Map<string, { c: (typeof S.carriageways)[number] }>();
-    for (const c of S.carriageways) for (const r of c.rings) for (let k = 0; k < r.length; k++) roads.set(key(r[k][0], r[k][1], r[(k + 1) % r.length][0], r[(k + 1) % r.length][1]), { c });
-    for (const p of S.pavements) {
-      const hp = heightOf(p, false);
+    type Low = (typeof S.carriageways)[number] | Path;
+    const roads = new Map<string, { c: Low }>();
+    const level = (p: { level: string }) => (p.level === 'under' ? 'ground' : p.level);
+    for (const c of [...S.carriageways, ...flat.filter((p) => p.kind !== 'steps' && !p.raised)]) for (const r of c.rings) for (let k = 0; k < r.length; k++) roads.set(key(r[k][0], r[k][1], r[(k + 1) % r.length][0], r[(k + 1) % r.length][1]), { c });
+    for (const p of [...S.pavements, ...flat.filter((q) => q.raised)]) {
+      const hp = heightOfAny(p);
       for (const r of p.rings) {
         const inside = Math.sign(area2(r)) || 1;
         for (let k = 0; k < r.length; k++) {
           const [ax, az] = r[k];
           const [bx, bz] = r[(k + 1) % r.length];
           const road = roads.get(key(bx, bz, ax, az));
-          if (!road || road.c.level !== p.level) continue;
-          const hc = heightOf(road.c, true);
+          if (!road || level(road.c) !== level(p)) continue;
+          const hc = heightOfAny(road.c);
           const L = Math.hypot(bx - ax, bz - az);
           // The points either surface has along it, and each one's heights as the surfaces have them.
           const ts = new Set<number>();
@@ -484,11 +510,12 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
 
   // ---- Where the streets meet the land: from each piece's free edge on the ground, a skirt down to
   // the land where it's lower, or a granite retaining wall up to it where it's higher, so no gap shows
-  // between them. A pavement's edge is a granite step. ----
-  for (const p of [...S.carriageways, ...S.pavements]) {
-    if (p.level !== 'ground') continue;
-    const isRoad = 'surface' in p;
-    const h = isRoad ? roadY : paveY;
+  // between them. A pavement's edge is a granite step, and a path's flush with one; a path on the
+  // ground is as a carriageway. (A flight's treads, below.) ----
+  for (const p of [...S.carriageways, ...S.pavements, ...flat.filter((q) => q.kind !== 'steps')]) {
+    if (p.level !== 'ground' && p.level !== 'under') continue;
+    const isRoad = 'raised' in p ? !p.raised : 'surface' in p;
+    const h = heightOfAny(p);
     for (const r of p.rings) {
       const inside = Math.sign(area2(r)) || 1;
       for (let k = 0; k < r.length; k++) {
@@ -535,6 +562,75 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
         }
       }
     }
+  }
+
+  // ---- A flight of steps (braga-map's task 050): along each tread's edge, where what's beside it is
+  // lower, a face down to it (a riser, where it's the tread below), in what the steps are made of;
+  // where the land beside it is higher, a granite wall up to it. A higher tread draws the riser
+  // between them; so does a street or a path higher than the tread, its edge's. ----
+  for (const p of flat) {
+    if (p.kind !== 'steps' || !p.ys) continue;
+    const y = p.ys[0][0] + LIFT;
+    const m = pathLayer(p);
+    for (const r of p.rings) {
+      const inside = Math.sign(area2(r)) || 1;
+      for (let k = 0; k < r.length; k++) {
+        const [ax, az] = r[k];
+        const [bx, bz] = r[(k + 1) % r.length];
+        const L = Math.hypot(bx - ax, bz - az);
+        if (L < 1e-3) continue;
+        const nx = (inside * (bz - az)) / L;
+        const nz = (-inside * (bx - ax)) / L;
+        const n = Math.max(1, Math.ceil(L));
+        for (let q = 0; q < n; q++) {
+          const [px, pz] = [ax + ((bx - ax) * q) / n, az + ((bz - az) * q) / n];
+          const [qx, qz] = [ax + ((bx - ax) * (q + 1)) / n, az + ((bz - az) * (q + 1)) / n];
+          const [mx, mz] = [(px + qx) / 2 + nx * 0.05, (pz + qz) / 2 + nz * 0.05];
+          const o = wg.tread(mx, mz);
+          if (o && o.y + LIFT >= y) continue;
+          const land = !o && !wg.d.roads.has(mx, mz) && !wg.d.paves.has(mx, mz) && !wg.d.paths.has(mx, mz) && !wg.d.raised.has(mx, mz);
+          if (land && housed(mx + nx * 0.45, mz + nz * 0.45)) continue;
+          const out = (x: number, z: number) => (o ? o.y + LIFT : land ? landMesh.y(x + nx * 0.05, z + nz * 0.05) : wg.groundAt(x + nx * 0.05, z + nz * 0.05) + LIFT);
+          const [yp, yq] = [out(px, pz), out(qx, qz)];
+          if (yp > y + 0.02 || yq > y + 0.02) {
+            if (!land) continue;
+            face('granite', [[px, pz, y - 0.25, Math.max(y, yp)], [qx, qz, y - 0.25, Math.max(y, yq)]], -nx, -nz);
+            count('step walls', 1);
+            continue;
+          }
+          face(m, [[px, pz, Math.min(yp, y) - 0.03, y], [qx, qz, Math.min(yq, y) - 0.03, y]], nx, nz);
+          count('risers', 1);
+        }
+      }
+    }
+  }
+
+  // ---- The handrails, where the map has them: a steel rail on posts every metre and a half. ----
+  {
+    const steel = mat('#5d6266', { metalness: 0.6, roughness: 0.4 });
+    for (const h of S.handrails) {
+      if (h.level === 'tunnel') continue;
+      let run = 0; // metres along it, for the posts
+      for (let i = 1; i < h.pts.length; i++) {
+        const [ax, az] = h.pts[i - 1];
+        const [bx, bz] = h.pts[i];
+        const L = Math.hypot(bx - ax, bz - az);
+        if (L < 0.05) continue;
+        const [ya, yb] = [h.ys[i - 1], h.ys[i]];
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(Math.hypot(L, yb - ya), 0.05, 0.05), steel);
+        rail.position.set((ax + bx) / 2, (ya + yb) / 2, (az + bz) / 2);
+        rail.rotation.set(0, -Math.atan2(bz - az, bx - ax), Math.atan2(yb - ya, L), 'YXZ');
+        things.add(rail);
+        for (let s = (1.5 - (run % 1.5)) % 1.5; s <= L; s += 1.5) {
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.9, 0.04), steel);
+          post.position.set(ax + ((bx - ax) * s) / L, ya + ((yb - ya) * s) / L - 0.45, az + ((bz - az) * s) / L);
+          things.add(post);
+          count('handrail posts', 1);
+        }
+        run += L;
+      }
+    }
+    counts.handrails = S.handrails.length;
   }
 
   // ---- The decks' parapets and the tunnels' sides, where the karts meet them (ground.ts). ----
@@ -658,7 +754,6 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   }
 
   // ---- What stands along them. ----
-  const things = new THREE.Group();
   const paves = wg.d.paves;
   const roadsRings = wg.d.roads;
   // Along each raised kerb on the ground: the way it runs, and which side the pavement is.
@@ -905,7 +1000,8 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
       plate.position.set(0, 1.45, -0.06);
       plate.rotation.y = Math.PI;
       row.add(plate, box(0.06, 1.7, 0.06, legs, -0.6, 0, 0), box(0.06, 1.7, 0.06, legs, 0.6, 0, 0));
-      const y = gt.level === 'ground' ? firm(gt.x, gt.z) + LIFT : gt.y;
+      // On a flight of steps (braga-map's task 050), its tread's.
+      const y = gt.level === 'ground' && gt.k !== 13 ? firm(gt.x, gt.z) + LIFT : gt.y;
       row.position.set(gt.x, y, gt.z);
       // Local z along the way out: (cos heading, sin heading).
       row.rotation.y = -gt.heading + Math.PI / 2;

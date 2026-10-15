@@ -6,7 +6,7 @@ import { autopilot } from '../src/car/autopilot.ts';
 import { carAt, newCar, speedOf, stepCar, type Car, type Input } from '../src/car/car.ts';
 import { angleDiff, clamp, v3 } from '../src/math.ts';
 import { buildTrack } from '../src/track/track.ts';
-import { CAR_R, worldGround } from '../src/world/ground.ts';
+import { CAR_R, STEP, worldGround } from '../src/world/ground.ts';
 
 // The open world's area (braga-map's task 032) and the tiles round it, and the world's ground over
 // it, from the map's real tiles.
@@ -241,6 +241,66 @@ test("into a gate's barriers at the area's edge: stopped", () => {
       assert.ok(past < -CAR_R + 0.05 && past > -CAR_R - 1, `${past.toFixed(2)} m from ${at}`);
     }
   }
+});
+
+// braga-map's task 050: the footways and the steps, which a kart drives as everything else (the
+// owner's answer).
+test('along a footway, on it all the way', () => {
+  // A footway of calçada 53 m long, from (361.8, 661.6) to (371, 713.6), between the blocks east of
+  // the Avenida da Liberdade.
+  const way: [number, number][] = [[361.8, 661.6], [371, 713.6]];
+  const r = run(start(362.5, 665.5, 371, 713.6, 6), follow(way, 7), 12, (c) => c.p.z > 708);
+  assert.equal(r.respawns, 0);
+  assert.ok(r.steps.at(-1)!.z > 708, `got to z ${r.steps.at(-1)!.z.toFixed(0)}`);
+  const on = r.steps.filter((s) => s.kind === 'path');
+  assert.ok(on.length > r.steps.length * 0.95, `on the footway ${on.length} of ${r.steps.length} steps`);
+  for (const s of on) assert.ok(Math.abs(s.y - s.floor) < 0.06 && Math.abs(s.floor - ground.d.land.firm(s.x, s.z)) < 0.01, `off the footway at (${s.x.toFixed(1)}, ${s.z.toFixed(1)})`);
+  assert.equal(ground.surface(366, 690, ground.d.land.firm(366, 690)), 'paving');
+});
+
+test('up a flight of steps a riser at a time, bumping up them, and back down', () => {
+  // The 47 steps from (-158.9, 1278), 10.2 m over elev0, up to (-127.4, 1309), 7.4 m higher: 16 cm
+  // a riser, no handrail. From 4 m before its foot to 4 m past its top, and back.
+  const [fx, fz, tx, tz] = [-158.9, 1278, -127.4, 1309];
+  const L = Math.hypot(tx - fx, tz - fz);
+  const [ux, uz] = [(tx - fx) / L, (tz - fz) / L];
+  const flight = (r: Run) => r.steps.filter((s) => s.kind === 'steps');
+  const up = run(start(fx - ux * 4, fz - uz * 4, tx, tz, 4), follow([[fx - ux * 4, fz - uz * 4], [tx + ux * 4, tz + uz * 4]], 5), 20, (c) => (c.p.x - tx) * ux + (c.p.z - tz) * uz > 3);
+  const steps = flight(up);
+  assert.equal(up.respawns, 0);
+  assert.ok((up.steps.at(-1)!.x - tx) * ux + (up.steps.at(-1)!.z - tz) * uz > 3, 'got to the top');
+  assert.ok(steps.length > 200, `on the steps ${steps.length} steps`);
+  const treads = [...new Set(steps.map((s) => s.floor))];
+  assert.ok(treads.length >= 40, `${treads.length} treads under it`);
+  for (let k = 1; k < treads.length; k++) assert.ok(treads[k] > treads[k - 1], `down a riser going up, at ${treads[k].toFixed(2)}`);
+  assert.ok(treads.at(-1)! - treads[0] > 46 * 0.16 - 0.2, `from ${treads[0].toFixed(2)} to ${treads.at(-1)!.toFixed(2)} m`);
+  // Each riser a bump: off the tread for a moment, as up a kerb.
+  const hops = up.steps.filter((s, k) => k && !s.grounded && up.steps[k - 1].grounded).length;
+  assert.ok(hops >= 20, `${hops} hops up it`);
+  const c = start(tx + ux * 3, tz + uz * 3, fx, fz, 2);
+  const down = run(c, follow([[tx + ux * 3, tz + uz * 3], [fx - ux * 4, fz - uz * 4]], 5), 20, (c) => (c.p.x - fx) * ux + (c.p.z - fz) * uz < -3);
+  assert.equal(down.respawns, 0);
+  assert.ok((down.steps.at(-1)!.x - fx) * ux + (down.steps.at(-1)!.z - fz) * uz < -3, 'got to the foot');
+  const back = [...new Set(flight(down).map((s) => s.floor))];
+  assert.ok(back.length >= 40 && back.every((y, k) => !k || y < back[k - 1]), 'down every tread');
+  console.log(`the 47 steps: up in ${(steps.length * DT).toFixed(1)} s with ${hops} hops, ${treads.length} treads from ${treads[0].toFixed(2)} to ${treads.at(-1)!.toFixed(2)} m; down in ${(flight(down).length * DT).toFixed(1)} s`);
+});
+
+test('a riser more than a step high is a wall, and how many there are', () => {
+  // The flight of 6 from (592.9, 805.9) up to (595, 809.4): 2 m in five risers of 39 cm, more than a
+  // kart steps up, for the map counts too few of them. Driven at from 5 m out at its foot: it doesn't
+  // climb it.
+  const [fx, fz, tx, tz] = [592.9, 805.9, 595, 809.4];
+  const L = Math.hypot(tx - fx, tz - fz);
+  const [ux, uz] = [(tx - fx) / L, (tz - fz) / L];
+  const c = start(fx - ux * 5, fz - uz * 5, tx, tz, 4);
+  const r = run(c, follow([[fx - ux * 5, fz - uz * 5], [tx, tz]], 5), 4);
+  const top = Math.max(...r.steps.map((s) => s.floor));
+  const foot = ground.floor(fx - ux * 1, fz - uz * 1, 30).y;
+  assert.ok(top < foot + 0.7, `climbed to ${top.toFixed(2)} m from ${foot.toFixed(2)}`);
+  const c2 = ground.counts;
+  console.log(`risers between treads: ${c2.risers}, ${c2['risers over a step']} more than ${STEP} m high, walls; and of the treads' edges over a street or a path, ${c2['tread edges over a street over a step']} of ${c2['tread edges over a street']}; that flight climbed ${(top - foot).toFixed(2)} m of its 2`);
+  assert.ok(c2['risers over a step'] > 0 && c2['risers over a step'] < c2.risers / 20, `${c2['risers over a step']} of ${c2.risers}`);
 });
 
 test('a respawn puts the car on the nearest carriageway at its level, along the street', () => {

@@ -3,22 +3,25 @@
 // the area. stepCar's handling is the same as on the track; only the ground and the walls differ.
 //
 // - The floor. At a point the candidates are the land (land.ts, the land as it's drawn), a
-//   pavement a kerb over it, and every street piece off the ground over the point at its height: a
-//   bridge's deck, a tunnel's road. A car stands on the highest no more than a step over its
-//   wheels, so on a deck it's on the deck, under it on the street below, and in a tunnel the land
-//   over it is its roof. Its normal is the surface's over about a car's length, so the 2 m ground
-//   doesn't shake it.
+//   pavement a kerb over it, a footway, path or cycleway on it (braga-map's task 050; a kerb over
+//   it where it runs in a pavement, flush with it), a tread of a flight of steps at its own height
+//   in its place, and every street or path piece off the ground over the point at its height: a
+//   bridge's deck, a footbridge's, a tunnel's road. A car stands on the highest no more than a step
+//   over its wheels, so on a deck it's on the deck, under it on the street below, and in a tunnel the
+//   land over it is its roof. Its normal is the surface's over about a car's length, so the 2 m
+//   ground doesn't shake it, and a flight of steps is a slope it climbs a riser at a time.
 // - The walls, in 2D, each standing from a foot to a top: the buildings' outlines, a deck's
 //   parapets and a tunnel's sides (wherever a piece off the ground has neither more street nor the
-//   land at its own level beside it), the tunnels' mouths, the trees' trunks, and the area's edge
-//   with the barriers across its streets. The land is a wall where it rises more than a step in
-//   front of the car, or steeper than a car can climb off the carriageway (a retaining wall, a
-//   cutting's side). A kerb is a step: it bumps the car and takes a little of its speed.
+//   land at its own level beside it), the tunnels' mouths, the trees' trunks, the steps'
+//   handrails, and the area's edge with the barriers across its streets and paths. The land is a wall
+//   where it rises more than a step in front of the car, or steeper than a car can climb off the
+//   carriageway or a path (a retaining wall, a cutting's side). A kerb is a step: it bumps the car and
+//   takes a little of its speed; so is a riser, and one more than a step high is a wall.
 // - A car that has fallen into the land or the river, is wedged between walls, or has left the
 //   world is lost, and is put back on the nearest carriageway at its level (spawn).
 //
 // Everything is looked up in a grid of 10 m cells, so a step costs the same anywhere.
-import type { World as Braga } from 'braga-map';
+import type { World as Braga, Path } from 'braga-map';
 import { bounce, carAt, fly, settle, STICK, WALL_H, type Car, type Ground } from '../car/car.ts';
 import { norm, v3, type V } from '../math.ts';
 import { locate, type Track } from '../track/track.ts';
@@ -39,6 +42,7 @@ const PARAPET = 1.0; // over a deck, as levels.ts draws it
 const BORE = 3; // how high a tunnel's sides stand over its road, at most
 const DEEP = 1.2; // a deck's depth, under its road
 const BUMP = 0.12; // the share of its speed across a kerb a car loses going up it
+const RAIL = 0.9; // a handrail's height over the steps, as braga-map has it
 
 // A wall: from (ax, az) to (bx, bz), standing from y0 to y1.
 export interface Wall {
@@ -48,6 +52,13 @@ export interface Wall {
   bz: number;
   y0: number;
   y1: number;
+}
+
+// A flight of steps' tread (braga-map's task 050): its outline, its height, and its box.
+export interface Tread {
+  rings: [number, number][][];
+  y: number;
+  box: { x0: number; z0: number; x1: number; z1: number };
 }
 
 // A tree's trunk, or anything round: at (x, z), r wide, from y0 to y1.
@@ -190,9 +201,10 @@ export class Piece {
   level: 'bridge' | 'tunnel';
   raise: number;
   // Its outline and holes as the map has them, for drawing it, and what it's paved with if it's a
-  // carriageway (a pavement is calçada).
+  // carriageway (a pavement is calçada), or if it's a path (braga-map's task 050), the path.
   outline: [number, number][][];
   surface: 'asphalt' | 'setts' | 'paving' | 'dirt' | null;
+  path: Path | null = null;
   rings: Rings;
   e: number[] = []; // its edges, six numbers each: ax, az, ay, bx, bz, by
   cells = new Cells<number>();
@@ -290,9 +302,9 @@ export interface Slope {
 // What a car at a point stands on.
 export interface Floor {
   y: number;
-  kind: 'land' | 'road' | 'pavement' | 'deck' | 'tunnel' | 'block' | 'ramp';
+  kind: 'land' | 'road' | 'pavement' | 'path' | 'steps' | 'deck' | 'tunnel' | 'block' | 'ramp';
   // How far it's over the land (or its piece's level): a kerb's height on a pavement, ramped down
-  // to a dropped kerb.
+  // to a dropped kerb; on a tread, its height over the land under it, which a riser lifts.
   raise: number;
   piece: Piece | null;
   // The car is under the land (and not standing on a piece in a tunnel): it has driven into it.
@@ -321,6 +333,15 @@ interface Data {
   roads: Rings;
   paves: Rings;
   setts: Rings; // the carriageways on the ground paved with granite setts
+  // The paths on the ground (braga-map's task 050): those on it, those flush with a pavement, a kerb
+  // over it, those paved with setts, and the steps' treads.
+  paths: Rings;
+  raised: Rings;
+  pathSetts: Rings;
+  treads: Cells<Tread>;
+  // What a building that stands on it is cut back at: the carriageways on the ground, and the paths
+  // through passages under a building (the owner's answer to braga-map's task 050).
+  cuts: Rings;
   pieces: Piece[];
   pieceCells: Cells<Piece>;
   walls: Cells<Wall>;
@@ -381,17 +402,40 @@ export class WorldGround implements Ground {
     return r;
   }
 
+  // The tread of a flight of steps at (x, z), if there's one.
+  tread(x: number, z: number): Tread | null {
+    for (const t of this.d.treads.at(x, z) ?? []) if (x >= t.box.x0 && x <= t.box.x1 && z >= t.box.z0 && z <= t.box.z1 && inRings(t.rings, x, z)) return t;
+    return null;
+  }
+
+  // The ground's height at (x, z) as a car finds it: a tread's, or the land's (firm under a street
+  // or a path), with a pavement's kerb.
+  groundAt = (x: number, z: number): number => {
+    const t = this.tread(x, z);
+    if (t) return t.y;
+    const d = this.d;
+    if (d.roads.has(x, z) || d.paths.has(x, z)) return d.land.firm(x, z);
+    if (d.paves.has(x, z) || d.raised.has(x, z)) return d.land.firm(x, z) + this.raise(x, z);
+    return d.land.land(x, z);
+  };
+
   // What a car at height y stands on at (x, z): the highest surface no more than a step over it.
   floor(x: number, z: number, y: number): Floor {
     const d = this.d;
     let kind: Floor['kind'] = 'land';
     let raise = 0;
-    if (d.roads.has(x, z)) kind = 'road';
+    const t = this.tread(x, z);
+    if (t) kind = 'steps';
+    else if (d.roads.has(x, z)) kind = 'road';
     else if (d.paves.has(x, z)) {
       kind = 'pavement';
       raise = this.raise(x, z);
-    }
-    const ground = (kind === 'land' ? d.land.land(x, z) : d.land.firm(x, z)) + raise;
+    } else if (d.raised.has(x, z)) {
+      kind = 'path';
+      raise = this.raise(x, z);
+    } else if (d.paths.has(x, z)) kind = 'path';
+    if (t) raise = t.y - d.land.firm(x, z);
+    const ground = t ? t.y : (kind === 'land' ? d.land.land(x, z) : d.land.firm(x, z)) + raise;
     let best: Floor | null = ground <= y + STEP ? { y: ground, kind, raise, piece: null, buried: false } : null;
     for (const p of d.pieceCells.at(x, z) ?? []) {
       if (!p.rings.has(x, z)) continue;
@@ -426,7 +470,7 @@ export class WorldGround implements Ground {
       const k = (s.y1 - s.y0) / s.L;
       return norm(v3(-s.ux * k, 1, -s.uz * k));
     }
-    const h =f.piece ? (a: number, b: number) => f.piece!.height(a, b) : f.kind === 'land' ? this.d.land.land : this.d.land.firm;
+    const h = f.piece ? (a: number, b: number) => f.piece!.height(a, b) : f.kind === 'steps' ? this.groundAt : f.kind === 'land' ? this.d.land.land : this.d.land.firm;
     const gx = (h(x + SMOOTH, z) - h(x - SMOOTH, z)) / (2 * SMOOTH);
     const gz = (h(x, z + SMOOTH) - h(x, z - SMOOTH)) / (2 * SMOOTH);
     return norm(v3(-gx, 1, -gz));
@@ -455,9 +499,9 @@ export class WorldGround implements Ground {
     // What it's on, looked for from where it was if that was higher: a car coming down lands on
     // what it has sunk into this step, however hard it came down.
     const top = Math.max(c.p.y, from.y);
-    // The land in front: one the car would be in, or too steep to climb off the carriageway.
+    // The land in front: one the car would be in, or too steep to climb off the carriageway or a path.
     let f = this.floor(c.p.x, c.p.z, top);
-    if (!f.piece && f.kind !== 'block' && f.kind !== 'ramp' && (f.buried || f.kind !== 'road')) {
+    if (!f.piece && f.kind !== 'block' && f.kind !== 'ramp' && (f.buried || (f.kind !== 'road' && f.kind !== 'path' && f.kind !== 'steps'))) {
       const g = this.slope(c.p.x, c.p.z, f.kind === 'land' ? this.d.land.land : this.d.land.firm);
       const mx = c.p.x - from.x;
       const mz = c.p.z - from.z;
@@ -663,10 +707,11 @@ export class WorldGround implements Ground {
   }
 
   // What the street a car at height y is on at (x, z) is paved with: granite setts or not, for the
-  // tyres' rumble. Off a carriageway, null.
+  // tyres' rumble. Off a carriageway or a path, null.
   surface(x: number, z: number, y: number): 'asphalt' | 'setts' | 'paving' | 'dirt' | null {
     const f = this.floor(x, z, y + 0.5);
     if (f.piece) return f.piece.surface;
+    if (f.kind === 'path' || f.kind === 'steps') return this.d.pathSetts.has(x, z) ? 'setts' : 'paving';
     if (f.kind !== 'road') return null;
     return this.d.setts.has(x, z) ? 'setts' : 'asphalt';
   }
@@ -701,6 +746,16 @@ function inRing(r: [number, number][], x: number, z: number): boolean {
   }
   return odd;
 }
+
+// Whether (x, z) is in an outline less its holes.
+function inRings(rings: [number, number][][], x: number, z: number): boolean {
+  let odd = false;
+  for (const r of rings) if (inRing(r, x, z)) odd = !odd;
+  return odd;
+}
+
+// What a path off the ground is paved with, as a carriageway's surface, for the tyres' rumble.
+export const pathSurface = (s: Path['surface']): 'asphalt' | 'setts' | 'paving' | 'dirt' => (s === 'setts' ? 'setts' : s === 'asphalt' ? 'asphalt' : s === 'gravel' || s === 'dirt' ? 'dirt' : 'paving');
 
 // A footprint's outline less the carriageways it stands on, as segments [ax, az, bx, bz]: its own
 // edges off them, and their edges in it (a passage's sides); and whether it stood on any.
@@ -782,8 +837,9 @@ function touch(w: Wall, qx: number, qz: number, q0x: number, q0z: number): { nx:
 }
 
 // The world's ground, from braga-map's world (loadWorld({ open: true }) loads all it needs): its
-// land, its streets as surfaces, its buildings and trees, and the open world's area (world.open,
-// braga-map's task 032), its edge a wall at every level and a barrier across each street leaving it.
+// land, its streets and paths as surfaces, its buildings and trees, and the open world's area
+// (world.open, braga-map's task 032), its edge a wall at every level and a barrier across each street
+// and path leaving it.
 export function worldGround(world: Braga): WorldGround {
   const land = makeLand(world, world.box);
   const H = land.land;
@@ -799,10 +855,34 @@ export function worldGround(world: Braga): WorldGround {
   const roads = new Rings(S.carriageways.filter((p) => p.level === 'ground').flatMap((p) => p.rings));
   const paves = new Rings(S.pavements.filter((p) => p.level === 'ground').flatMap((p) => p.rings));
   const setts = new Rings(S.carriageways.filter((p) => p.level === 'ground' && p.surface === 'setts').flatMap((p) => p.rings));
+  // The paths (braga-map's task 050): on the ground or under something at its level, and those flush
+  // with a pavement; the steps' treads, each at its height; and the footbridges and the paths'
+  // tunnels as the decks and the tunnels' roads are.
+  const flat = S.paths.filter((p) => (p.level === 'ground' || p.level === 'under') && p.kind !== 'steps');
+  const paths = new Rings(flat.filter((p) => !p.raised).flatMap((p) => p.rings));
+  const raised = new Rings(flat.filter((p) => p.raised).flatMap((p) => p.rings));
+  const pathSetts = new Rings(S.paths.filter((p) => (p.level === 'ground' || p.level === 'under') && p.surface === 'setts').flatMap((p) => p.rings));
+  const cuts = new Rings([...S.carriageways.filter((p) => p.level === 'ground'), ...S.paths.filter((p) => p.level === 'under')].flatMap((p) => p.rings));
+  const treads = new Cells<Tread>();
+  const treadList: Tread[] = [];
+  for (const p of S.paths) {
+    if (p.kind !== 'steps' || !p.ys || p.level === 'bridge' || p.level === 'tunnel') continue;
+    const xs = p.rings[0].map((q) => q[0]);
+    const zs = p.rings[0].map((q) => q[1]);
+    const t: Tread = { rings: p.rings, y: p.ys[0][0], box: { x0: Math.min(...xs), z0: Math.min(...zs), x1: Math.max(...xs), z1: Math.max(...zs) } };
+    treads.add(t.box.x0, t.box.z0, t.box.x1, t.box.z1, t);
+    treadList.push(t);
+  }
   const pieces: Piece[] = [];
   for (const p of [...S.carriageways, ...S.pavements]) {
     if (p.level === 'ground' || !p.ys) continue;
     pieces.push(new Piece(p.level, 'surface' in p ? 0 : KERB, p.rings, p.ys, 'surface' in p ? p.surface : null));
+  }
+  for (const p of S.paths) {
+    if ((p.level !== 'bridge' && p.level !== 'tunnel') || !p.ys) continue;
+    const piece = new Piece(p.level, 0, p.rings, p.ys, pathSurface(p.surface));
+    piece.path = p;
+    pieces.push(piece);
   }
   const pieceCells = new Cells<Piece>();
   for (const p of pieces) pieceCells.add(p.box.x0, p.box.z0, p.box.x1, p.box.z1, p);
@@ -815,11 +895,12 @@ export function worldGround(world: Braga): WorldGround {
   };
 
   // The buildings, from below their lowest corner (a tunnel can pass under) to their top, each
-  // trimmed at the kerb where it stands on a carriageway.
+  // trimmed at the kerb where it stands on a carriageway, and at a passage's edge where a path runs
+  // under it.
   for (const b of world.buildings) {
     if (!near(b.pts)) continue;
     const top = b.y + Math.max(b.h, b.ridge);
-    const { segs, cut } = trimmed(b.pts, roads);
+    const { segs, cut } = trimmed(b.pts, cuts);
     if (cut) counts['buildings trimmed at the kerb'] = (counts['buildings trimmed at the kerb'] ?? 0) + 1;
     for (const [ax, az, bx, bz] of segs) addWall({ ax, az, bx, bz, y0: b.y - 2, y1: top }, 'building walls');
   }
@@ -854,8 +935,8 @@ export function worldGround(world: Braga): WorldGround {
         const oz = mz + pz * 0.4;
         const beside = (pieceCells.at(ox, oz) ?? []).some((q) => q !== p && q.rings.has(ox, oz) && Math.abs(q.raw(ox, oz) + q.raise - ye) <= STEP + 0.05);
         if (beside) continue;
-        const street = roads.has(ox, oz) || paves.has(ox, oz);
-        const yg = (street ? land.firm(ox, oz) : H(ox, oz)) + (paves.has(ox, oz) ? KERB : 0);
+        const street = roads.has(ox, oz) || paves.has(ox, oz) || paths.has(ox, oz) || raised.has(ox, oz);
+        const yg = (street ? land.firm(ox, oz) : H(ox, oz)) + (paves.has(ox, oz) || raised.has(ox, oz) ? KERB : 0);
         if (Math.abs(yg - ye) <= GRADE) {
           p.joins.push({ x: mx, z: mz, d: yg - ye });
           counts['joins at grade'] = (counts['joins at grade'] ?? 0) + 1;
@@ -897,8 +978,17 @@ export function worldGround(world: Braga): WorldGround {
     addWall({ ax: g.x - cx * hw, az: g.z - cz * hw, bx: g.x + cx * hw, bz: g.z + cz * hw, y0: g.y - 1, y1: g.y + 1.2 }, 'barriers');
   }
 
+  // The steps' handrails, from the treads to their top.
+  for (const h of S.handrails) {
+    for (let i = 1; i < h.pts.length; i++) {
+      const [ax, az] = h.pts[i - 1];
+      const [bx, bz] = h.pts[i];
+      addWall({ ax, az, bx, bz, y0: Math.min(h.ys[i - 1], h.ys[i]) - RAIL - 0.1, y1: Math.max(h.ys[i - 1], h.ys[i]) }, 'handrails');
+    }
+  }
+
   // The trees' trunks, but those on a carriageway (the map's line for a street is often off its
-  // middle, and the street wider than it is: task 026).
+  // middle, and the street wider than it is: braga-map's task 026).
   const posts = new Cells<Post>();
   for (const t of world.trees) {
     if (!near([[t.x, t.z]])) continue;
@@ -912,7 +1002,8 @@ export function worldGround(world: Braga): WorldGround {
   }
 
   // The kerbs: those dropped at crossings, which the pavement slopes down to, and the others, for
-  // which way a bump goes.
+  // which way a bump goes; and so for a riser up a flight of steps. A riser more than a step over
+  // what's in front of it is a wall a car can't climb.
   const dropped = new Cells<Wall>();
   const kerbs = new Cells<Wall>();
   for (const k of S.kerbs) {
@@ -922,6 +1013,35 @@ export function worldGround(world: Braga): WorldGround {
       const w = { ax, az, bx, bz, y0: 0, y1: 0 };
       if (k.h === 0 && k.level === 'ground') dropped.add(Math.min(ax, bx) - DROP, Math.min(az, bz) - DROP, Math.max(ax, bx) + DROP, Math.max(az, bz) + DROP, w);
       else if (k.h > 0) kerbs.add(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), w);
+    }
+  }
+  const treadAt = (x: number, z: number) => {
+    for (const t of treads.at(x, z) ?? []) if (inRings(t.rings, x, z)) return t;
+    return null;
+  };
+  for (const t of treadList) {
+    for (const r of t.rings) {
+      for (let k = 0; k < r.length; k++) {
+        const [ax, az] = r[k];
+        const [bx, bz] = r[(k + 1) % r.length];
+        const L = Math.hypot(bx - ax, bz - az);
+        if (L < 0.05) continue;
+        // Out of the tread, 5 cm from the middle of its edge.
+        let nx = (bz - az) / L;
+        let nz = -(bx - ax) / L;
+        const mx = (ax + bx) / 2;
+        const mz = (az + bz) / 2;
+        if (inRings(t.rings, mx + nx * 0.05, mz + nz * 0.05)) [nx, nz] = [-nx, -nz];
+        const o = treadAt(mx + nx * 0.05, mz + nz * 0.05);
+        const below = o ? o.y : roads.has(mx + nx * 0.05, mz + nz * 0.05) || paths.has(mx + nx * 0.05, mz + nz * 0.05) ? land.firm(mx + nx * 0.05, mz + nz * 0.05) : null;
+        if (below === null || t.y - below < 0.04) continue;
+        kerbs.add(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), { ax, az, bx, bz, y0: below, y1: t.y });
+        // Higher than a step: its face a wall, a step short of the tread's top, as the plinth's sides;
+        // counted between two treads, and where a tread stands over a street or a path.
+        const what = o ? 'risers' : 'tread edges over a street';
+        counts[what] = (counts[what] ?? 0) + 1;
+        if (t.y - below > STEP) addWall({ ax, az, bx, bz, y0: below - 1, y1: t.y - STEP }, `${what} over a step`);
+      }
     }
   }
 
@@ -938,5 +1058,7 @@ export function worldGround(world: Braga): WorldGround {
   }
 
   counts.pieces = pieces.length;
-  return new WorldGround({ world, land, roads, paves, setts, pieces, pieceCells, walls, posts, dropped, kerbs, lines, sides, inside, blocks: new Cells<Block>(), counts });
+  counts.paths = flat.length;
+  counts.treads = treadList.length;
+  return new WorldGround({ world, land, roads, paves, setts, paths, raised, pathSetts, treads, cuts, pieces, pieceCells, walls, posts, dropped, kerbs, lines, sides, inside, blocks: new Cells<Block>(), counts });
 }

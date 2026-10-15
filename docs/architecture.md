@@ -14,7 +14,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/track/track.ts` | sim | `buildTrack`: the road sampled every metre. `locate`: where a point is relative to the road |
 | `src/car/car.ts` | sim | `stepCar`: the handling (grip, drift, mini-turbo, boost pads, flying, landing, walls, falling off), on a `Ground`; `trackGround`, a track's own road as one (the first track's, and the tests') |
 | `src/world/land.ts` | sim | `makeLand`: the land as it's drawn and driven on (braga-map's ground, held down at the tunnels' mouths, the stadium's bowl, the river's bed); `mouths` |
-| `src/world/ground.ts` | sim | `worldGround`: the world as a ground, for the open world: the land, every street at its level, and the walls (buildings, parapets, tunnels, trees, the area's edge); and what the game stands on it (the plinth) |
+| `src/world/ground.ts` | sim | `worldGround`: the world as a ground, for the open world: the land, every street and path at its level, each flight of steps a tread at a time, and the walls (buildings, parapets, tunnels, trees, handrails, risers too high to climb, the area's edge); and what the game stands on it (the plinth) |
 | `src/world/race.ts` | sim | `raceGround`: the world's ground for a race, with the race's walls (its road's outline, braga-map's `road`), its ramp and the fences where its road drops away; `reachable`, for the tests: whether a race is closed |
 | `src/car/autopilot.ts` | sim | Drives the track by itself: for the bots, `?autodrive` and the tests |
 | `src/race.ts` | sim | Laps, checkpoints, splits, respawning |
@@ -121,8 +121,10 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
 40 µs a step on a desktop, timed in `test/ground.test.ts`.
 
 - **The floor.** At a point the candidates are the land (`land.ts`'s, as drawn), a pavement a kerb
-  (15 cm) over it, sloping down to a kerb dropped at a crossing, and every street piece off the
-  ground over the point at its height: a bridge's deck, a tunnel's road (braga-map's
+  (15 cm) over it, sloping down to a kerb dropped at a crossing, a footway, path or cycleway on it
+  (braga-map's task 050; a kerb over it where it runs in a pavement, flush with it), a flight of
+  steps' tread at its own height in the land's place, and every street or path piece off the
+  ground over the point at its height: a bridge's deck, a footbridge's, a tunnel's road (braga-map's
   `world.streets`). The car stands on the highest no more than a step (`STEP`, 0.3 m) over its
   wheels, looked for from where it was if it was higher, so it lands however hard it comes down: on
   a deck it's on the deck, under it it's on the street below, in a tunnel the land over it is its
@@ -131,19 +133,24 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
   outline's nearest edges', and where it meets the land at grade it's eased to the land's height
   over 10 m (the map's deck ends can be 0.4 m off the ground's). A ground pavement that runs onto a
   piece's road gives way to it. The normal is the surface's over 3 m, about a car's length, so the
-  2 m ground doesn't shake the car.
+  2 m ground doesn't shake the car, and a flight of steps is a slope it climbs a riser at a time.
 - **The walls** are 2D segments, each standing from a foot to a top, so a car flies over one it's
   above and passes under one it's below: every building's outline, trimmed at the kerb where it
   stands on a carriageway (the map's street too wide or its line off the middle, until braga-map's
   task 026), which leaves a passage through one open; a deck's parapets and a tunnel's sides, wherever
   a piece's edge has neither more street nor the land at its own level beside it (a tunnel's
   no higher than 3 m, so a street over it stays clear); the concrete of the tunnels' mouths; the
-  trees' trunks, but those on a carriageway; and, given the area (`open`, braga-map's task 032), its
-  edge at every level and a barrier across each street leaving it. The car is two circles, 1.6 m
+  trees' trunks, but those on a carriageway; the steps' handrails, from the treads to their top; a
+  riser more than a step high, a step short of its tread (a flight the map counts too few steps for:
+  59 of 3,091 between treads, and 234 of a tread's 420 edges over a street or a path beside it);
+  and, given the area (`open`, braga-map's task 032), its edge at every level and a barrier across
+  each street and path leaving it. A building is trimmed at a path's passage under it as at a
+  carriageway (the owner's answer to braga-map's task 050), so it's open too. The car is two circles, 1.6 m
   across and 1.9 m apart, pushed out of what they're in a few times over, and back the way it came
   if it went through a wall in one step. The land is a wall where it would rise more than a step in
-  front of the car, or off the carriageway steeper than 35°. A car going up a kerb hops (it flies
-  until it comes down) and loses 12% of its speed across the kerb.
+  front of the car, or off the carriageway or a path steeper than 35°. A car going up a kerb hops
+  (it flies until it comes down) and loses 12% of its speed across the kerb; so up each riser of a
+  flight of steps, and down one it drops to the tread below.
 - **Lost:** a car in the land, in the river, wedged between walls or out of the world counts towards
   a respawn, and `spawn` puts it on the nearest street's carriageway at its level (in a tunnel,
   in the tunnel), facing along the street. A car never turns over in this handling.
@@ -151,14 +158,15 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
   its sides walls a step short of its top (the plinth at the start, free roam's first spot, with
   `wall()` for the wall at its back); and `unwall(ring)` takes away the walls of a building the city
   leaves out to keep clear round the plinth, an egg or the Tourigalo, so there's no wall where
-  nothing is drawn. `surface(x, z, y)` says whether the street under a car is cobbled, for the
-  tyres' rumble round the city.
+  nothing is drawn. `surface(x, z, y)` says whether the street or path under a car is cobbled, for
+  the tyres' rumble round the city.
 - **For a race** (braga-map's task 037), `raceGround` (`src/world/race.ts`) makes `ground.race(track,
   walls, ramps, road)`: the same world, sharing what was built, keeping each car's `idx` and `lat`
   along the track, and adding what only the race has. Its walls are the race's road's outline
   (braga-map's `road`: the route's own streets at their real widths, as they're drawn, and the
   jump's flight, on past its landing as far as a kart flat out comes down), in pieces up to 2 m long, each standing from 1.5 m under the road beside it to 3 m
-  over it, at the route's level (on a deck, the deck): every kerb along the route, and across each
+  over it, at the route's level (on a deck, the deck; under the jump's flight, the floor beside the
+  edge, the river's bed or the Ecovia on its bank): every kerb along the route, and across each
   side street, and between a road's two carriageways drawn as one, where braga-map's `closures` say
   a row of barriers is drawn. In front of a tunnel's mouth, where the land is held down and the
   route's street runs by it, a fence stands where the road drops more than 1.5 m under the route
@@ -370,6 +378,14 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   cracks. The carriageways drawn are 3.4 cm off the ground the karts stand on at the median, and
   19 cm at the 90th percentile (`test/streets.test.ts`). Asphalt, setts, calçada, grass on a wide
   reservation or an island, each texture's rows along the nearest street's line.
+  - Every footway, path, cycleway and flight of steps (braga-map's task 050, `world.streets.paths`):
+    in calçada, paving stones, setts, asphalt, concrete, gravel or earth as the map says, a
+    cycleway's asphalt red (`textures.ts`'s `paving`, `cycleway` and `gravel` are three more layers
+    of the streets' texture); a path on the land as a carriageway is, one flush with a pavement a
+    kerb over it, with the kerb's face where it meets a cycle lane; each tread flat at its height,
+    with a face down to what's beside it where that's lower (the riser, between two treads) and a
+    granite wall up to the land where that's higher; a steel handrail on posts every 1.5 m where
+    the map has one; a footbridge's deck and its parapets as a bridge's.
   - A granite kerb wherever a pavement meets a carriageway: its face, and on High its stones' tops.
     Where a street's outline meets the land, a skirt down to it, or a granite retaining wall up to
     it where the land stands more than 12 cm over the edge (25 on Low), and on High a granite step
@@ -382,7 +398,7 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     street; a traffic light at each stop line's kerb end, facing the cars stopping; the route's bus
     stops and street plates at the kerb nearest them (braga-map's tiles have no names or stops
     yet: its task 042); and a row of red-and-white road-works barriers with "Estrada cortada"
-    across every street where it leaves the area (braga-map's gates, its task 032).
+    across every street and path where it leaves the area (braga-map's gates, its task 032).
   - The surfaces and faces are one mesh a tile (500 m), their textures layers of one array
     texture (`tuv`: each vertex's uv and layer); the paint another.
   - The sights (`sights.ts`): Bom Jesus and its Escadório and the Sameiro on the hills, at twice
@@ -555,7 +571,13 @@ gzipped), the tiles' indexes of them. With it (`shots/2026-10-15-task007-photos/
 Low), a few dozen triangles, textures 105 MB on High and 63 on Medium as the PC holds them (97 and
 61 before; on a phone, which takes them as ETC1, half the difference: +4 and +1 MB), 45 on Low
 either way, the city built about 0.25 s slower, and 1.4 MB more to download on High (0.4 on
-Medium, 0.13 on Low) besides Basis's transcoder, 0.26 MB gzipped, once.
+Medium, 0.13 on Low) besides Basis's transcoder, 0.26 MB gzipped, once. braga-map's footways,
+paths, cycleways and steps (its task 050; `shots/2026-10-15-after050/` against
+`shots/2026-10-15-before050/`) take 0 to 3 more draw calls a viewpoint and 45–172 k more
+triangles on High (the median 87 k, `robert-smith` the most at 1.90 M), 30–127 k on Low (1.10 M
+there), no texture memory to speak of (three more 256-pixel layers of the streets' texture), and
+build the city 0.5–0.9 s slower on High (4.9–5.8 s); the download is 7.58 MB, 2.33 MB gzipped,
+the tiles 0.11 MB more.
 
 - **Textures**, on High: the ground's painted map is 44 MB (3330 × 2600 pixels, a metre each; 22 MB
   on Medium, 11 on Low), the sun's shadows 16 MB (4 on Medium), the street plates 10.5 MB, the sky's

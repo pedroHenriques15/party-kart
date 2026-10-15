@@ -12,8 +12,9 @@ The game speaks Portuguese, Portugal's.
 
 The game opens with you driving in Braga, alone: on the granite plinth at the start on the Rua do
 Fujacal, or where you were when you last played. Drive anywhere in the Volta dos Amigos' area: down
-every street, over the pavements, across the squares, as far as the road-works barriers where the
-streets leave it. The minimap round you shows the streets, the race's route in gold and the area's
+every street, over the pavements, across the squares, along the footways and the cycle lanes, up
+and down the city's steps a bump at a time, as far as the road-works barriers where the streets
+and paths leave it. The minimap round you shows the streets, the race's route in gold and the area's
 edge in red, the way you face at the top; a blue-and-white plate names each of the route's streets
 as you turn into it.
 
@@ -97,7 +98,9 @@ track that isn't in the real Braga, and it's only there in a race.
 Every street round it is drawn as it is, at its real width: its lanes painted white, its zebra
 crossings, traffic lights and lamps, calçada pavements behind granite kerbs, central reservations
 and islands where it has them, granite setts where it's cobbled, its bridges and tunnels, and
-road-works barriers where it leaves the Volta dos Amigos' area. The race takes its streets as they
+road-works barriers where it leaves the Volta dos Amigos' area. So is every footway, path and
+cycleway, the cycle lanes in red, and every flight of steps, each step at its height, with its
+handrails where it has them. The race takes its streets as they
 are, at their real widths: a narrow one is as narrow in a race, its kerbs are the race's walls, and a
 row of the race's barriers closes every side street it passes. Only while it's on do its start line,
 gates, boost pads and barriers stand in them. A blue-and-white plate names each street as you turn into it, and
@@ -140,10 +143,10 @@ the game runs slowly, it steps down a level by itself, as far as Low.
 - `src/game/`: a race: the arena (clock, cars, items in flight, order), a racer (laps, boxes,
   items, hits, bumps, slipstreams, catch-up), the items' rules, and the bots; and a car driving round
   the city (`roamer.ts`).
-- `src/world/`: the world as the karts' ground: the land, every street at its level, and the
-  walls (`ground.ts`).
+- `src/world/`: the world as the karts' ground: the land, every street and path at its level, the
+  steps, and the walls (`ground.ts`).
 - `src/render/`: the look (sky, sun, shadows, quality); the city round the track (`city.ts`,
-  from the map), every street in its area (`streets.ts`), what the race adds to them (`road.ts`),
+  from the map), every street and path in its area (`streets.ts`), what the race adds to them (`road.ts`),
   the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs (`eggs.ts`); trees, karts and
   drivers, items, particles, skid marks; and the first track's world (`world.ts`,
   `landmarks.ts`, `braga.ts`), for reference.

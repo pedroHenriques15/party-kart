@@ -17,10 +17,13 @@ const DIP = 1.5;
 
 // The road's height beside a point of its edge, inside the road, at the route's level there: the
 // floor at most a little over the track's own height nearby; or, where the road has dropped away
-// under the route (raceDips), the route's.
+// under the route (raceDips), the route's. Under a ramp's flight, the floor there, whatever it is: the
+// ground a kart comes down on, which the floor under the flight's line (the Ecovia on the Rio Este's
+// bank, braga-map's task 050) may be well over.
 function roadY(g: WorldGround, track: Track, inside: Rings, x: number, z: number, nx: number, nz: number): number {
   const [px, pz] = inside.has(x + nx * 0.3, z + nz * 0.3) ? [x + nx * 0.3, z + nz * 0.3] : [x - nx * 0.3, z - nz * 0.3];
   const s = track.samples[distanceToRoad(track, px, pz).i];
+  if (s.air) return g.floor(px, pz, s.p.y + 1.5).y;
   const route = g.floor(s.p.x, s.p.z, s.p.y + 1.5).y;
   const y = g.floor(px, pz, route + 1.5).y;
   return y < route - DIP ? route : y;

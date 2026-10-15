@@ -21,7 +21,7 @@ import type { Quality } from './look.ts';
 import type { Photos } from './photos.ts';
 import { raceMarks } from './road.ts';
 import { clipConvex, convexPieces, faces, shapeOf, wallTop } from './roofs.ts';
-import { buildStreets, streetEdges, type Built } from './streets.ts';
+import { buildStreets, groundPaths, streetEdges, type Built } from './streets.ts';
 import * as tex from './textures.ts';
 import { plantTrees, type Tree } from './trees.ts';
 import type { World } from './world.ts';
@@ -137,14 +137,14 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   // The ground things stand on: the highest of the land, the streets on it and the decks over it.
   const ground = (x: number, z: number): number => wg.floor(x, z, 1e4).y;
 
-  // The bridges the map has drawn as decks (levels.ts); and the streets' outline, where they meet
-  // the land.
+  // The bridges the map has drawn as decks (levels.ts); and the streets' outline, and the paths'
+  // (braga-map's task 050), where they meet the land.
   const decks = new Set(map.lines.filter((l) => isDeck(l, land)));
   const nearLv = nearLevels(openings, decks);
   const edges = streetEdges(map.streets);
   const outline: [number, number, number, number][] = [];
-  for (const p of [...map.streets.carriageways, ...map.streets.pavements]) {
-    if (p.level !== 'ground') continue;
+  const onGround = [...map.streets.carriageways.filter((p) => p.level === 'ground'), ...map.streets.pavements.filter((p) => p.level === 'ground'), ...groundPaths(map.streets)];
+  for (const p of onGround) {
     for (const r of p.rings) {
       for (let k = 0; k < r.length; k++) {
         const [ax, az] = r[k];
@@ -155,7 +155,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   }
   const openTiles = new Set(map.open.tiles);
   const inOpenTiles = (x: number, z: number) => openTiles.has(map.tileAt(x, z));
-  const paint = paintGround(map, B, quality, inOpenTiles, outline);
+  const paint = paintGround(map, B, quality, inOpenTiles, outline, onGround);
 
   // ---- The land, the map painted on it: cells of 10 m, split into cells of 2 m where they need
   // them (on Low, 20 m and 4 m), as the data has the ground every 2 m in the area. A cell is split
@@ -194,7 +194,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
       }
     };
     const hidden = new Uint8Array(W * H);
-    raster([...map.streets.carriageways, ...map.streets.pavements].filter((p) => p.level === 'ground').map((p) => p.rings), 0.6, 1, hidden);
+    raster(onGround.map((p) => p.rings), 0.6, 1, hidden);
     raster(map.buildings.filter((b) => near(b.pts[0][0], b.pts[0][1]) < 300).map((b) => [b.pts]), 0.3, 2, hidden);
     // The cells where the land shows next to a street.
     const touch = new Uint8Array(lat.nx * lat.nz);
@@ -395,7 +395,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   // A mouth's concrete keeps under a street over its tunnel, and under a deck's underside.
   const under = (x: number, z: number) => {
     const f = wg.floor(x, z, 1e4);
-    return f.kind === 'deck' ? f.y - 1.25 : f.kind === 'road' || f.kind === 'pavement' ? f.y - 0.05 : Infinity;
+    return f.kind === 'deck' ? f.y - 1.25 : f.kind === 'road' || f.kind === 'pavement' || f.kind === 'path' || f.kind === 'steps' ? f.y - 0.05 : Infinity;
   };
   statics.add(buildLevels(map, land, decks, openings, inOpenTiles, under));
 
@@ -501,10 +501,10 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
 
 // Paints what the ground is onto one big canvas over the scenery's box: the land, the parks and
 // woods, water, squares, and beyond the open world's tiles, the streets with their pavements and
-// the railway. Where a street is drawn (streets.ts), the canvas is left clear, so the land under it
-// isn't drawn (groundMaterial): every street on the ground in the area, but a little in from its
-// edge, where the land meets it.
-function paintGround(map: Braga, B: Box, quality: Quality, inOpenTiles: (x: number, z: number) => boolean, outline: [number, number, number, number][]): THREE.CanvasTexture {
+// the railway. Where a street or a path is drawn (streets.ts), the canvas is left clear, so the land
+// under it isn't drawn (groundMaterial): every street and path on the ground in the area (`onGround`),
+// but a little in from its edge, where the land meets it.
+function paintGround(map: Braga, B: Box, quality: Quality, inOpenTiles: (x: number, z: number) => boolean, outline: [number, number, number, number][], onGround: { rings: [number, number][][] }[]): THREE.CanvasTexture {
   const res = quality === 'high' ? 1 : quality === 'medium' ? 1.4 : 2; // metres a pixel
   const W = Math.min(4096, Math.round((B.x1 - B.x0) / res));
   const H = Math.min(4096, Math.round((B.z1 - B.z0) / res));
@@ -567,8 +567,7 @@ function paintGround(map: Braga, B: Box, quality: Quality, inOpenTiles: (x: numb
   const mg = m.getContext('2d')!;
   mg.setTransform(...toPx);
   mg.fillStyle = '#000';
-  for (const p of [...map.streets.carriageways, ...map.streets.pavements]) {
-    if (p.level !== 'ground') continue;
+  for (const p of onGround) {
     mg.beginPath();
     for (const r of p.rings) r.forEach(([x, z], k) => (k ? mg.lineTo(x, z) : mg.moveTo(x, z)));
     mg.fill('evenodd');
@@ -668,7 +667,8 @@ type Building = MapBuilding & { cx: number; cz: number; road: number; whole?: [n
 
 // The map's buildings in the area and within 300 m of it, in the box. One that stands on a carriageway
 // is cut back at the kerb (braga-map's decision 021), as the karts find it (ground.ts): solid only off
-// the carriageway, a passage through one left open.
+// the carriageway, a passage through one left open; and so at a path's passage under one (its task
+// 050).
 function nearBuildings(map: Braga, near: (x: number, z: number) => number, wg: WorldGround): Building[] {
   const out: Building[] = [];
   for (const b of map.buildings) {
@@ -681,7 +681,7 @@ function nearBuildings(map: Braga, near: (x: number, z: number) => number, wg: W
       out.push({ ...b, cx, cz, road: r });
       continue;
     }
-    const { segs, cut } = trimmed(b.pts, wg.d.roads);
+    const { segs, cut } = trimmed(b.pts, wg.d.cuts);
     if (!cut) {
       out.push({ ...b, cx, cz, road: r });
       continue;

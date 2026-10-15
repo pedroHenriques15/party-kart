@@ -68,6 +68,43 @@ export const calcada = () =>
     }
   });
 
+// Paving stones (braga-map's task 050): pale granite slabs, 40 cm square, in rows; 2 m a tile.
+export const paving = () =>
+  canvas(256, 256, (g) => {
+    g.fillStyle = '#7d7a73';
+    g.fillRect(0, 0, 256, 256);
+    for (let y = 0; y < 256; y += 51.2) {
+      for (let x = (y / 51.2) % 2 ? -25.6 : 0; x < 256; x += 51.2) {
+        const l = 168 + Math.random() * 30;
+        g.fillStyle = `rgb(${l},${l - 3},${l - 9})`;
+        g.fillRect(x + 1.2, y + 1.2, 48.8, 48.8);
+      }
+    }
+    noise(g, 256, 256, 7000, 0.12);
+  });
+
+// A cycleway's red asphalt, as Braga paints its cycle lanes.
+export const cycleway = () =>
+  canvas(256, 256, (g) => {
+    g.fillStyle = '#b4493d';
+    g.fillRect(0, 0, 256, 256);
+    noise(g, 256, 256, 9000, 0.1);
+  });
+
+// A gravel path: small stones, pale brown and grey.
+export const gravel = () =>
+  canvas(256, 256, (g) => {
+    g.fillStyle = '#a89e8b';
+    g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 2600; i++) {
+      const l = 120 + Math.random() * 90;
+      g.fillStyle = `rgba(${l},${l - 6},${l - 16},0.8)`;
+      g.beginPath();
+      g.arc(Math.random() * 256, Math.random() * 256, 0.8 + Math.random() * 1.6, 0, Math.PI * 2);
+      g.fill();
+    }
+  });
+
 // Granite: the kerbstones, and the bridges' parapets.
 export const granite = () =>
   canvas(128, 128, (g) => {

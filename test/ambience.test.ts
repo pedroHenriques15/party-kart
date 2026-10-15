@@ -7,7 +7,7 @@ import { buildTrack } from '../src/track/track.ts';
 
 // The city's sound follows what's round your kart, anywhere in the city. These are the places
 // braga-map's task 025 judges it at, found on the track by the streets and landmarks it passes.
-const track = buildTrack(amigosPlan.points);
+const track = buildTrack(amigosPlan.points, amigosPlan.ramps);
 const sampleNear = (x: number, z: number) => {
   let best = 0;
   track.samples.forEach((s, i) => {

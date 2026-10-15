@@ -20,6 +20,9 @@ export interface Point {
   // On a bridge, with the ground lower under it: no skirt down to the ground. Carried on until
   // changed.
   bridge?: boolean;
+  // In the air, off a ramp's lip until the landing (braga-map's `ramps`): no road, kerbs or walls,
+  // its height a straight line from the lip to the landing. Carried on until changed.
+  air?: boolean;
   tag?: Tag;
 }
 

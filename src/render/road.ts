@@ -4,7 +4,8 @@
 // and the lines painted on them, the kerbs and pavements and central reservations beside it, the
 // skirts under its edges, bridges, and the lights along it.
 import * as THREE from 'three';
-import { surfacePoint, type Sample, type Track } from '../track/track.ts';
+import type { V } from '../math.ts';
+import { surfacePoint, type Ramp, type Sample, type Track } from '../track/track.ts';
 import * as tex from './textures.ts';
 
 // How many samples from `from` to `to`, round the loop; [0, N] is all the way round.
@@ -219,7 +220,77 @@ export function raceMarks(track: Track, signs: RoadSigns, at?: At): { group: THR
   group.add(gate(track, 0, signs.start, 9, at));
   for (const i of track.checkpoints) group.add(gate(track, i, signs.checkpoint, 6.5, at));
 
+  for (const r of track.ramps) group.add(ramp(track, r, at));
+
   return { group, update: (t) => updates.forEach((u) => u(t)) };
+}
+
+// A ramp the race jumps from (braga-map's task 039, the owner's choice): planks up a pile of rubble
+// behind an "obras" sign, as if the city's road works had left it there, with the red-and-white boards
+// of the race's road-works barriers along its sides. The planks are where the karts drive (the track's
+// samples from its foot to its lip); the rubble is only drawn, down to the street under it (`at`).
+// Past the lip there's nothing but what's really there.
+function ramp(track: Track, r: Ramp, at?: At): THREE.Group {
+  const g = new THREE.Group();
+  const F = track.samples[r.foot].p, T = track.samples[r.lip].p;
+  const L = Math.hypot(T.x - F.x, T.z - F.z), ux = (T.x - F.x) / L, uz = (T.z - F.z) / L, rx = -uz, rz = ux, hw = r.w / 2;
+  const base = (x: number, z: number) => (at ? at(x, z) : F.y);
+  const P = (p: V, side: number, y = p.y) => new THREE.Vector3(p.x + rx * side * hw, y, p.z + rz * side * hw);
+  const quad = (pts: THREE.Vector3[], uvs: number[]) => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts.flatMap((p) => [p.x, p.y, p.z]), 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setIndex(pts.length === 4 ? [0, 1, 2, 0, 2, 3] : [0, 1, 2]);
+    geo.computeVertexNormals();
+    return geo;
+  };
+  const slope = Math.hypot(L, T.y - F.y);
+  const plankMap = tex.planks();
+  plankMap.repeat.set(r.w / 4, 1);
+  // The planks, 2 cm over the track's surface, a board every 25 cm up the slope.
+  const up = (p: V, side: number) => P(p, side, p.y + 0.02);
+  g.add(new THREE.Mesh(quad([up(F, -1), up(F, 1), up(T, 1), up(T, -1)], [0, 0, 1, 0, 1, slope, 0, slope]), new THREE.MeshStandardMaterial({ map: plankMap, roughness: 0.85, side: THREE.DoubleSide })));
+  // The rubble under them: its sides and its face under the lip, down to the street.
+  const rubble = new THREE.MeshStandardMaterial({ map: tex.rock(), color: '#b9ab98', roughness: 0.95, side: THREE.DoubleSide });
+  for (const side of [-1, 1]) {
+    const tl = P(T, side), tb = P(T, side, base(tl.x, tl.z)), fb = P(F, side, base(F.x + rx * side * hw, F.z + rz * side * hw));
+    g.add(new THREE.Mesh(quad([fb, tb, tl], [0, 0, L / 3, 0, L / 3, (tl.y - tb.y) / 3]), rubble));
+  }
+  const tL = P(T, -1), tR = P(T, 1);
+  g.add(new THREE.Mesh(quad([P(T, -1, base(tL.x, tL.z)), P(T, 1, base(tR.x, tR.z)), tR, tL], [0, 0, r.w / 3, 0, r.w / 3, 1, 0, 1]), rubble));
+  // Lumps of it spilling round its foot and under the lip.
+  const lumps = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), rubble, 14);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+  for (let k = 0; k < 14; k++) {
+    const along = k < 8 ? Math.random() * L : L + 0.3 + Math.random() * 0.8, side = k < 8 ? (k % 2 ? 1 : -1) * (hw + 0.2 + Math.random() * 0.5) : (Math.random() * 2 - 1) * hw;
+    const x = F.x + ux * along + rx * side, z = F.z + uz * along + rz * side, s = 0.25 + Math.random() * 0.35;
+    m.compose(new THREE.Vector3(x, base(x, z) + s * 0.4, z), q.setFromEuler(e.set(Math.random() * 3, Math.random() * 3, Math.random() * 3)), new THREE.Vector3(s, s * 0.7, s));
+    lumps.setMatrixAt(k, m);
+  }
+  g.add(lumps);
+  // The road works' boards along its sides, standing on its edges.
+  const boards = new THREE.MeshStandardMaterial({ map: tex.roadworks(), roughness: 0.6, side: THREE.DoubleSide });
+  for (const side of [-1, 1]) {
+    const a = P(F, side * 1.02), b = P(T, side * 1.02);
+    g.add(new THREE.Mesh(quad([a, b, new THREE.Vector3(b.x, b.y + 0.3, b.z), new THREE.Vector3(a.x, a.y + 0.3, a.z)], [0, 0, slope / 2, 0, slope / 2, 1, 0, 1]), boards));
+  }
+  // "Obras", on two posts by its foot, facing the karts coming up to it.
+  const sx = F.x - ux * 2 + rx * (hw + 1.2), sz = F.z - uz * 2 + rz * (hw + 1.2), sy = base(sx, sz);
+  const sign = new THREE.Group();
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.7), new THREE.MeshStandardMaterial({ map: tex.sign('OBRAS', '', '#f2c200', '#111318', 512, 256, '#111318'), roughness: 0.5, side: THREE.DoubleSide }));
+  plate.position.y = 1.5;
+  const post = new THREE.MeshStandardMaterial({ color: '#e9e6df', roughness: 0.6 });
+  for (const lx of [-0.55, 0.55]) {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.85, 0.06), post);
+    p.position.set(lx, 0.92, -0.04);
+    sign.add(p);
+  }
+  sign.add(plate);
+  sign.position.set(sx, sy, sz);
+  sign.rotation.y = Math.atan2(-ux, -uz);
+  g.add(sign);
+  for (const o of g.children) o.castShadow = o.receiveShadow = true;
+  return g;
 }
 
 // A granite bridge under the road where it crosses water: a block with an arch through it.

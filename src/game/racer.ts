@@ -150,7 +150,7 @@ export class Racer {
 
     const from = this.car.idx;
     if (stepCar(this.car, inp, this.ground, dt, mods)) {
-      this.car = respawn(this.run, this.track, t);
+      this.car = respawn(this.run, this.track, t, this.car.idx);
       this.notes.push({ k: 'respawn' });
       return;
     }

@@ -10,7 +10,7 @@ import { buildTrack, locate, type Track } from '../src/track/track.ts';
 import { worldGround } from '../src/world/ground.ts';
 
 // The game's track; and the first one, kept for reference, for its jump.
-const track = buildTrack(amigos.points);
+const track = buildTrack(amigos.points, amigos.ramps);
 const gp = buildTrack(LAYOUT);
 const DT = 1 / 120;
 
@@ -35,7 +35,7 @@ function drive(seconds: number, pilot: (c: Car) => Input = (c) => autopilot(c, t
     const from = car.idx;
     if (stepCar(car, pilot(car), ground, DT)) {
       out.respawns++;
-      car = respawn(run, track, now);
+      car = respawn(run, track, now, car.idx);
       continue;
     }
     air = car.grounded ? 0 : air + DT;
@@ -52,9 +52,11 @@ function drive(seconds: number, pilot: (c: Car) => Input = (c) => autopilot(c, t
   return out;
 }
 
-test('the track is a closed loop of about 9 km, with its checkpoints in order', () => {
+// About 10 km since braga-map's task 039: the race comes down to the ramp over the Rio Este from
+// the north, by Ponte Pedrinha (the owner, knowing it went over 10).
+test('the track is a closed loop of about 10 km, with its checkpoints in order', () => {
   const s = track.samples;
-  assert.ok(track.length > 7000 && track.length < 10000, `length ${track.length.toFixed(0)} m`);
+  assert.ok(track.length > 7000 && track.length < 10500, `length ${track.length.toFixed(0)} m`);
   for (let i = 0; i < s.length; i++) {
     const gap = Math.hypot(s[(i + 1) % s.length].p.x - s[i].p.x, s[(i + 1) % s.length].p.y - s[i].p.y, s[(i + 1) % s.length].p.z - s[i].p.z);
     assert.ok(gap > 0.5 && gap < 1.5, `sample ${i} to the next is ${gap.toFixed(2)} m`);
@@ -87,10 +89,10 @@ test("the autopilot drives the route on the world's ground, wherever its line is
   // The world's ground over the open world's area: the land, every street at its level, and what
   // stands on them (src/world/ground.ts), not the track's road and walls. The route's line leaves
   // the real streets in two places, and the autopilot follows the line: at the Avenida da
-  // Liberdade's underpass it runs up to 11 m off the street, over the cutting, and out of the dead
-  // end it takes the made-up link (decision 010) where there's no street. Task 037 puts the line on
-  // the streets and 039 replaces the link; until then each is skipped, from 40 m before the line
-  // leaves the street there to 40 m after it's back.
+  // Liberdade's underpass it runs up to 11 m off the street, over the cutting, and into the dead end
+  // it jumps from a ramp over the Rio Este (braga-map's task 039), which the world's ground hasn't
+  // got. Task 037 puts the line on the streets and the ramp out with the race's barriers; until then
+  // each is skipped, from 40 m before the line leaves the street there to 40 m after it's back.
   const world = await loadWorld({ open: true });
   const g = worldGround(world).race(track);
   const s = track.samples;
@@ -99,7 +101,7 @@ test("the autopilot drives the route on the world's ground, wherever its line is
     const f = g.floor(q.p.x, q.p.z, q.p.y + 1);
     return (f.kind !== 'road' && f.kind !== 'deck' && f.kind !== 'tunnel') || Math.abs(f.y - q.p.y) >= 1;
   });
-  const skips = [[115, 615], [-570, 1340]].map(([x, z]) => {
+  const skips = [[115, 615], [-571, 1130]].map(([x, z]) => {
     const near = s.flatMap((q, i) => (off[i] && Math.hypot(q.p.x - x, q.p.z - z) < 120 ? [i] : []));
     return [Math.min(...near) - 40, Math.max(...near) + 40];
   });
@@ -138,6 +140,38 @@ test("the autopilot drives the route on the world's ground, wherever its line is
     `on the world's ground: ${(metres / 1000).toFixed(2)} of ${(N / 1000).toFixed(2)} km in ${(ms / 1000).toFixed(1)} s (${((metres / ms) * 3600).toFixed(0)} km/h on average), skipping ${skips.map(([a, b]) => `${a}–${b}`).join(' and ')}; respawns ${respawns}; longest air ${maxAir.toFixed(2)} s; top ${(top * 3.6).toFixed(0)} km/h; wall hits ${wallHits}`,
   );
   assert.equal(respawns, 0);
+});
+
+// The ramp over the Rio Este into the dead end (braga-map's task 039): from the speed braga-map says
+// clears it to flat out, a kart flies over the gap and comes down on the landing street, on its
+// carriageway; slower, it falls into the gap and goes back onto the run-up, at the speed that clears it.
+test('the jump into the dead end lands on the street from its speed to flat out, and short of it respawns on the run-up', () => {
+  assert.equal(track.ramps.length, 1);
+  const r = track.ramps[0], N = track.samples.length, ground = trackGround(track);
+  const ahead = (i: number) => (i - r.lip + N) % N;
+  const out: string[] = [];
+  for (const v of [r.v + 0.5, r.v + 2, 37, 44]) {
+    const car = newCar(track, r.lip - 40, v);
+    let fell = false, flew = 0, down = -1;
+    for (let i = 0; i < 6 / DT && !fell && down < 0; i++) {
+      const inp = autopilot(car, track);
+      fell = stepCar(car, { ...inp, throttle: speedOf(car) < v ? 1 : 0, brake: 0 }, ground, DT);
+      if (!car.grounded) flew += DT;
+      else if (flew > 0.5) down = car.idx;
+    }
+    out.push(`${(v * 3.6).toFixed(0)} km/h: ${flew.toFixed(2)} s in the air, down ${down < 0 ? '-' : ahead(down) - ahead(r.land)} m past the landing`);
+    assert.equal(fell, false, `fell at ${(v * 3.6).toFixed(0)} km/h`);
+    assert.ok(down >= 0 && ahead(down) >= ahead(r.land) && Math.abs(car.lat) < track.samples[down].w / 2, `at ${(v * 3.6).toFixed(0)} km/h it came down at sample ${down}, ${car.lat.toFixed(1)} m across`);
+  }
+  console.log(`the jump: ${out.join('; ')}`);
+  // Too slow: into the gap, and back on the run-up.
+  const car = newCar(track, r.lip - 40, r.v - 8);
+  let fell = false;
+  for (let i = 0; i < 8 / DT && !fell; i++) fell = stepCar(car, { ...autopilot(car, track), throttle: 0, brake: 0 }, ground, DT);
+  assert.ok(fell, 'fell short');
+  const back = respawn(newRun(0), track, 0, car.idx);
+  assert.equal(back.idx, (r.lip - 50 + N) % N);
+  assert.ok(speedOf(back) > r.v);
 });
 
 test("the first track's jump lands on the road at any speed up to flat out", () => {

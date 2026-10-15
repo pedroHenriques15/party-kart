@@ -12,7 +12,7 @@ import { buildTrack, surfacePoint, type Track } from '../src/track/track.ts';
 // The items and the handling are tested on the first track, kept for reference: the places these
 // tests put cars (down the Avenida's straight) were picked on it. The bots race the game's track.
 const track = buildTrack(LAYOUT);
-const amigos = buildTrack(amigosPlan.points);
+const amigos = buildTrack(amigosPlan.points, amigosPlan.ramps);
 const N = track.samples.length;
 const DT = 1 / 120;
 const RACE: Rules = { mode: 'race', laps: 2, items: true, catchUp: true };

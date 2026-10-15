@@ -127,6 +127,30 @@ export const rock = () =>
     noise(g, 256, 256, 8000, 0.1);
   });
 
+// The planks of a ramp the road works left (braga-map's task 039): weathered timber boards, laid
+// across the way up, four to a tile, with their joints staggered and a nail or two at each end.
+export const planks = () =>
+  canvas(256, 256, (g) => {
+    g.fillStyle = '#5c4a36';
+    g.fillRect(0, 0, 256, 256);
+    for (let row = 0; row < 4; row++) {
+      const y = row * 64, joint = (row * 97) % 256;
+      for (const [x0, x1] of [[joint - 256, joint], [joint, joint + 256]]) {
+        const l = 120 + Math.random() * 40;
+        g.fillStyle = `rgb(${l},${l * 0.82},${l * 0.6})`;
+        g.fillRect(x0 + 2, y + 3, x1 - x0 - 4, 58);
+        // The grain, along the board.
+        for (let k = 0; k < 14; k++) {
+          g.fillStyle = `rgba(70,50,30,${0.08 + Math.random() * 0.12})`;
+          g.fillRect(x0 + 2, y + 5 + Math.random() * 54, x1 - x0 - 4, 1);
+        }
+        g.fillStyle = '#2b2b2b';
+        for (const x of [x0 + 10, x1 - 12]) for (const yy of [y + 16, y + 46]) g.fillRect(x, yy, 3, 3);
+      }
+    }
+    noise(g, 256, 256, 3000, 0.08);
+  });
+
 // The barriers at the start: white with blue bands, as Braga's street plates are, and the race's name.
 // A road-works barrier's board: red and white stripes on the slant, as Portugal's are.
 export const roadworks = () =>

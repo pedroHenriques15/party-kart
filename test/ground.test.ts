@@ -258,7 +258,7 @@ test('a respawn puts the car on the nearest carriageway at its level, along the 
 
 test('eight cars a step: well inside a frame', () => {
   // Eight karts round the route on the world's ground, the autopilot driving each.
-  const track = buildTrack(amigos.points);
+  const track = buildTrack(amigos.points, amigos.ramps);
   const g = ground.race(track);
   const cars = Array.from({ length: 8 }, (_, k) => g.place(newCar(track, 1000 + k * 900, 20)));
   const steps = 1200;

@@ -1,7 +1,8 @@
 // Laps and checkpoints. A lap counts when you've passed every checkpoint in order and cross the
-// start line. Respawning puts you back at your last checkpoint, at the speed you passed it.
+// start line. Respawning puts you back at your last checkpoint, at the speed you passed it; or, when
+// you fell at a jump (short of its landing, or off its ramp), on its run-up at the speed that clears it.
 import { newCar, speedOf, type Car } from './car/car.ts';
-import type { Track } from './track/track.ts';
+import { rampSpeed, type Ramp, type Track } from './track/track.ts';
 
 export interface Run {
   lapStart: number; // ms, race time
@@ -59,7 +60,9 @@ export function noteSpeed(run: Run, car: Car): void {
 }
 
 // A respawn: at the last checkpoint, or at the start of the lap (with the clock reset) if none.
-export function respawn(run: Run, track: Track, now: number): Car {
+export function respawn(run: Run, track: Track, now: number, at = -1): Car {
+  const jump = at < 0 ? null : jumpAt(track, at);
+  if (jump) return newCar(track, (jump.lip - RUN_UP + track.samples.length) % track.samples.length, rampSpeed(jump));
   if (run.lastCp) return newCar(track, run.lastCp.i, run.lastCp.speed);
   run.lapStart = now;
   return newCar(track, startGrid(track));
@@ -71,6 +74,14 @@ export function restart(run: Run, track: Track, now: number): Car {
   run.splits = [];
   run.lastCp = null;
   return newCar(track, startGrid(track));
+}
+
+// How far before a ramp's lip a car that fell there goes back to (m), and the jump a sample is at:
+// from there to 30 m past its landing.
+export const RUN_UP = 50;
+export function jumpAt(track: Track, i: number): Ramp | null {
+  const N = track.samples.length, fd = (a: number, b: number) => (b - a + N) % N;
+  return track.ramps.find((r) => fd(r.lip - RUN_UP, i) <= fd(r.lip - RUN_UP, r.land) + 30) ?? null;
 }
 
 // A few metres behind the line.

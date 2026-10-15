@@ -2,6 +2,7 @@
 // to use what they've got.
 import { autopilot } from '../car/autopilot.ts';
 import { speedOf } from '../car/car.ts';
+import { jumpAt } from '../race.ts';
 import type { Arena } from './arena.ts';
 import { loopDelta } from './items.ts';
 import type { Controls, Racer } from './racer.ts';
@@ -58,7 +59,8 @@ export function botControls(r: Racer, b: Brain, a: Arena, dt: number): Controls 
     switch (r.item.kind) {
       case 'cafe':
       case 'cafe3':
-        use = b.held > b.patience && speedOf(r.car) > 15 && inp.brake === 0;
+        // Not at a jump: a kart faster than its ramp wants overshoots the landing.
+        use = b.held > b.patience && speedOf(r.car) > 15 && inp.brake === 0 && !jumpAt(a.track, r.car.idx);
         break;
       case 'pudim':
         use = behind || b.held > 6;

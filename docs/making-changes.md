@@ -39,10 +39,10 @@ for, the same all over the map.
 
 Other things to know:
 
-- A sample is a metre of road. The lap is about 9.3 km (N ≈ 9260). Nothing in the new scenery uses
+- A sample is a metre of road. The lap is about 10.1 km (N ≈ 10080). Nothing in the new scenery uses
   a raw sample index: it's all placed by position, so it moves with the track when that's made
   again.
-- **The tests guard the track.** It must be a 7–10 km loop with 5 checkpoints, and the autopilot
+- **The tests guard the track.** It must be a 7–10.5 km loop with 5 checkpoints, and the autopilot
   must lap it with no respawns, its second lap taking 170–290 s. Eight bots must all finish a lap,
   within 60 s of each other. If the autopilot can't get round, a corner is too tight: raise
   `R_MIN` in braga-map's `tools/track.mjs`, or change the costs so the loop goes another way.

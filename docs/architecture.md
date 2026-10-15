@@ -108,7 +108,12 @@ surface (`settle`, which holds it to anything within 5 cm, so it hugs the road) 
 (`fly`), pushes it out of walls (`bounce`), and says whether it has fallen off. The handling is the
 same on any ground. The race's is `trackGround(track)`: the car is on the road within its width and
 not far under it, walls stand at its edges, and `locate` keeps its sample (`idx`) and how far right
-of the centre line it is (`lat`).
+of the centre line it is (`lat`). In a ramp's flight (`air` samples, braga-map's `ramps`: the jump
+over the Rio Este into the dead end, task 039) there's no road and no walls: the car flies on to the
+landing, and one 3 m under the flight's line has fallen short. The ramp itself is the track's
+samples rising from its foot to its lip, drawn as planks on rubble with the race's marks
+(`raceMarks`), so it's up only in a race; `track.ramps` has its foot, lip and landing by sample, and
+`rampSpeed` how fast to take it.
 
 The open world's (braga-map's decision 019) is `worldGround(world, open?)` in `src/world/ground.ts`,
 built once (about 0.2 s for the Volta dos Amigos' area) from braga-map's `loadWorld`. Everything
@@ -156,7 +161,9 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
 **A lap.** `advance` in `race.ts` checks whether the step from sample `from` to `to` crossed the next
 checkpoint, or the line once every checkpoint is done. It returns `cp` or `lap` events with splits
 against the best lap. Respawning puts the car back at the last checkpoint, at the speed it went
-through.
+through; or, when it fell at a jump (`jumpAt`), 50 m back on its run-up at `rampSpeed`. The
+autopilot takes a ramp at `rampSpeed` and the bots drink no café near one, or they overshoot its
+landing.
 
 **A racer.** `Racer.step` works out the input. On the grid it's `stopInput`, which holds the car
 still. After the finish the autopilot drives. While spun out it's a gentle `stopInput`. It sets the `Mods`: gold plating, being shrunk, and
@@ -185,7 +192,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk32-` plus a five-character room code, and the invite link is `?room=<code>`, which
+`partykart-pk33-` plus a five-character room code, and the invite link is `?room=<code>`, which
 opens the game straight into the room. A room is made only when someone invites friends ("Convidar
 amigos") or starts a race; until then the game is alone, with no network at all.
 
@@ -503,7 +510,14 @@ and drives on from task 036. Task 035's code takes it to 6.81 MB, 2.08 MB gzippe
 (task 036) to 6.83 MB, 2.08 MB gzipped, measured since then on the page as a player opens it, until
 the loading screen goes and you can drive. Free roam took 3 to 16 draw calls off every viewpoint
 (`shots/2026-10-15-task036/`): the race's marks, one mesh along the whole route, are up only in a
-race.
+race. braga-map's tasks 039 and 047 (the jump into the dead end, the open world grown by Ponte
+Pedrinha round the loop's new stretch, and the decks at the LiDAR's height) take the download to
+7.24 MB, 2.19 MB gzipped (the tiles 1.85 MB), as the track's box grew 330 m west; against
+`shots/2026-10-15-mundo-aberto/` (`shots/2026-10-15-rampa/`), from 3 fewer to 17 more draw calls
+a viewpoint, `robert-smith` the most at 227 on High and 209 on Low, up to 0.16 M more triangles
+(1.73 M on High, 0.98 M on Low, there too), textures 97 MB on High and 45 on Low (91 and 42: the
+ground's painted map is bigger), and the city built in 2.8 s on High where it took 2.6. The ramp
+is about 10 draw calls and a few hundred triangles, in a race only.
 
 - **Textures**, on High: the ground's painted map is 44 MB (3330 × 2600 pixels, a metre each; 22 MB
   on Medium, 11 on Low), the sun's shadows 16 MB (4 on Medium), the street plates 10.5 MB, the sky's

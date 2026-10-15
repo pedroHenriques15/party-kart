@@ -48,7 +48,7 @@ if (SCENERY) {
   let seed = 1;
   Math.random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 }
-const track = buildTrack(amigos.points);
+const track = buildTrack(amigos.points, amigos.ramps);
 const N = track.samples.length;
 // A race ends at the latest after this long a lap (and a minute), at 60 km/h on average.
 setLapLimit(Math.ceil(track.length / 16.7));

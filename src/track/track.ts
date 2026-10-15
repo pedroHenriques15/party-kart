@@ -14,6 +14,7 @@ export interface Sample {
   lanes: number; // painted on it, negative when one way (see Point)
   kerbs: [number, number]; // beyond the left and right edges (see Point)
   bridge: boolean; // on a bridge, with lower ground under it (see Point)
+  air: boolean; // in a ramp's flight: no road under it (see Point)
   d: number; // metres from the start line
 }
 
@@ -24,6 +25,32 @@ export interface Track {
   checkpoints: number[]; // sample indices, in order; the start line comes after the last
   tags: { tag: Tag; i: number }[];
   grid: Map<string, number[]>; // 20 m cells of sample indices, for nearest-sample lookups
+  ramps: Ramp[];
+}
+
+// A ramp the race jumps from (braga-map's `ramps`), by sample: its foot, its lip, and where its
+// flight meets the landing street's middle; the slowest a kart may leave the lip at and land there
+// (m/s), its angle (radians) and width.
+export interface Ramp {
+  foot: number;
+  lip: number;
+  land: number;
+  v: number;
+  angle: number;
+  w: number;
+}
+// How fast to take a ramp at its foot: going up its slope costs a kart the part of its speed that
+// isn't along it, and the climb a little more, so braga-map's speed at the lip, and 2 m/s in hand.
+export const rampSpeed = (r: Ramp) => r.v / Math.cos(r.angle) + 2;
+
+// A ramp as braga-map plans it, in metres.
+export interface RampPlan {
+  foot: [number, number, number];
+  lip: [number, number, number];
+  land: [number, number, number];
+  v: number;
+  angle: number;
+  w: number;
 }
 
 const BOOST_LEN = 14;
@@ -46,15 +73,15 @@ function catmull(p0: V, p1: V, p2: V, p3: V, u: number): V {
   return mix(b1, b2, t1, t2);
 }
 
-export function buildTrack(layout: Point[]): Track {
+export function buildTrack(layout: Point[], ramps: RampPlan[] = []): Track {
   const pts = layout.map((q) => v3(...q.p));
   const n = pts.length;
 
   // Carry the per-stretch settings forward from point to point.
-  const opts: { w: number; bank: number; walls: boolean; surface: Surface; lanes: number; kerbs: [number, number]; bridge: boolean }[] = [];
-  let cur: (typeof opts)[number] = { w: 16, bank: 0, walls: true, surface: 'asphalt', lanes: 0, kerbs: [0, 0], bridge: false };
+  const opts: { w: number; bank: number; walls: boolean; surface: Surface; lanes: number; kerbs: [number, number]; bridge: boolean; air: boolean }[] = [];
+  let cur: (typeof opts)[number] = { w: 16, bank: 0, walls: true, surface: 'asphalt', lanes: 0, kerbs: [0, 0], bridge: false, air: false };
   for (const q of layout) {
-    cur = { w: q.w ?? cur.w, bank: q.bank ?? cur.bank, walls: q.walls ?? cur.walls, surface: q.surface ?? cur.surface, lanes: q.lanes ?? cur.lanes, kerbs: q.kerbs ?? cur.kerbs, bridge: q.bridge ?? cur.bridge };
+    cur = { w: q.w ?? cur.w, bank: q.bank ?? cur.bank, walls: q.walls ?? cur.walls, surface: q.surface ?? cur.surface, lanes: q.lanes ?? cur.lanes, kerbs: q.kerbs ?? cur.kerbs, bridge: q.bridge ?? cur.bridge, air: q.air ?? cur.air };
     opts.push(cur);
   }
 
@@ -97,7 +124,7 @@ export function buildTrack(layout: Point[]): Track {
     const w = o.w + (o2.w - o.w) * s.u;
     const flat = norm(cross(t, UP));
     const r = norm(add(scale(flat, Math.cos(bank)), scale(UP, Math.sin(bank))));
-    return { p: s.p, t, r, n: norm(cross(r, t)), w, walls: o.walls, boost: false, surface: o.surface, lanes: o.lanes, kerbs: o.kerbs, bridge: o.bridge, d: i };
+    return { p: s.p, t, r, n: norm(cross(r, t)), w, walls: o.walls, boost: false, surface: o.surface, lanes: o.lanes, kerbs: o.kerbs, bridge: o.bridge, air: o.air, d: i };
   });
 
   const nearest = (q: V) => {
@@ -132,6 +159,7 @@ export function buildTrack(layout: Point[]): Track {
     checkpoints: tags.filter((t) => t.tag === 'cp').map((t) => t.i).sort((a, b) => a - b),
     tags,
     grid,
+    ramps: ramps.map((r) => ({ foot: nearest(v3(...r.foot)), lip: nearest(v3(...r.lip)), land: nearest(v3(...r.land)), v: r.v, angle: r.angle, w: r.w })),
   };
 }
 

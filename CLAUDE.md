@@ -110,7 +110,7 @@ How a race runs:
 
 - `buildTrack(amigos.points)` turns the points of `braga-map/tracks/amigos.js` (Braga's real
   streets, planned by braga-map) into a road sampled every metre from the start line. A sample
-  index is roughly metres from the line, and the lap is about 9.3 km (N ≈ 9260 samples).
+  index is roughly metres from the line, and the lap is about 10.1 km (N ≈ 10080 samples).
 - `stepCar` (`src/car/car.ts`) is the handling. It always runs at a fixed `DT = 1/120` s, in the
   game and in the tests alike, on a `Ground`: the race's `trackGround(track)`, or the open world's
   `worldGround` (`src/world/ground.ts`: the land, braga-map's streets at their levels, and walls).
@@ -189,7 +189,7 @@ How a race runs:
   animate needs `userData.moves = true` on it or a parent, or it gets frozen into the merged mesh.
 - **`mat()` caches materials by colour and settings**, so changing one changes every mesh that
   uses it. A kart's body paint is its own because gold plating recolours it.
-- **The peer id prefix** `partykart-pk32-` in `src/session.ts` decides which builds can see each
+- **The peer id prefix** `partykart-pk33-` in `src/session.ts` decides which builds can see each
   other's rooms. The deployed game and a dev build share rooms while it matches. Change it when the
   message format changes incompatibly, or the track changes.
 - **Item rolls and bot patience use `Math.random`.** That's fine because only one browser ever
@@ -198,17 +198,20 @@ How a race runs:
   at least once. Its item rolls are random, so it could still fail now and then, though since the
   bots spread across the road to pass (`steerLine` in `src/game/bot.ts`) it rarely does. Rerun it
   before assuming you broke something, and look at the printed summary.
-- **The tests guard the track and the tuning.** They check a loop of 7–10 km with 5
+- **The tests guard the track and the tuning.** They check a loop of 7–10.5 km with 5
   checkpoints, an autopilot lap with no respawns and a second lap of 170–290 s, the first track's
-  jump flying over 1 s and landing at any speed from 60 to 158 km/h, every item turning up at some
+  jump flying over 1 s and landing at any speed from 60 to 158 km/h, the Volta dos Amigos' jump
+  landing on its street from braga-map's speed to 158 km/h and short of it respawning on the
+  run-up, every item turning up at some
   place in the race, and eight bots all finishing a lap within 60 s of each other. A change to the
   track, the physics or the item odds has to keep them passing.
 - **A race's time limit follows the track's length.** `setLapLimit` (`session.ts`), set in
   `main.ts`, allows a lap at 60 km/h. The race's settings offer 1–3 laps, and time attack 5–15
   minutes.
 - **What the race adds to the streets is up only in a race.** The start line, the gates, the boost
-  pads and the barriers along the start (`raceMarks`) are the city's `marks`, shown by `startRace`
-  and hidden by `endRace`. `?scenery` shoots the city without them.
+  pads, the barriers along the start and the ramp into the dead end (`raceMarks`) are the city's
+  `marks`, shown by `startRace` and hidden by `endRace`. `?scenery` shoots the city without them.
+  Round the city there's no ramp, on the screen or in the karts' ground: free roam is all real.
 - **The plinth at the start is part of the karts' ground**, added to `world.drive` once the city is
   built (`stand` in `ground.ts`), and so are the walls of the buildings the city leaves out round the
   plinth, the eggs and the Tourigalo taken away (`unwall`). A test that builds its own

@@ -213,7 +213,9 @@ export function bounce(c: Car, n: V, d: number): void {
 // The race's track as a ground: the car is on the road where it's within its width and not far
 // under it, the walls stand at its edges where it has any, and it has fallen off when it's well off
 // the road and below it. The car's sample (idx) keeps it on the stretch it was on, so a road that
-// passes over another is never taken for it.
+// passes over another is never taken for it. In a ramp's flight (s.air) there's no road and no
+// walls: the car flies on to the landing, and one that drops 3 m below the flight's line (straight
+// from the lip to the landing) has fallen short, into what's really there.
 export function trackGround(track: Track): Ground {
   return {
     under: (c) => track.samples[c.idx],
@@ -221,19 +223,19 @@ export function trackGround(track: Track): Ground {
       const loc = locate(track, c.p, c.idx);
       c.idx = loc.i;
       const s = track.samples[loc.i];
-      if (loc.onRoad && loc.h > -2.5 && loc.h <= STICK) settle(c, s.n, loc.h);
+      if (loc.onRoad && !s.air && loc.h > -2.5 && loc.h <= STICK) settle(c, s.n, loc.h);
       else fly(c, dt);
 
       // The walls, where there are any and the car isn't flying over them.
       const lim = s.w / 2 - HALF_W;
-      if (s.walls && Math.abs(loc.lateral) > lim && loc.h < WALL_H) {
+      if (s.walls && !s.air && Math.abs(loc.lateral) > lim && loc.h < WALL_H) {
         const side = Math.sign(loc.lateral);
         bounce(c, scale(s.r, -side), side * loc.lateral - lim);
       }
 
       c.lat = loc.lateral;
       c.h = loc.h;
-      return (!loc.onRoad && loc.h < -3) || loc.h < -12 || c.p.y < -40;
+      return ((!loc.onRoad || s.air) && loc.h < -3) || loc.h < -12 || c.p.y < -40;
     },
   };
 }

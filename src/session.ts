@@ -5,9 +5,9 @@ import Peer, { type DataConnection } from 'peerjs';
 import type { ItemEv } from './game/items.ts';
 import { driverById, DRIVERS, repeatOf } from './render/drivers.ts';
 
-// Builds see each other's rooms only while this matches: pk32 is free roam, the room's positions
-// sent whether or not a race is on, and your name changeable in it.
-const PREFIX = 'partykart-pk32-';
+// Builds see each other's rooms only while this matches: pk33 is the race that jumps over the Rio
+// Este into the dead end (braga-map's task 039), its samples changed from there on.
+const PREFIX = 'partykart-pk33-';
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 export const HOST_ID = 'host';
 export const MAX_RACERS = 8;

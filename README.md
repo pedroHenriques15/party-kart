@@ -78,7 +78,7 @@ few seconds; karts **bump**; and with
 **catch-up** on, the further behind the leader, the more top speed. All of it can be switched off
 in the race's settings. Karts bump, and slipstream, round the city too.
 
-**The track, the Volta dos Amigos**: 9.3 km of Braga as it is, through five friends' neighbourhoods
+**The track, the Volta dos Amigos**: 10.1 km of Braga as it is, through five friends' neighbourhoods
 south and east of the centre, the way the traffic goes. Every street, building, park and tree round
 it comes from OpenStreetMap, and the ground from DGT's 2025 LiDAR: the hills, 68 m from the lowest
 point to the highest and as steep as 19.5%, the streets that tip sideways, the cuttings and banks
@@ -87,9 +87,11 @@ Imaculada Conceição, down the Avenida da Liberdade and over the Rio Este at S�
 past the Largo da Devesa to the slopes of the Picoto; up the Avenida 31 de Janeiro and the Avenida
 João XXI and back down the Rua Bernardo Sequeira, then Lamaçães's avenues and roundabouts, past
 Makro and the Tourigalo; back west round the Picoto by the Picoto Adventure Park, and down
-the Avenida Doutor Viriato Amaral Nunes past the Estádio 1.º de Maio and the Altice Forum; through a
-new link into what was the dead end of the Rua Nova do Couteiro, over the river again, and home
-along the Rua Conselheiro Lobato.
+the Avenida Doutor Viriato Amaral Nunes past the Estádio 1.º de Maio and the Altice Forum; west by
+Ponte Pedrinha and down a straight street to the Rio Este, where the road works have left a ramp of
+planks on a pile of rubble: the race jumps the river on it into a dead end, the one way in, and comes
+out by its mouth to go home along the Rua Conselheiro Lobato. The ramp is the one thing on the
+track that isn't in the real Braga, and it's only there in a race.
 
 Every street round it is drawn as it is, at its real width: its lanes painted white, its zebra
 crossings, traffic lights and lamps, calçada pavements behind granite kerbs, central reservations

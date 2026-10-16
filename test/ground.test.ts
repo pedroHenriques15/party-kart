@@ -6,7 +6,7 @@ import { autopilot } from '../src/car/autopilot.ts';
 import { carAt, newCar, speedOf, stepCar, type Car, type Input } from '../src/car/car.ts';
 import { angleDiff, clamp, v3 } from '../src/math.ts';
 import { buildTrack } from '../src/track/track.ts';
-import { CAR_R, STEP, worldGround } from '../src/world/ground.ts';
+import { CAR_R, STEP, wallSpan, worldGround } from '../src/world/ground.ts';
 
 // The open world's area (braga-map's task 032) and the tiles round it, and the world's ground over
 // it, from the map's real tiles.
@@ -73,7 +73,7 @@ test('the world as a ground: built in well under a second, every part of it ther
   const ms = performance.now() - t0;
   console.log(`the world's ground built in ${ms.toFixed(0)} ms: ${Object.entries(g.counts).map(([k, n]) => `${n} ${k}`).join(', ')}`);
   assert.ok(ms < 2000, `${ms.toFixed(0)} ms`);
-  for (const k of ['building walls', 'buildings trimmed at the kerb', 'parapets', 'tunnel sides', 'mouth walls', 'trees', 'joins at grade', 'edge', 'barriers']) assert.ok(g.counts[k] > 0, k);
+  for (const k of ['building walls', 'buildings trimmed at the kerb', 'parapets', 'tunnel sides', 'mouth walls', 'trees', 'joins at grade', 'edge', 'barriers', 'walls', 'retaining walls', 'hedges', 'fences and railings', 'gates']) assert.ok(g.counts[k] > 0, k);
   assert.equal(g.counts.barriers, world.open.gates.length);
 });
 
@@ -212,6 +212,72 @@ test("through the Avenida da Liberdade's underpass, in at one mouth and out of t
     assert.ok(r.steps.slice(last + 1).some((s) => s.kind === 'road'), 'on the street after');
     assert.ok(r.steps.every((s) => s.wall < 2), `hit a wall at ${Math.max(...r.steps.map((s) => s.wall)).toFixed(1)} m/s`);
   }
+});
+
+// braga-map's task 013: the walls, fences, hedges and gates, which a kart hits as a building.
+test('into a wall, a hedge, a gate and a retaining wall from below: stopped', () => {
+  // Of each kind, the first five in the area with a straight stretch 4 m long or more (a gate 2 m) and
+  // clear land 6 m out from its middle (a retaining wall's lower side, on its right), nothing else standing in between, driven
+  // into square on at three speeds.
+  const kinds = ['wall', 'hedge', 'gate', 'retaining'] as const;
+  let tried = 0;
+  for (const kind of kinds) {
+    const picked = [];
+    for (const w of world.walls) {
+      if (picked.length >= 5) break;
+      if (w.kind !== kind || !world.inOpen(w.pts[0][0], w.pts[0][1])) continue;
+      // The middle of its longest straight stretch (a wall can turn a corner).
+      let k = 1;
+      for (let i = 2; i < w.pts.length; i++) if (Math.hypot(w.pts[i][0] - w.pts[i - 1][0], w.pts[i][1] - w.pts[i - 1][1]) > Math.hypot(w.pts[k][0] - w.pts[k - 1][0], w.pts[k][1] - w.pts[k - 1][1])) k = i;
+      const L = Math.hypot(w.pts[k][0] - w.pts[k - 1][0], w.pts[k][1] - w.pts[k - 1][1]);
+      if (L < (kind === 'gate' ? 2 : 4)) continue;
+      const [cx, cz] = [(w.pts[k][0] + w.pts[k - 1][0]) / 2, (w.pts[k][1] + w.pts[k - 1][1]) / 2];
+      const m = wallSpan(ground, w).reduce((b, q) => (Math.hypot(q.x - cx, q.z - cz) < Math.hypot(b.x - cx, b.z - cz) ? q : b));
+      // Standing on the ground a kart drives on, not at a level of its own (on a deck, over a cutting).
+      if (Math.abs(m.y0 + 0.3 - Math.min(ground.groundAt(m.x, m.z), m.y1 - w.h)) > 0.5) continue;
+      // Out to its right ((nx, nz) is its line's right): a retaining wall's lower side.
+      const [ox, oz] = [m.nx, m.nz];
+      const clear = [1.5, 3, 4.5, 6].every((d) => {
+        const x = m.x + ox * (d + w.w / 2);
+        const z = m.z + oz * (d + w.w / 2);
+        const f = ground.floor(x, z, ground.groundAt(x, z) + 0.5);
+        return (f.kind === 'land' || f.kind === 'pavement' || f.kind === 'road' || f.kind === 'path') && Math.abs(f.y - ground.groundAt(m.x + ox * (6 + w.w / 2), m.z + oz * (6 + w.w / 2))) < 1.5;
+      });
+      const others = ground.d.walls.near(m.x + ox * 3 - 4, m.z + oz * 3 - 4, m.x + ox * 3 + 4, m.z + oz * 3 + 4, []).filter((q) => {
+        // A wall crossing the way in, other than this one's.
+        const ex = q.bx - q.ax;
+        const ez = q.bz - q.az;
+        const den = ex * oz - ez * ox;
+        if (Math.abs(den) < 1e-9) return false;
+        const t = ((m.x + ox * (w.w / 2 + 0.3) - q.ax) * oz - (m.z + oz * (w.w / 2 + 0.3) - q.az) * ox) / den;
+        const u = ((m.x + ox * (w.w / 2 + 0.3) - q.ax) * ez - (m.z + oz * (w.w / 2 + 0.3) - q.az) * ex) / den;
+        return t > 0 && t < 1 && u > 0 && u < 6;
+      });
+      if (clear && !others.length) picked.push({ w, m, ox, oz });
+    }
+    assert.ok(picked.length >= 3, `only ${picked.length} ${kind}s to drive into`);
+    for (const { w, m, ox, oz } of picked) {
+      for (const speed of [5, 15, 30]) {
+        const [x, z] = [m.x + ox * (6 + w.w / 2), m.z + oz * (6 + w.w / 2)];
+        const c = ground.place(carAt(v3(x, ground.groundAt(x, z) + 0.3, z), Math.atan2(-oz, -ox), v3(0, 1, 0)), ground.groundAt(x, z) + 0.5);
+        c.v = v3(-ox * speed, 0, -oz * speed);
+        let near = Infinity;
+        let hit = 0;
+        for (let i = 0; i < 2 / DT; i++) {
+          stepCar(c, { throttle: 1, brake: 0, steer: 0, drift: false }, ground, DT);
+          near = Math.min(near, (c.p.x - m.x) * ox + (c.p.z - m.z) * oz);
+          hit = Math.max(hit, c.wallHit);
+        }
+        const at = `the ${kind} at (${m.x.toFixed(1)}, ${m.z.toFixed(1)}), ${w.h} m high, at ${speed} m/s`;
+        assert.ok(hit > 0, `never hit ${at}`);
+        // Its centre stops a car's radius from the wall's face (the car's two circles are a little ahead
+        // of it, and it may slew along the wall).
+        assert.ok(near > w.w / 2 + CAR_R - 0.15, `${near.toFixed(2)} m from the line of ${at}`);
+        tried++;
+      }
+    }
+  }
+  console.log(`into walls, hedges, gates and retaining walls: ${tried} runs, all stopped`);
 });
 
 test("into a gate's barriers at the area's edge: stopped", () => {

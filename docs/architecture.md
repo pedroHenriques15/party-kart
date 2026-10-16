@@ -143,6 +143,10 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
   trees' trunks, but those on a carriageway; the steps' handrails, from the treads to their top; a
   riser more than a step high, a step short of its tread (a flight the map counts too few steps for:
   59 of 3,091 between treads, and 234 of a tread's 420 edges over a street or a path beside it);
+  every wall, fence, railing, hedge and gate braga-map has (its task 013; a gate shut, whatever it
+  says, which is for someone on foot), from under the ground to its top, a hedge or anything half a
+  metre thick along both its sides, and a retaining wall 0.6 m over its top (`HOLD`: the land under
+  it is a 2 m grid's, which ramps up to it, and would launch a kart over it at speed);
   and, given the area (`open`, braga-map's task 032), its edge at every level and a barrier across
   each street and path leaving it. A building is trimmed at a path's passage under it as at a
   carriageway (the owner's answer to braga-map's task 050), so it's open too. The car is two circles, 1.6 m
@@ -386,10 +390,20 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     with a face down to what's beside it where that's lower (the riser, between two treads) and a
     granite wall up to the land where that's higher; a steel handrail on posts every 1.5 m where
     the map has one; a footbridge's deck and its parapets as a bridge's.
+  - The walls, fences, railings, hedges and gates (braga-map's task 013, `world.walls`), each on the
+    ground the karts drive on (`ground.ts`'s `wallSpan`, every 3 m along it on High, 4 on Medium,
+    6 on Low): a wall a block in what it's made of (granite blocks, render painted near white, a
+    weathered cement: `textures.ts`'s `wallBlocks`, `plaster` and `hedge` are three more layers of
+    the streets' texture, and `cement` the plaster tinted), with on High a coping stone on it, and a
+    railing its top half where braga-map has one on it; a retaining wall's face from its foot to its
+    top (its back, in the higher ground, isn't drawn); a hedge a block of leaves; a fence's wire mesh,
+    a railing's and a gate's bars see-through (alpha-tested, two materials for all of them), on steel
+    posts; a guard rail a steel band, a lift gate a red bar. Where one of the map's retaining walls
+    stands along a street's edge, it's drawn in the place of the granite wall below.
   - A granite kerb wherever a pavement meets a carriageway: its face, and on High its stones' tops.
     Where a street's outline meets the land, a skirt down to it, or a granite retaining wall up to
     it where the land stands more than 12 cm over the edge (25 on Low), and on High a granite step
-    at a pavement's back; none against a building. The decks' undersides, and their parapets and
+    at a pavement's back; none against a building, nor where one of the map's retaining walls stands. The decks' undersides, and their parapets and
     the tunnels' sides where the karts meet them (`ground.ts`'s `sides`).
   - The lines painted on the carriageways as they're drawn: lanes and middles, dashed or solid,
     zebras (their bars on one grid of a metre, so crossings the map has side by side line up),
@@ -577,7 +591,15 @@ paths, cycleways and steps (its task 050; `shots/2026-10-15-after050/` against
 triangles on High (the median 87 k, `robert-smith` the most at 1.90 M), 30–127 k on Low (1.10 M
 there), no texture memory to speak of (three more 256-pixel layers of the streets' texture), and
 build the city 0.5–0.9 s slower on High (4.9–5.8 s); the download is 7.58 MB, 2.33 MB gzipped,
-the tiles 0.11 MB more.
+the tiles 0.11 MB more. braga-map's walls, fences, railings, hedges and gates (its task 013;
+`shots/2026-10-16-after013/` against `after050`, on braga-map installed from the folder) take 3 to
+6 more draw calls a viewpoint (74–233 on High) and 131–559 k more triangles on High (the median
+305 k: 0.71–2.46 M where 0.58–1.90 M, `robert-smith` the most, then `conselheiro-lobato` and
+`alameda-fujacal`), 96–264 k on Medium (the median 163 k) and 56–208 k on Low (0.41–1.31 M), 1 MB
+more texture memory (four more 256-pixel layers of the streets' texture, two small see-through
+ones), and the city built no slower (3.6–3.9 s on High, the desktop less busy than for 050); a frame
+0.3–2.2 ms. The tiles are 0.27 MB more gzipped (the open world's 53, 2.11 to 2.38 MB). Most of the
+triangles are the 80 km of retaining walls round the area, 59 of them found by the LiDAR.
 
 - **Textures**, on High: the ground's painted map is 44 MB (3330 × 2600 pixels, a metre each; 22 MB
   on Medium, 11 on Low), the sun's shadows 16 MB (4 on Medium), the street plates 10.5 MB, the sky's

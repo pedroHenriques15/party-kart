@@ -13,7 +13,8 @@
 // - The walls, in 2D, each standing from a foot to a top: the buildings' outlines, a deck's
 //   parapets and a tunnel's sides (wherever a piece off the ground has neither more street nor the
 //   land at its own level beside it), the tunnels' mouths, the trees' trunks, the steps'
-//   handrails, and the area's edge with the barriers across its streets and paths. The land is a wall
+//   handrails, the walls, fences, railings, hedges and gates the map has (braga-map's task 013; a
+//   gate shut), and the area's edge with the barriers across its streets and paths. The land is a wall
 //   where it rises more than a step in front of the car, or steeper than a car can climb off the
 //   carriageway or a path (a retaining wall, a cutting's side). A kerb is a step: it bumps the car and
 //   takes a little of its speed; so is a riser, and one more than a step high is a wall.
@@ -21,7 +22,7 @@
 //   world is lost, and is put back on the nearest carriageway at its level (spawn).
 //
 // Everything is looked up in a grid of 10 m cells, so a step costs the same anywhere.
-import type { World as Braga, Path } from 'braga-map';
+import type { World as Braga, Path, Wall as Barrier } from 'braga-map';
 import { bounce, carAt, fly, settle, STICK, WALL_H, type Car, type Ground } from '../car/car.ts';
 import { norm, v3, type V } from '../math.ts';
 import { locate, type Track } from '../track/track.ts';
@@ -43,6 +44,7 @@ const BORE = 3; // how high a tunnel's sides stand over its road, at most
 const DEEP = 1.2; // a deck's depth, under its road
 const BUMP = 0.12; // the share of its speed across a kerb a car loses going up it
 const RAIL = 0.9; // a handrail's height over the steps, as braga-map has it
+const HOLD = 0.6; // how far a retaining wall stands over its top, for the karts
 
 // A wall: from (ax, az) to (bx, bz), standing from y0 to y1.
 export interface Wall {
@@ -754,6 +756,61 @@ function inRings(rings: [number, number][][], x: number, z: number): boolean {
   return odd;
 }
 
+// A wall, a fence, a railing, a hedge or a gate of the map's (braga-map's task 013) on the ground a car
+// drives on, every `step` metres along it at most: each point, the way along it and across it there, and its
+// foot and top. A free-standing one is as high as the map says over that ground (the tiles' ground
+// is a 2 m grid's, the map's top the LiDAR's over its own terrain), its foot a little under it; but
+// where the map's own ground under it is more than 1.5 m off that (a planter on the edge of a
+// cutting, over the road down in it), at the map's own level. A retaining wall's top is the map's,
+// its foot its face's height under that, or under the ground.
+export interface SpanPoint {
+  x: number;
+  z: number;
+  ux: number;
+  uz: number;
+  nx: number;
+  nz: number;
+  y0: number;
+  y1: number;
+}
+export function wallSpan(g: WorldGround, w: Barrier, step = 2): SpanPoint[] {
+  const out: SpanPoint[] = [];
+  for (let i = 1; i < w.pts.length; i++) {
+    const [ax, az] = w.pts[i - 1];
+    const [bx, bz] = w.pts[i];
+    const L = Math.hypot(bx - ax, bz - az);
+    if (L < 0.01) continue;
+    const ux = (bx - ax) / L;
+    const uz = (bz - az) / L;
+    const n = Math.max(1, Math.ceil(L / step));
+    for (let k = out.length ? 1 : 0; k <= n; k++) {
+      const f = k / n;
+      const x = ax + (bx - ax) * f;
+      const z = az + (bz - az) * f;
+      const ground = g.groundAt(x, z);
+      const top = w.ys[i - 1] + (w.ys[i] - w.ys[i - 1]) * f;
+      const own = Math.abs(top - w.h - ground) > 1.5;
+      const [y0, y1] = w.kind === 'retaining' ? [Math.min(top - w.h, ground) - 0.3, top] : own ? [top - w.h - 0.3, top] : [ground - 0.3, ground + w.h];
+      out.push({ x, z, ux, uz, nx: -uz, nz: ux, y0, y1 });
+    }
+  }
+  return out;
+}
+// The point s metres along a span, between its points.
+export function alongSpan(span: SpanPoint[], s: number): SpanPoint {
+  for (let k = 1; k < span.length; k++) {
+    const a = span[k - 1];
+    const b = span[k];
+    const L = Math.hypot(b.x - a.x, b.z - a.z);
+    if (s <= L || k === span.length - 1) {
+      const f = L ? Math.max(0, Math.min(1, s / L)) : 0;
+      return { ...b, x: a.x + (b.x - a.x) * f, z: a.z + (b.z - a.z) * f, y0: a.y0 + (b.y0 - a.y0) * f, y1: a.y1 + (b.y1 - a.y1) * f };
+    }
+    s -= L;
+  }
+  return span[0];
+}
+
 // What a path off the ground is paved with, as a carriageway's surface, for the tyres' rumble.
 export const pathSurface = (s: Path['surface']): 'asphalt' | 'setts' | 'paving' | 'dirt' => (s === 'setts' ? 'setts' : s === 'asphalt' ? 'asphalt' : s === 'gravel' || s === 'dirt' ? 'dirt' : 'paving');
 
@@ -1060,5 +1117,22 @@ export function worldGround(world: Braga): WorldGround {
   counts.pieces = pieces.length;
   counts.paths = flat.length;
   counts.treads = treadList.length;
-  return new WorldGround({ world, land, roads, paves, setts, paths, raised, pathSetts, treads, cuts, pieces, pieceCells, walls, posts, dropped, kerbs, lines, sides, inside, blocks: new Cells<Block>(), counts });
+  const g = new WorldGround({ world, land, roads, paves, setts, paths, raised, pathSetts, treads, cuts, pieces, pieceCells, walls, posts, dropped, kerbs, lines, sides, inside, blocks: new Cells<Block>(), counts });
+
+  // The walls, fences, railings, hedges and gates (braga-map's task 013), each from under the ground
+  // to its top, a gate shut whatever the map says (it's for someone on foot); one thicker than a car
+  // is narrow (a hedge) along both its sides. A retaining wall stands HOLD over its top: the land under
+  // it is a 2 m grid's, which ramps up to it where the wall stands straight, and would launch a kart
+  // over it; and from above, it's its parapet.
+  for (const w of world.walls) {
+    if (!near(w.pts)) continue;
+    const span = wallSpan(g, w);
+    const lines = w.w >= 0.5 ? [w.w / 2, -w.w / 2] : [0];
+    for (let k = 1; k < span.length; k++) {
+      const a = span[k - 1];
+      const b = span[k];
+      for (const o of lines) addWall({ ax: a.x + a.nx * o, az: a.z + a.nz * o, bx: b.x + b.nx * o, bz: b.z + b.nz * o, y0: Math.min(a.y0, b.y0) - 0.7, y1: Math.max(a.y1, b.y1) + (w.kind === 'retaining' ? HOLD : 0) }, w.kind === 'gate' || w.kind === 'bar' ? 'gates' : w.kind === 'hedge' ? 'hedges' : w.kind === 'retaining' ? 'retaining walls' : w.kind === 'wall' ? 'walls' : 'fences and railings');
+    }
+  }
+  return g;
 }

@@ -6,14 +6,15 @@
 // flight of steps (its task 050): each in what it's paved with, a cycleway's asphalt red, each step a
 // tread with its riser, the handrails where the map has them. Each lies on the ground the karts drive
 // on (src/world/ground.ts): a carriageway or a path on it, a pavement a kerb over it, a tread or a
-// deck at its height. Along them stand the lamps, the traffic lights at the stop lines, the route's
-// bus stops and street plates, and across every street and path where it leaves the area, road-works
-// barriers. A tile's surfaces and faces are one mesh, their textures layers of one, and its paint
+// deck at its height. And the walls, fences, railings, hedges and gates (its task 013), each on that
+// ground, in what it's made of. Along them stand the lamps, the traffic lights at the stop lines, the
+// route's bus stops and street plates, and across every street and path where it leaves the area,
+// road-works barriers. A tile's surfaces and faces are one mesh, their textures layers of one, and its paint
 // another, so whole tiles out of view are skipped.
 import type { Track as Course, Path, Streets, World as Braga } from 'braga-map';
 import * as THREE from 'three';
 import { distanceToRoad, type Track } from '../track/track.ts';
-import type { Piece, WorldGround } from '../world/ground.ts';
+import { alongSpan, wallSpan, type Piece, type WorldGround } from '../world/ground.ts';
 import { bake, box, mat } from './kit.ts';
 import type { Surface } from './lattice.ts';
 import type { Quality } from './look.ts';
@@ -93,7 +94,7 @@ const WORLD: Frame = { ax: 0, az: 0, tx: 1, tz: 0, L: 0, s0: 0 };
 
 // The streets' textures, as layers of one texture: a tile's surfaces and faces are one mesh, whatever
 // they're made of.
-const LAYERS = ['asphalt', 'setts', 'calcada', 'verge', 'dirt', 'granite', 'skirt', 'concrete', 'paving', 'cycle', 'gravel'] as const;
+const LAYERS = ['asphalt', 'setts', 'calcada', 'verge', 'dirt', 'granite', 'skirt', 'concrete', 'paving', 'cycle', 'gravel', 'blocks', 'render', 'hedge', 'cement'] as const;
 type Layer = (typeof LAYERS)[number];
 
 // What a path is drawn in (braga-map's task 050): its surface's, a cycleway's asphalt red, a metal
@@ -108,8 +109,8 @@ export function groundPaths(S: Streets): Path[] {
 
 function layers(): THREE.DataArrayTexture {
   const S = 256;
-  const art: Partial<Record<Layer, () => THREE.CanvasTexture>> = { asphalt: tex.asphalt, setts: tex.setts, calcada: tex.calcada, verge: tex.ground, dirt: tex.rock, granite: tex.granite, paving: tex.paving, cycle: tex.cycleway, gravel: tex.gravel };
-  const tint: Partial<Record<Layer, string>> = { dirt: '#c9b79c', skirt: '#77736b', concrete: '#bcb7ae' };
+  const art: Partial<Record<Layer, () => THREE.CanvasTexture>> = { asphalt: tex.asphalt, setts: tex.setts, calcada: tex.calcada, verge: tex.ground, dirt: tex.rock, granite: tex.granite, paving: tex.paving, cycle: tex.cycleway, gravel: tex.gravel, blocks: tex.wallBlocks, render: tex.plaster, hedge: tex.hedge, cement: tex.plaster };
+  const tint: Partial<Record<Layer, string>> = { dirt: '#c9b79c', skirt: '#77736b', concrete: '#bcb7ae', cement: '#8a867f' };
   const images = LAYERS.map((name) => {
     const c = document.createElement('canvas');
     c.width = c.height = S;
@@ -264,12 +265,35 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   const counts: Record<string, number> = {};
   const edges = streetEdges(S);
   const shared = (ax: number, az: number, bx: number, bz: number) => edges.has(key(bx, bz, ax, az));
+  // The map's retaining walls (its task 013): where one stands along a street's edge, it's drawn in
+  // the plain granite wall's place.
+  const holding = new Grid<[number, number, number, number]>(10);
+  for (const w of world.walls) {
+    if (w.kind !== 'retaining') continue;
+    for (let i = 1; i < w.pts.length; i++) {
+      const [ax, az] = w.pts[i - 1];
+      const [bx, bz] = w.pts[i];
+      holding.add(Math.min(ax, bx) - 2, Math.min(az, bz) - 2, Math.max(ax, bx) + 2, Math.max(az, bz) + 2, [ax, az, bx, bz]);
+    }
+  }
+  const held = (px: number, pz: number, qx: number, qz: number) => {
+    const mx = (px + qx) / 2;
+    const mz = (pz + qz) / 2;
+    const L = Math.hypot(qx - px, qz - pz) || 1;
+    return holding.at(mx, mz).some(([ax, az, bx, bz]) => {
+      const ex = bx - ax;
+      const ez = bz - az;
+      const M = Math.hypot(ex, ez) || 1;
+      const t = Math.max(0, Math.min(1, ((mx - ax) * ex + (mz - az) * ez) / (M * M)));
+      return Math.hypot(ax + ex * t - mx, az + ez * t - mz) < 2 && Math.abs(((qx - px) * ex + (qz - pz) * ez) / (L * M)) > 0.8;
+    });
+  };
 
   // ---- The materials, and the batches per tile: the surfaces and faces, and the paint. ----
   const surfaces = surfaceMaterial();
   const paintMat = new THREE.MeshStandardMaterial({ color: '#efefe8', roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 });
   // Metres a tile of each texture: along the street's rows for the setts and the calçada.
-  const SCALE: Partial<Record<Layer, number>> = { asphalt: 8, setts: 2, calcada: 2.5, verge: 2, dirt: 6, granite: 1, paving: 2, cycle: 8, gravel: 4 };
+  const SCALE: Partial<Record<Layer, number>> = { asphalt: 8, setts: 2, calcada: 2.5, verge: 2, dirt: 6, granite: 1, paving: 2, cycle: 8, gravel: 4, blocks: 2, render: 2, hedge: 2, cement: 2 };
   const tiles = new Map<string, { surf: Batch; paint: Batch }>();
   const tileOf = (x: number, z: number) => {
     const k = `${Math.floor(x / TILE)},${Math.floor(z / TILE)}`;
@@ -547,6 +571,10 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
           // Against a building, nothing shows.
           if (housed((px + qx) / 2 + nx * 0.5, (pz + qz) / 2 + nz * 0.5)) continue;
           const higher = pts.some(([, , y, l]) => l > y + rise);
+          if (higher && held(px, pz, qx, qz)) {
+            count('walls left to the map', 1);
+            continue;
+          }
           if (higher) {
             face('granite', pts.map(([x, z, y, l]) => [x, z, Math.min(y, l) - 0.25, Math.max(y, l)]), -nx, -nz);
             count('wall', pts.length - 1);
@@ -631,6 +659,114 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
       }
     }
     counts.handrails = S.handrails.length;
+  }
+
+  // ---- The walls, fences, railings, hedges and gates (braga-map's task 013), as the karts meet them
+  // (ground.ts, wallSpan): a wall, a hedge or a fence as high as the map says over the ground they
+  // drive on, a retaining wall from its foot to its top where the map has it. A wall is a block in
+  // what it's made of, with a coping stone on it (granite on a granite or a rendered one), a railing its
+  // top half where the map has one on it; a hedge a block of leaves; a fence's mesh, a railing's and a
+  // gate's bars see-through, on posts; a guard rail a steel band; a lift gate a red bar. ----
+  {
+    const see = {
+      mesh: new THREE.MeshStandardMaterial({ map: tex.chainLink(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.5, metalness: 0.4 }),
+      bars: new THREE.MeshStandardMaterial({ map: tex.bars(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.5, metalness: 0.5 }),
+    };
+    const panes = { mesh: { pos: [] as number[], uv: [] as number[] }, bars: { pos: [] as number[], uv: [] as number[] } };
+    // A see-through pane along a line, between two heights at each point: the mesh's uv in metres
+    // over two, the bars' along in metres over two and up from 0 at the foot to 1 at the top.
+    const pane = (which: 'mesh' | 'bars', pts: [number, number, number, number][]) => {
+      let u = 0;
+      const p = panes[which];
+      for (let k = 1; k < pts.length; k++) {
+        const [ax, az, a0, a1] = pts[k - 1];
+        const [bx, bz, b0, b1] = pts[k];
+        const L = Math.hypot(bx - ax, bz - az);
+        const [va0, va1, vb0, vb1] = which === 'mesh' ? [a0 / 2, a1 / 2, b0 / 2, b1 / 2] : [0, 1, 0, 1];
+        p.pos.push(ax, a0, az, bx, b0, bz, bx, b1, bz, ax, a0, az, bx, b1, bz, ax, a1, az);
+        p.uv.push(u / 2, va0, (u + L) / 2, vb0, (u + L) / 2, vb1, u / 2, va0, (u + L) / 2, vb1, u / 2, va1);
+        u += L;
+        count(which === 'mesh' ? 'fence mesh' : 'bars', 2);
+      }
+    };
+    const steel = mat('#5d6266', { metalness: 0.6, roughness: 0.4 });
+    const red = mat('#c8102e', { roughness: 0.5 });
+    // A concrete wall is weathered, darker than a deck's underside.
+    const LAYER: Record<string, Layer> = { granite: 'blocks', rendered: 'render', concrete: 'cement', wood: 'dirt', metal: 'skirt' };
+    // How finely a wall follows the ground, by the graphics level.
+    const step = quality === 'high' ? 3 : quality === 'medium' ? 4 : 6;
+    for (const w of world.walls) {
+      const span = wallSpan(wg, w, step);
+      if (span.length < 2) continue;
+      // Along it, each point with its foot and top.
+      const pts: [number, number, number, number][] = span.map((q) => [q.x, q.z, q.y0, q.y1]);
+      if (w.kind === 'wall' || w.kind === 'retaining' || w.kind === 'hedge') {
+        const layer: Layer = w.kind === 'hedge' ? 'hedge' : (LAYER[w.material ?? 'granite'] ?? 'blocks');
+        const coping = w.kind !== 'hedge' && quality === 'high' && (w.material === 'granite' || w.material === 'rendered' || w.material === 'concrete');
+        const cap = coping ? 0.06 : 0;
+        // A low wall with a railing on it: the railing its top half, up to 1.2 m of it, the wall under it
+        // half a metre high at least.
+        const rail = w.on === 'railing' ? Math.max(0, Math.min(1.2, w.h / 2, w.h - 0.5)) : 0;
+        // A block half wide either side of its line, from lo to hi at each point: its sides, its top
+        // and its ends; a retaining wall's back (on its left, its higher ground's side) buried in it.
+        const slab = (m: Layer, half: number, lo: (k: number) => number, hi: (k: number) => number) => {
+          // L on its right ((nx, nz)), a retaining wall's lower side; R on its left.
+          const side = (sgn: number) => span.map((q, k) => [q.x + q.nx * half * sgn, q.z + q.nz * half * sgn, lo(k), hi(k)] as [number, number, number, number]);
+          const [L, R] = [side(1), side(-1)];
+          for (let k = 1; k < span.length; k++) {
+            const { nx, nz } = span[k];
+            face(m, [L[k - 1], L[k]], nx, nz);
+            if (w.kind !== 'retaining') face(m, [R[k - 1], R[k]], -nx, -nz);
+            batch(span[k].x, span[k].z, m).quad(
+              [
+                [L[k - 1][0], L[k - 1][3], L[k - 1][1], L[k - 1][0], L[k - 1][1]],
+                [L[k][0], L[k][3], L[k][1], L[k][0], L[k][1]],
+                [R[k][0], R[k][3], R[k][1], R[k][0], R[k][1]],
+                [R[k - 1][0], R[k - 1][3], R[k - 1][1], R[k - 1][0], R[k - 1][1]],
+              ],
+              0,
+              1,
+              0,
+            );
+            count(m, 2);
+          }
+          const last = span.length - 1;
+          face(m, [L[0], R[0]], -span[0].ux, -span[0].uz);
+          face(m, [L[last], R[last]], span[last].ux, span[last].uz);
+        };
+        slab(layer, w.w / 2, (k) => span[k].y0, (k) => span[k].y1 - rail - cap);
+        if (coping) slab(w.material === 'concrete' ? 'cement' : 'granite', w.w / 2 + 0.04, (k) => span[k].y1 - rail - cap, (k) => span[k].y1 - rail);
+        if (rail > 0) pane('bars', pts.map((q) => [q[0], q[1], q[3] - rail, q[3]]));
+        count(w.kind === 'hedge' ? 'hedges' : w.kind === 'retaining' ? 'retaining walls' : 'walls', 1);
+        continue;
+      }
+      if (w.kind === 'guard_rail') face('skirt', pts.map((q) => [q[0], q[1], q[3] - 0.3, q[3]]), span[0].nx, span[0].nz);
+      else if (w.kind === 'bar') {
+        const [a, b] = [span[0], span[span.length - 1]];
+        const bar = box(Math.hypot(b.x - a.x, b.z - a.z), 0.08, 0.08, red);
+        bar.position.set((a.x + b.x) / 2, a.y1 - 0.04, (a.z + b.z) / 2);
+        bar.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
+        things.add(bar);
+      } else pane(w.kind === 'fence' ? 'mesh' : 'bars', pts.map((q) => [q[0], q[1], q[2] + 0.3, q[3]]));
+      // Its posts: every 2.5 m along a fence, a railing or a guard rail, and at each end of a gate.
+      const L = span.reduce((a, q, k) => (k ? a + Math.hypot(q.x - span[k - 1].x, q.z - span[k - 1].z) : 0), 0);
+      const every = w.kind === 'gate' || w.kind === 'bar' ? Math.max(L, 0.1) : 2.5;
+      for (let s = 0; s <= L + 1e-6; s += every) {
+        const q = alongSpan(span, s);
+        things.add(box(0.06, q.y1 - q.y0 - 0.3, 0.06, steel, q.x, q.y0 + 0.3, q.z));
+        count('posts', 1);
+      }
+      count(w.kind === 'fence' ? 'fences' : w.kind === 'bar' ? 'lift gates' : w.kind + 's', 1);
+    }
+    for (const which of ['mesh', 'bars'] as const) {
+      const p = panes[which];
+      if (!p.pos.length) continue;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(p.pos, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(p.uv, 2));
+      g.computeVertexNormals();
+      things.add(new THREE.Mesh(g, see[which]));
+    }
   }
 
   // ---- The decks' parapets and the tunnels' sides, where the karts meet them (ground.ts). ----

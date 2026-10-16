@@ -116,6 +116,83 @@ export const granite = () =>
     g.fillRect(0, 0, 2, 128);
   });
 
+// The walls round Minho's houses and holding up its hills (braga-map's task 013), and what stands
+// along them. 256 pixels are two metres across and two up.
+
+// Granite blocks laid in courses a quarter of a metre deep, each block its own grey, the joints dark.
+export const wallBlocks = () =>
+  canvas(256, 256, (g) => {
+    g.fillStyle = '#46433f';
+    g.fillRect(0, 0, 256, 256);
+    for (let y = 0; y < 256; y += 32) {
+      let x = -Math.random() * 40;
+      while (x < 256) {
+        const w = 40 + Math.random() * 50;
+        const l = 100 + Math.random() * 40;
+        g.fillStyle = `rgb(${l},${l - 4},${l - 12})`;
+        g.fillRect(x + 2, y + 2, w - 3, 29);
+        if (x + w > 256) g.fillRect(x + 2 - 256, y + 2, w - 3, 29);
+        x += w;
+      }
+    }
+    noise(g, 256, 256, 9000, 0.16);
+    noise(g, 256, 256, 2500, 0.2, true);
+  });
+
+// Render, painted near white, weathered towards the foot (v runs up).
+export const plaster = () =>
+  canvas(256, 256, (g) => {
+    g.fillStyle = '#ece8df';
+    g.fillRect(0, 0, 256, 256);
+    noise(g, 256, 256, 6000, 0.05);
+    const grime = g.createLinearGradient(0, 256, 0, 200);
+    grime.addColorStop(0, 'rgba(90,85,70,0.25)');
+    grime.addColorStop(1, 'rgba(90,85,70,0)');
+    g.fillStyle = grime;
+    g.fillRect(0, 200, 256, 56);
+  });
+
+// A clipped hedge's leaves: dark green, sprigs of lighter.
+export const hedge = () =>
+  canvas(256, 256, (g) => {
+    g.fillStyle = '#2f4a24';
+    g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 2600; i++) {
+      const l = Math.random();
+      g.fillStyle = `rgba(${50 + l * 50},${80 + l * 70},${30 + l * 30},0.8)`;
+      g.beginPath();
+      g.arc(Math.random() * 256, Math.random() * 256, 1.5 + Math.random() * 3, 0, Math.PI * 2);
+      g.fill();
+    }
+  });
+
+// A wire fence's diamond mesh, on clear: 256 pixels two metres, a diamond 10 cm across.
+export const chainLink = () =>
+  canvas(256, 256, (g) => {
+    g.clearRect(0, 0, 256, 256);
+    g.strokeStyle = 'rgba(150,155,150,1)';
+    g.lineWidth = 1.6;
+    for (let k = -256; k < 512; k += 13) {
+      g.beginPath();
+      g.moveTo(k, 0);
+      g.lineTo(k + 256, 256);
+      g.moveTo(k, 256);
+      g.lineTo(k + 256, 0);
+      g.stroke();
+    }
+  });
+
+// A railing's or a gate's upright bars every 12 cm, under a top rail and over a bottom one, on clear:
+// 256 pixels two metres along and a metre up.
+export const bars = () =>
+  canvas(256, 128, (g) => {
+    g.clearRect(0, 0, 256, 128);
+    g.fillStyle = '#2b2e30';
+    for (let x = 0; x < 256; x += 15.36) g.fillRect(x, 0, 3, 128);
+    g.fillRect(0, 0, 256, 7);
+    g.fillRect(0, 116, 256, 6);
+  });
+
 // A painted line along the road, dashed: 3 m of white, then 4 m of road (v runs 7 m a tile).
 export const dash = () =>
   canvas(16, 112, (g) => {

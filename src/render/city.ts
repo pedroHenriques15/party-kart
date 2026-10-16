@@ -18,7 +18,7 @@ import { bake, box, mat } from './kit.ts';
 import { Lattice, Surface } from './lattice.ts';
 import { buildLevels, isDeck, nearLevels } from './levels.ts';
 import type { Quality } from './look.ts';
-import type { Photos } from './photos.ts';
+import { GRIDS, KINDS, loadCover, type Cover } from './cover.ts';
 import { raceMarks } from './road.ts';
 import { clipConvex, convexPieces, faces, shapeOf, wallTop } from './roofs.ts';
 import { buildStreets, groundPaths, streetEdges, type Built } from './streets.ts';
@@ -67,6 +67,7 @@ const LAND: Record<string, string> = {
   sport: '#4f8c3c',
   water: '#3e6f7c',
   plaza: '#b8b2a6',
+  parking: '#8a8781',
 };
 // Street classes as the map numbers them: whether they have pavements. (Each street comes
 // with its own width.)
@@ -76,53 +77,136 @@ const FACADES = ['#f2ede3', '#ecd7a2', '#e0b874', '#e0ad9c', '#b9cfdb', '#d8c5ab
 const SHOPS = ['#eeeeea', '#dcdcd6', '#e6e0d4', '#cfd4d6'];
 const ROOFS = ['#b55a3c', '#a54e35', '#c26942', '#9c4a34'];
 
-// The ground's material: the map painted on it, and a fine grain tiled by world position, so it
-// isn't smeared up close. Where the painting is clear, there's a street over it (streets.ts) and the
-// land isn't drawn, whatever its height. The canvas leaves a clear pixel black, so a pixel's colour
-// is taken back out of its share of what's clear. With ?photos, over the tile the map has its
-// orthophoto for, the photo instead (photos.ts), faded into the painting over its last 15 m.
-function groundMaterial(map: THREE.Texture, photo: Photos['ground']): THREE.MeshStandardMaterial {
+// The ground's material. Where the map has classed the ground (cover.ts, braga-map's task 016), each
+// kind of ground with its own photo in the place's colour; elsewhere, the map painted on it with a fine
+// grain tiled by world position, so it isn't smeared up close. Where the painting is clear, there's a
+// street over it (streets.ts) and the land isn't drawn, whatever its height: with the cover on every
+// tile under the land, the painting is only that, a mask (paintGround). The canvas leaves a clear pixel
+// black, so a painted pixel's colour is taken back out of its share of what's clear.
+function groundMaterial(map: THREE.Texture, cover: Cover | null, mask: boolean): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ map, roughness: 0.96, alphaTest: 0.5 });
-  // The photo on the material as well as in its shader, so the textures' memory counts it (stats.ts).
-  if (photo) Object.assign(m, { photo: photo.map });
+  // The cover's textures on the material as well as in its shader, so the textures' memory counts them
+  // (stats.ts).
+  if (cover) Object.assign(m, { coverSlots: cover.slots, coverClasses: cover.classes, coverColour: cover.colour }, Object.fromEntries(cover.surfaces.map((t, k) => [`surf${k}`, t])));
   const grain = tex.grain();
+  const cs = cover ? coverShader(cover) : null;
   m.onBeforeCompile = (sh) => {
     sh.uniforms.grain = { value: grain };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec2 vWorldXZ;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWorldXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
-    if (photo) {
-      sh.uniforms.photo = { value: photo.map };
-      sh.uniforms.photoBox = { value: new THREE.Vector4(photo.box.x0, photo.box.z0, photo.box.x1, photo.box.z1) };
-    }
+    if (cs) Object.assign(sh.uniforms, cs.uniforms);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D grain;\nvarying vec2 vWorldXZ;' + (photo ? '\nuniform sampler2D photo;\nuniform vec4 photoBox;' : ''))
+      .replace('#include <common>', '#include <common>\nuniform sampler2D grain;\nvarying vec2 vWorldXZ;' + (cs ? cs.head : ''))
       .replace(
         '#include <map_fragment>',
-        '#include <map_fragment>\ndiffuseColor.rgb /= max(diffuseColor.a, 0.01);\ndiffuseColor.rgb *= (0.62 + 0.76 * texture2D(grain, vWorldXZ / 5.0).r) * (0.8 + 0.4 * texture2D(grain, vWorldXZ / 41.0).r);' +
-          (photo
-            ? '\nvec2 pq = (vWorldXZ - photoBox.xy) / (photoBox.zw - photoBox.xy);\nfloat pin = clamp(min(min(pq.x, 1.0 - pq.x), min(pq.y, 1.0 - pq.y)) * (photoBox.z - photoBox.x) / 15.0, 0.0, 1.0);\nif (pin > 0.0) diffuseColor.rgb = mix(diffuseColor.rgb, texture2D(photo, pq).rgb, pin);'
-            : ''),
+        (mask
+          ? 'diffuseColor.a = texture2D(map, vMapUv).r;'
+          : '#include <map_fragment>\ndiffuseColor.rgb /= max(diffuseColor.a, 0.01);\ndiffuseColor.rgb *= (0.62 + 0.76 * texture2D(grain, vWorldXZ / 5.0).r) * (0.8 + 0.4 * texture2D(grain, vWorldXZ / 41.0).r);') +
+          (cs ? `${cs.body}\ndiffuseColor.rgb = mix(diffuseColor.rgb, coverRgb, coverIn);` : ''),
       )
       .replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\ndiffuseColor.a = 1.0;');
   };
   return m;
 }
 
+// The orthophoto's colours are made bright to look at, the light ones most: its sunlit asphalt is a light
+// grey (134 of 255), where worn asphalt reflects about 15% of the light, while its woods and lawns are
+// about as dark as they are. As it comes, it reads almost white under the game's light (braga-map's
+// task 016's test). So each colour is taken down by its brightness in linear light, L: times
+// 1 / (1 + TONE × L), which takes asphalt to 62%, paving to under half, a lawn to 75% and a wood to 87%.
+const TONE = 2.55;
+// A wood's canopy from afar: the middle of the broadleaves' greens (trees.ts), in linear light.
+const CANOPY = new THREE.Color().setHSL(0.27, 0.5, 0.235);
+
+// The land's shader's part for the cover: its uniforms, and GLSL that sets `coverIn` (1 on a tile the
+// map has classed, 0 elsewhere) and `coverRgb`, the ground there. Each fragment takes the kinds of the
+// four cells round it, weighed by how near (a 50 cm cell's edge softened over half its width, so a
+// kind's edge isn't a staircase); each kind present, its photo tiled at its size (sampled with the
+// fragment's own gradients, taken where every fragment runs, as a texture's are only right there),
+// divided by its mean and times that kind's colour there.
+function coverShader(c: Cover): { uniforms: Record<string, THREE.IUniform>; head: string; body: string } {
+  const uniforms: Record<string, THREE.IUniform> = {
+    coverSlots: { value: c.slots },
+    coverClasses: { value: c.classes },
+    coverColour: { value: c.colour },
+    coverGrid: { value: new THREE.Vector3(c.tile, c.i0, c.j0) },
+    coverCells: { value: c.cells },
+    surfMean: { value: c.mean },
+    surfScale: { value: c.scale },
+  };
+  c.surfaces.forEach((t, k) => (uniforms[`surf${k}`] = { value: t }));
+  const head = `
+precision highp sampler2DArray;
+uniform sampler2D coverSlots;
+uniform sampler2DArray coverClasses;
+uniform sampler2DArray coverColour;
+uniform vec3 coverGrid;
+uniform float coverCells;
+uniform vec3 surfMean[${c.surfaces.length}];
+uniform float surfScale[${c.surfaces.length}];
+${c.surfaces.map((_, k) => `uniform sampler2D surf${k};`).join('\n')}`;
+  const kinds = Array.from({ length: KINDS }, (_, k) => k);
+  const body = `
+const vec3 HAZE = vec3(0.0130, 0.0284, 0.0513);
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+const vec3 CANOPY = vec3(${[CANOPY.r, CANOPY.g, CANOPY.b].map((v) => v.toFixed(4)).join(', ')});
+vec2 gx = dFdx(vWorldXZ), gy = dFdy(vWorldXZ);
+vec2 tq = floor(vWorldXZ / coverGrid.x);
+ivec2 ts = ivec2(tq - coverGrid.yz), tn = textureSize(coverSlots, 0);
+int slot = all(greaterThanEqual(ts, ivec2(0))) && all(lessThan(ts, tn)) ? int(texelFetch(coverSlots, ts, 0).r * 255.0 + 0.5) - 1 : -1;
+float coverIn = slot >= 0 ? 1.0 : 0.0;
+vec3 coverRgb = vec3(0.0);
+if (slot >= 0) {
+  vec2 cq = vWorldXZ / coverGrid.x - tq;
+  vec2 p = cq * coverCells - 0.5;
+  ivec2 c0 = ivec2(floor(p));
+  vec2 f = smoothstep(0.25, 0.75, fract(p));
+  float w[${KINDS}];
+  for (int k = 0; k < ${KINDS}; k++) w[k] = 0.0;
+  float crown = 0.0;
+  int last = int(coverCells) - 1;
+  for (int t = 0; t < 4; t++) {
+    ivec2 o = ivec2(t & 1, t >> 1);
+    ivec2 cc = clamp(c0 + o, ivec2(0), ivec2(last));
+    int b = int(texelFetch(coverClasses, ivec3(cc.x >> 1, cc.y, slot), 0).r * 255.0 + 0.5);
+    int v = (cc.x & 1) == 0 ? b & 15 : b >> 4;
+    float wt = (o.x == 1 ? f.x : 1.0 - f.x) * (o.y == 1 ? f.y : 1.0 - f.y);
+    w[v & 7] += wt;
+    crown += wt * float(v >> 3);
+  }
+${kinds.map((k) => `  if (w[${k}] > 0.0) coverRgb += w[${k}] * texture(coverColour, vec3(cq, float(slot * ${GRIDS} + ${k}))).rgb${k < c.surfaces.length ? ` * textureGrad(surf${k}, vWorldXZ * surfScale[${k}], gx * surfScale[${k}], gy * surfScale[${k}]).rgb / surfMean[${k}]` : ''};`).join('\n')}
+  // Under a crown the sky is hidden: its shadow is the sun's (look.ts), this is the rest.
+  coverRgb *= 1.0 - 0.15 * crown;
+  // The photo's colour as the ground's: the haze over the city taken out (DGT's photo is never darker
+  // than this, its deepest shadows), and toned down (TONE).
+  coverRgb = max(coverRgb - HAZE, 0.0) / (1.0 - HAZE);
+  coverRgb /= 1.0 + ${TONE.toFixed(2)} * dot(coverRgb, LUMA);
+  // From 40 m off to 160 m, a crown's ground turns into the crown itself: the city draws fewer trees than
+  // stand there, and from a distance a wood is its canopy, not the ground under it. In the green of the
+  // trees it draws (trees.ts), lighter or darker as the photo's canopy is there against a wood's usual.
+  float away = smoothstep(40.0, 160.0, distance(cameraPosition.xz, vWorldXZ));
+  float leaves = dot(texture(coverColour, vec3(cq, float(slot * ${GRIDS} + ${KINDS}))).rgb, LUMA) / 0.08;
+  coverRgb = mix(coverRgb, CANOPY * clamp(leaves, 0.6, 1.4), crown * away);
+}`;
+  return { uniforms, head, body };
+}
+
 // ---- The world ----
 
 // Besides the city, the world as the karts' ground (ground.ts), built for it and kept for driving on.
-// Given a renderer (?photos), the map's photo textures too (photos.ts), as its graphics card takes them.
-export async function buildCity(track: Track, course: Course, quality: Quality, photosFor: THREE.WebGLRenderer | null = null): Promise<World & { eggs: Eggs; drive: WorldGround; race: WorldGround; stageYaw: number; marks: THREE.Object3D }> {
+// What the map says the ground is, each kind with its photo (cover.ts), as the renderer's graphics card
+// takes them; and with `photos` (?photos), the map's photos of facades too (photos.ts).
+export async function buildCity(track: Track, course: Course, quality: Quality, renderer: THREE.WebGLRenderer, look: { photos?: boolean } = {}): Promise<World & { eggs: Eggs; drive: WorldGround; race: WorldGround; stageYaw: number; marks: THREE.Object3D }> {
   const map = await loadWorld(course.box);
-  // Fetched, and turned for the graphics card in workers, while the land is worked out. Only then is
-  // photos.ts (and three.js's KTX2Loader) downloaded at all. If they can't be had, the city goes
-  // without them.
-  const photosLoading = photosFor
+  // Fetched, and turned for the graphics card in workers, while the land is worked out. If they can't be
+  // had, the city goes without them: the ground painted from the map, as it was before task 016.
+  const photosLoading = look.photos
     ? import('./photos.ts')
-        .then((m) => m.loadPhotos(map.photos, photosFor, quality))
+        .then((m) => m.loadPhotos(map.photos, renderer, quality))
         .catch((e: unknown) => (console.warn('The photo textures failed to load:', e), null))
     : null;
+  const coverLoading = loadCover(map, renderer, quality).catch((e: unknown) => (console.warn('What the ground is failed to load:', e), null));
   const B = course.box;
   const group = new THREE.Group();
   const updates: ((t: number) => void)[] = [];
@@ -155,7 +239,11 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   }
   const openTiles = new Set(map.open.tiles);
   const inOpenTiles = (x: number, z: number) => openTiles.has(map.tileAt(x, z));
-  const paint = paintGround(map, B, quality, inOpenTiles, outline, onGround);
+  // With the map's ground cover on every tile under the land, the painting is only a mask (cover.ts
+  // draws the colours); if the cover fails to load, the land is painted after all.
+  const covered = new Set(map.groundCover.map((c) => c.tile));
+  const masked = map.tiles.every((t) => covered.has(t));
+  let paint = paintGround(map, B, quality, inOpenTiles, outline, onGround, masked);
 
   // ---- The land, the map painted on it: cells of 10 m, split into cells of 2 m where they need
   // them (on Low, 20 m and 4 m), as the data has the ground every 2 m in the area. A cell is split
@@ -232,11 +320,12 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
     }
   }
   const landMesh = new Surface(lat, land);
-  const photos = await photosLoading;
+  const [photos, cover] = await Promise.all([photosLoading, coverLoading]);
+  if (masked && !cover) paint = paintGround(map, B, quality, inOpenTiles, outline, onGround);
   {
     const r = lat.r;
     const W = lat.nx * r + 1;
-    const material = groundMaterial(paint, photos?.ground ?? null);
+    const material = groundMaterial(paint, cover, masked && !!cover);
     const lands = new THREE.Group();
     lands.name = 'land';
     // A tile of the land at a time, a kilometre square, so whole tiles out of view are skipped. Its
@@ -504,7 +593,10 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
 // the railway. Where a street or a path is drawn (streets.ts), the canvas is left clear, so the land
 // under it isn't drawn (groundMaterial): every street and path on the ground in the area (`onGround`),
 // but a little in from its edge, where the land meets it.
-function paintGround(map: Braga, B: Box, quality: Quality, inOpenTiles: (x: number, z: number) => boolean, outline: [number, number, number, number][], onGround: { rings: [number, number][][] }[]): THREE.CanvasTexture {
+//
+// With `mask`, where the map has classed every tile under it (cover.ts draws the ground's colours),
+// only where it's clear: a byte a pixel, a quarter of the canvas's memory, and nothing painted.
+function paintGround(map: Braga, B: Box, quality: Quality, inOpenTiles: (x: number, z: number) => boolean, outline: [number, number, number, number][], onGround: { rings: [number, number][][] }[], mask = false): THREE.Texture {
   const res = quality === 'high' ? 1 : quality === 'medium' ? 1.4 : 2; // metres a pixel
   const W = Math.min(4096, Math.round((B.x1 - B.x0) / res));
   const H = Math.min(4096, Math.round((B.z1 - B.z0) / res));
@@ -517,12 +609,71 @@ function paintGround(map: Braga, B: Box, quality: Quality, inOpenTiles: (x: numb
   g.fillStyle = '#76844f';
   g.fillRect(B.x0, B.z0, B.x1 - B.x0, B.z1 - B.z0);
 
-  for (const { kind, pts } of map.areas) {
+  if (!mask) paintLand(g, map, B, inOpenTiles);
+
+  // Where the streets are drawn: every piece on the ground, on a canvas of its own, less a band along
+  // their outline, so the land is left only where it meets them; then cleared from the painting.
+  const m = document.createElement('canvas');
+  m.width = W;
+  m.height = H;
+  const mg = m.getContext('2d')!;
+  mg.setTransform(...toPx);
+  mg.fillStyle = '#000';
+  for (const p of onGround) {
+    mg.beginPath();
+    for (const r of p.rings) r.forEach(([x, z], k) => (k ? mg.lineTo(x, z) : mg.moveTo(x, z)));
+    mg.fill('evenodd');
+  }
+  mg.globalCompositeOperation = 'destination-out';
+  mg.lineWidth = 2 * res * 0.6;
+  mg.lineCap = 'round';
+  mg.beginPath();
+  for (const [ax, az, bx, bz] of outline) {
+    mg.moveTo(ax, az);
+    mg.lineTo(bx, bz);
+  }
+  mg.stroke();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'destination-out';
+  g.drawImage(m, 0, 0);
+  g.globalCompositeOperation = 'source-over';
+
+  if (mask) {
+    // How much of each pixel isn't clear, a byte each; its rows bottom up, as the canvas's are
+    // uploaded (the land's v is 1 at the box's north edge).
+    const rgba = g.getImageData(0, 0, W, H).data;
+    const a = new Uint8Array(W * H);
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) a[(H - 1 - j) * W + i] = rgba[(j * W + i) * 4 + 3];
+    const t = new THREE.DataTexture(a, W, H, THREE.RedFormat, THREE.UnsignedByteType);
+    t.flipY = false;
+    t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.magFilter = THREE.LinearFilter;
+    t.generateMipmaps = true;
+    t.anisotropy = 8;
+    t.needsUpdate = true;
+    return t;
+  }
+  // Taken as the canvas holds it, each colour already times its share of what's clear, so a pixel at
+  // a street's edge is blended rightly with its neighbours (groundMaterial takes the share back out).
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.premultiplyAlpha = true;
+  t.anisotropy = 8;
+  return t;
+}
+
+// The land painted from the map, for paintGround: the parks and woods, water and squares; and beyond
+// the open world's tiles, the streets with their pavements, and the railway.
+function paintLand(g: CanvasRenderingContext2D, map: Braga, B: Box, inOpenTiles: (x: number, z: number) => boolean): void {
+  for (const { kind, pts, holes } of map.areas) {
     g.fillStyle = LAND[kind] ?? LAND.urban;
     g.beginPath();
-    pts.forEach(([x, z], k) => (k ? g.lineTo(x, z) : g.moveTo(x, z)));
-    g.closePath();
-    g.fill();
+    // Its outline, less its holes (a clearing in a wood, braga-map's task 016).
+    for (const r of [pts, ...holes]) {
+      r.forEach(([x, z], k) => (k ? g.lineTo(x, z) : g.moveTo(x, z)));
+      g.closePath();
+    }
+    g.fill('evenodd');
     // Pitches get their white lines, roughly.
     if (kind === 'sport') {
       g.strokeStyle = 'rgba(240,240,235,0.55)';
@@ -558,41 +709,6 @@ function paintGround(map: Braga, B: Box, quality: Quality, inOpenTiles: (x: numb
   for (const { k, pts } of lines) if (k <= 3) stroke(pts, 0.15, 'rgba(240,240,232,0.8)');
   g.setLineDash([]);
   g.restore();
-
-  // Where the streets are drawn: every piece on the ground, on a canvas of its own, less a band along
-  // their outline, so the land is left only where it meets them; then cleared from the painting.
-  const m = document.createElement('canvas');
-  m.width = W;
-  m.height = H;
-  const mg = m.getContext('2d')!;
-  mg.setTransform(...toPx);
-  mg.fillStyle = '#000';
-  for (const p of onGround) {
-    mg.beginPath();
-    for (const r of p.rings) r.forEach(([x, z], k) => (k ? mg.lineTo(x, z) : mg.moveTo(x, z)));
-    mg.fill('evenodd');
-  }
-  mg.globalCompositeOperation = 'destination-out';
-  mg.lineWidth = 2 * res * 0.6;
-  mg.lineCap = 'round';
-  mg.beginPath();
-  for (const [ax, az, bx, bz] of outline) {
-    mg.moveTo(ax, az);
-    mg.lineTo(bx, bz);
-  }
-  mg.stroke();
-  g.setTransform(1, 0, 0, 1, 0, 0);
-  g.globalCompositeOperation = 'destination-out';
-  g.drawImage(m, 0, 0);
-  g.globalCompositeOperation = 'source-over';
-
-  // Taken as the canvas holds it, each colour already times its share of what's clear, so a pixel at
-  // a street's edge is blended rightly with its neighbours (groundMaterial takes the share back out).
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.premultiplyAlpha = true;
-  t.anisotropy = 8;
-  return t;
 }
 
 // ---- The Rio Este's bridges ----

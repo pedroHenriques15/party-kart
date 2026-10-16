@@ -64,7 +64,10 @@ const sizeOf = (v) => {
 // A dev server of our own on a free port, never one already running: Vite doesn't watch
 // node_modules, so one started before braga-map was last installed still serves the old map.
 async function devServer() {
-  const s = await createServer({ root: ROOT, logLevel: 'error', server: { port: 0 } });
+  // braga-map's folder too, where it's linked from its own (npm install ../braga-map) rather than
+  // installed: its textures are files the page fetches, which Vite serves only from where it's allowed.
+  const map = fs.realpathSync(path.join(ROOT, 'node_modules', 'braga-map'));
+  const s = await createServer({ root: ROOT, logLevel: 'error', server: { port: 0, fs: { allow: [ROOT, map] } } });
   await s.listen();
   return { url: s.resolvedUrls.local[0], close: () => s.close() };
 }

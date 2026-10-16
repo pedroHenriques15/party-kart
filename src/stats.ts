@@ -7,8 +7,9 @@ import type { Quality } from './render/look.ts';
 
 // About how many bytes of the graphics card's memory the scene's textures take, once everything in
 // it has been drawn: each texture a material uses, the sky's reflections and the sun's shadows. Four
-// bytes a pixel (eight in half floats), and a third more where there are mipmaps; a compressed one
-// (the map's photos, render/photos.ts) what its levels hold, as this graphics card takes them. (The
+// bytes a pixel (eight in half floats; one where it's a single channel, as the ground's mask and kinds
+// are), every layer of an array, and a third more where there are mipmaps; a compressed one (the map's
+// photos, render/photos.ts and cover.ts) what its levels hold, as this graphics card takes them. (The
 // ground's grain, added in its shader, isn't counted: it's 256 pixels square.)
 export function textureBytes(scene: THREE.Scene): number {
   const seen = new Set<THREE.Texture>();
@@ -29,11 +30,13 @@ export function textureBytes(scene: THREE.Scene): number {
       for (const m of (t as THREE.CompressedTexture).mipmaps ?? []) bytes += (m as { data: ArrayBufferView }).data.byteLength;
       continue;
     }
-    const img = t.image as { width?: number; height?: number } | null;
+    const img = t.image as { width?: number; height?: number; depth?: number } | null;
     if (!img?.width || !img.height) continue;
-    const px = t.type === THREE.HalfFloatType ? 8 : t.type === THREE.FloatType ? 16 : 4;
+    // A byte a channel (two in half floats, four in floats), and an array's every layer.
+    const channels = t.format === THREE.RedFormat ? 1 : t.format === THREE.RGFormat ? 2 : 4;
+    const px = channels * (t.type === THREE.HalfFloatType ? 2 : t.type === THREE.FloatType ? 4 : 1);
     const mips = t.generateMipmaps && t.minFilter !== THREE.LinearFilter && t.minFilter !== THREE.NearestFilter ? 4 / 3 : 1;
-    bytes += img.width * img.height * px * mips;
+    bytes += img.width * img.height * (img.depth ?? 1) * px * mips;
   }
   return bytes;
 }

@@ -45,8 +45,8 @@ const RECORD = Number(new URLSearchParams(location.search).get('record')) || 0;
 const SCENERY = new URLSearchParams(location.search).has('scenery');
 // ?stats: what the game costs on this screen, in a corner, for measuring it on a phone.
 const STATS = new URLSearchParams(location.search).has('stats');
-// ?photos: the map's photo textures too (render/photos.ts), the ground of one tile and ten facades,
-// until braga-map's tasks 016 and 017 roll them out.
+// ?photos: the map's photos of ten facades too (render/photos.ts), until braga-map's task 017 rolls
+// them out.
 const PHOTOS = new URLSearchParams(location.search).has('photos');
 if (SCENERY) {
   let seed = 1;
@@ -77,7 +77,7 @@ let quality = stored('pk-quality', PHONE ? (SMALL ? 'low' : 'medium') : 'high') 
 // under the HUD. Say so, and open a step lower the next time.
 canvas.addEventListener('webglcontextlost', lostGraphics, { once: true });
 const building = performance.now();
-const world = await buildCity(track, amigos, quality, PHOTOS ? renderer : null);
+const world = await buildCity(track, amigos, quality, renderer, { photos: PHOTOS });
 // What's round every part of the city, for its sound: from the map the karts drive on, once the city
 // is up and the game is running, so it never holds the page.
 if (!SCENERY) setTimeout(() => cityIs(ambienceOf(world.drive.d.world, amigos)), 1500);
@@ -477,18 +477,19 @@ function howTo(): HTMLElement {
           .map((i) => `${i.icon} ${i.name}`)
           .join(' · '),
       ),
-      h('li', {}, h('b', {}, 'Braga'), ' como ela é: as ruas, os prédios e os montes, e o Tourigalo. A Volta dos Amigos são 9 km dela, e em casa de cada amigo há uma surpresa. Mapa: © OpenStreetMap contributors (ODbL). Relevo e ortofotos: informação geográfica cedida pela Direção-Geral do Território. Horizonte: Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers. Fotografias das fachadas: ' + photoCredits() + '.'),
+      h('li', {}, h('b', {}, 'Braga'), ' como ela é: as ruas, os prédios e os montes, e o Tourigalo. A Volta dos Amigos são 9 km dela, e em casa de cada amigo há uma surpresa. Mapa: © OpenStreetMap contributors (ODbL). Relevo e ortofotos: informação geográfica cedida pela Direção-Geral do Território. Horizonte: Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers. Fotografias: ' + photoCredits() + '.'),
     ),
   );
 }
 
-// The map's photos' credits (render/photos.ts, braga-map's task 007), but the DGT's, which the line
-// gives with the relief: Mapillary's in its own words, each source with its licence and the authors
-// of the photos used. The game publishes every photo texture, drawn or not.
+// The map's photos' credits (render/photos.ts and cover.ts, braga-map's tasks 007 and 016), but the
+// DGT's, which the line gives with the relief: each source with what it photographs, Mapillary's in its
+// own words, its licence and the authors of the photos used. The game publishes every photo texture,
+// drawn or not.
 function photoCredits(): string {
   return bragaMap()
     .photoCredits.filter((c) => c.source !== 'DGT')
-    .map((c) => `${c.source === 'Mapillary' ? '© Mapillary contributors' : c.source} (${c.authors.join(', ')}), ${c.licence}`)
+    .map((c) => `${c.kinds.map((k) => (k === 'facade' ? 'das fachadas' : 'do chão')).join(' e ')}, ${c.source === 'Mapillary' ? '© Mapillary contributors' : c.source} (${c.authors.join(', ')}), ${c.licence}`)
     .join('; ');
 }
 

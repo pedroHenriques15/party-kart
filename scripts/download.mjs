@@ -31,7 +31,16 @@ try {
       r
         .body()
         .catch(() => null)
-        .then((body) => body && files.push({ name: new URL(r.url()).pathname.split('/').pop() || 'index.html', raw: body.length, gz: zlib.gzipSync(body).length })),
+        // A body the page has already taken (an image it decoded itself) can come back empty: then its
+        // length, as it is gzipped too.
+        .then(async (body) => {
+          const name = new URL(r.url()).pathname.split('/').pop() || 'index.html';
+          if (body?.length) files.push({ name, raw: body.length, gz: zlib.gzipSync(body).length });
+          else {
+            const n = Number(await r.headerValue('content-length').catch(() => 0));
+            if (n) files.push({ name, raw: n, gz: n });
+          }
+        }),
     );
   });
   const started = Date.now();

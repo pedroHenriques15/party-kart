@@ -1,11 +1,11 @@
-// The map's photo textures (braga-map's task 007, its decision 030): the 2025 orthophoto over a tile
-// of the ground, and photos of facades straightened onto their walls. Drawn only with ?photos for
-// now; braga-map's tasks 016 (the ground) and 017 (the facades) roll them out. They're KTX2 files,
+// The map's photo textures (braga-map's task 007, its decision 030): photos of facades straightened onto
+// their walls, drawn only with ?photos until braga-map's task 017 rolls them out; and the kinds of
+// ground's (its task 016), which cover.ts loads with this file's ktx2Loader. They're KTX2 files,
 // compressed with Basis Universal's ETC1S, which three.js's KTX2Loader turns into what this graphics
 // card takes (ETC1 on a phone, BC7 on a PC) in its workers, and which stays compressed on the card:
 // on a phone an eighth of the memory a WebP or a canvas takes. Basis's transcoder is fetched once, the first
 // time (about 0.6 MB, 0.26 gzipped), from the game's own assets.
-import type { FacadePhoto, GroundPhoto, PhotoTexture } from 'braga-map';
+import type { FacadePhoto, PhotoTexture } from 'braga-map';
 import * as THREE from 'three';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import transcoderJs from 'three/addons/libs/basis/basis_transcoder.js?url';
@@ -16,20 +16,24 @@ import type { Quality } from './look.ts';
 const PROUD = 0.04;
 
 export interface Photos {
-  // The ground's photo and the box it covers (only one tile's for now): for the land's shader.
-  ground: { map: THREE.Texture; box: GroundPhoto['box'] } | null;
   // The facades, a mesh each.
   facades: THREE.Group;
   dispose(): void;
 }
 
-// Loads the photo textures on the tiles loaded, at the graphics level asked for, and makes their
-// facades. dispose frees them, for when a tile goes (braga-map's task 038: none does yet).
-export async function loadPhotos(photos: PhotoTexture[], renderer: THREE.WebGLRenderer, quality: Quality): Promise<Photos> {
+// A loader of the map's KTX2 files, as this graphics card takes them (cover.ts uses it too). Dispose of
+// it once they're loaded: it keeps its workers.
+export function ktx2Loader(renderer: THREE.WebGLRenderer): KTX2Loader {
   // KTX2Loader asks for the transcoder by name; the bundler has given each file a name of its own.
   const manager = new THREE.LoadingManager();
   manager.setURLModifier((url) => (url.endsWith('basis_transcoder.js') ? transcoderJs : url.endsWith('basis_transcoder.wasm') ? transcoderWasm : url));
-  const loader = new KTX2Loader(manager).setTranscoderPath('').detectSupport(renderer);
+  return new KTX2Loader(manager).setTranscoderPath('').detectSupport(renderer);
+}
+
+// Loads the photo textures on the tiles loaded, at the graphics level asked for, and makes their
+// facades. dispose frees them, for when a tile goes (braga-map's task 038: none does yet).
+export async function loadPhotos(photos: PhotoTexture[], renderer: THREE.WebGLRenderer, quality: Quality): Promise<Photos> {
+  const loader = ktx2Loader(renderer);
   const textures: THREE.Texture[] = [];
   const load = async (p: PhotoTexture) => {
     const t = await loader.loadAsync(p.files[quality].url);
@@ -37,14 +41,12 @@ export async function loadPhotos(photos: PhotoTexture[], renderer: THREE.WebGLRe
     textures.push(t);
     return t;
   };
-  const grounds = photos.filter((p): p is GroundPhoto => p.kind === 'ground');
-  const [groundMap, ...walls] = await Promise.all([grounds.length ? load(grounds[0]) : null, ...photos.filter((p): p is FacadePhoto => p.kind === 'facade').map(async (p) => ({ p, map: await load(p) }))]);
+  const walls = await Promise.all(photos.filter((p): p is FacadePhoto => p.kind === 'facade').map(async (p) => ({ p, map: await load(p) })));
   loader.dispose();
   const facades = new THREE.Group();
   facades.name = 'photo facades';
   for (const { p, map } of walls) facades.add(facade(p, map));
   return {
-    ground: groundMap ? { map: groundMap, box: grounds[0].box } : null,
     facades,
     dispose() {
       for (const t of textures) t.dispose();

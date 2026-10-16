@@ -103,13 +103,13 @@ export function ambienceOf(world: World, course: Course): Ambience {
     lines.add(Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs), { w, pts: l.pts });
   }
   // Later areas are painted over earlier ones, so the last that holds a point is what's there.
-  const areas = buckets<{ k: number; bed: keyof Omit<Surround, 'traffic'>; pts: [number, number][] }>(100);
+  const areas = buckets<{ k: number; bed: keyof Omit<Surround, 'traffic'>; pts: [number, number][]; holes: [number, number][][] }>(100);
   world.areas.forEach((a, k) => {
     const bed = BED[a.kind];
     if (!bed) return;
     const xs = a.pts.map((p) => p[0]);
     const zs = a.pts.map((p) => p[1]);
-    areas.add(Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs), { k, bed, pts: a.pts });
+    areas.add(Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs), { k, bed, pts: a.pts, holes: a.holes });
   });
   const trees = buckets<{ x: number; z: number }>(50);
   for (const t of world.trees) trees.add(t.x, t.z, t.x, t.z, t);
@@ -142,7 +142,7 @@ export function ambienceOf(world: World, course: Course): Ambience {
         const w = 1 - r / 200;
         all += w;
         let on: (typeof near)[number] | null = null;
-        for (const ar of near) if ((!on || ar.k > on.k) && inside(x + a, z + b, ar.pts)) on = ar;
+        for (const ar of near) if ((!on || ar.k > on.k) && inside(x + a, z + b, ar.pts) && !ar.holes.some((h) => inside(x + a, z + b, h))) on = ar;
         if (on) s[on.bed] += w;
         else if ([...houses.near(x + a, z + b, 30)].length >= 2) s.town += w;
         else s.woods += w * 0.5;

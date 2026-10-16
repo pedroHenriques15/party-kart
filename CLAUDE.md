@@ -80,10 +80,12 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   race builds it, still, and the same every time (its textures' noise is seeded). The graphics are
   whatever `localStorage['pk-quality']` says. `window.__kart` has the build time, draw calls,
   triangles, textures and geometries, and `__kart.timeFrames(60)` the milliseconds a frame takes.
-- `?photos` draws the map's facades too (`render/photos.ts`, braga-map's task 007): ten of them,
-  until braga-map's task 017 rolls them out. Without it the game never fetches them. The ground's
-  photos are drawn always (braga-map's task 016), so three.js's KTX2Loader and Basis's transcoder
-  come with the city.
+- The buildings' facades are the map's (braga-map's task 017, `render/facades.ts`): each building's
+  kind of facade, drawn in its real proportions, its colours, its walls' material, its ground floor
+  along a street, its balconies and its shutters, as a session saw it in its photos or as the map
+  guesses it. The shops' signs are the map's too (`render/signs.ts`). The ten facades photographed
+  well enough for a texture (`render/photos.ts`) are drawn always, as the ground's photos are (its
+  task 016), each in its building's colour.
 - `?stats` shows what the game costs in a corner, for measuring it on a phone (`src/stats.ts`): the
   frame rate and the worst second (of the race, or round the city since the last; after its first two), the graphics level, draw calls,
   triangles, the textures' memory, how long the city took to build and the page to be ready, what
@@ -95,7 +97,7 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   by git): a PNG each, the shape of its photo and 720 pixels high, `stats.json` with each one's cost
   (draw calls, triangles, textures' memory, build and frame time), and `index.html` setting
   each beside its real photo (`../braga-map/.cache/refs/`) and the round before's. Name viewpoints
-  after the label to shoot only those, and add `--photos` to shoot them with `?photos`. It starts its own dev server, as one started before braga-map
+  after the label to shoot only those. It starts its own dev server, as one started before braga-map
   was last installed still serves the old map; restart yours after `npm install` too. About 2 minutes.
 - The touch controls show on a touch screen: Chrome's device toolbar, or Playwright with
   `hasTouch` and `isMobile`. Drive them with real touches (CDP's `Input.dispatchTouchEvent`), not

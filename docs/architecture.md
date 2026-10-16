@@ -375,12 +375,30 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     isn't darkened. A fine grain, tiled by world position (`onBeforeCompile`), keeps it from looking
     smeared up close.
   - Buildings are their footprints from the map, standing on the ground at their lowest corner
-    (`y`, from the map), so a row of houses steps down a hill, and raised to their floors: walls
-    textured a floor and two windows at a time and tinted by vertex colour, a ground floor of
-    doors and shops on flats, and hipped or gabled roofs over each footprint's rectangle where it
-    nearly fills it (flat otherwise; cut to it when the building's been cut at the kerb). Churches
-    get a tower. They're six meshes a square kilometre, one per material, so the sun's shadows
-    draw only the squares near the camera.
+    (`y`, from the map), so a row of houses steps down a hill, and raised to their floors, with
+    hipped or gabled roofs over each footprint's rectangle where it nearly fills it (flat otherwise;
+    cut to it when the building's been cut at the kerb). Their walls are their facades as the map
+    says they are (braga-map's task 017, `render/facades.ts`): the kind's bay (a window and the wall
+    round it, a storey high, drawn on a canvas in metres in the kind's proportions,
+    `map().facadeTypes`) repeated along each wall and up it, the ground floor below the first
+    storey's line as it is along a street (shops, garages, an arcade, glass; else the storeys' own,
+    or plain wall behind a building with shops), over the walls' material tiled at its real size
+    (render, small tiles, mosaic, azulejos, granite, stone slabs, brick, concrete, blocks, glass,
+    metal sheets, panels); the bay's alpha says what each pixel is, so one shader tints the wall with
+    the building's colour, the ground floor with its base's and the roller shutters with theirs. The
+    walls (and the photo facades) take a third of the sky's reflections everything else takes
+    (`WALL_SKY`, in their shader: three.js gives a material the scene's environment at the scene's
+    intensity whatever its own says), as the hemisphere light lights them from the sky already and the
+    two together washed every colour to a bluish white (a teal (58, 118, 118) came out (189, 228,
+    229)). A
+    wall faces a street if one of the map's streets is within 7 m of a point 4 m out from its middle.
+    The balconies are geometry, on the walls along a street within 60 m of the open world (High; in it
+    on Medium, none on Low): a slab
+    and a railing (bars on a clear texture) under every other bay's window, the wall's length, glazed
+    in, or a railing across the window. Churches the LiDAR didn't see get a tower. They're four meshes
+    a square kilometre (walls, roofs, railings), so the sun's shadows draw only the squares near the
+    camera. The shops' signs (`render/signs.ts`, the map's `world.signs`) are a fascia in the sign's
+    colour and the name in letters cut from one canvas of every letter they use: two meshes.
   - Then the trees (`plantTrees`, plain crowns in 800 m tiles, plainer still on Low), the Rio Este,
     the decks' pillars and abutments and the tunnels' mouths (`levels.ts`), brown signs to
     landmarks on the pavement, the granite plinth with Braga's arms at the start (free roam's first
@@ -461,8 +479,10 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   compressed on the card: half a byte a pixel on a phone, a byte on a PC, where a canvas or a WebP
   takes four. The kinds of ground's photos are drawn always (braga-map's task 016, above), so the
   loader and Basis's transcoder (0.56 MB, 0.26 MB gzipped) come with the city. The facades are
-  drawn only with `?photos`, each as quads 4 cm in front of its wall, a mesh each, and never
-  fetched without it.
+  drawn always (braga-map's task 017), each as quads 4 cm in front of its wall, a mesh each, in its
+  building's colour: the photo times that colour over the wall's colour in the photo (each in linear
+  light, as the map gives them), so a photo at dusk or through a tinted windscreen is as bright and
+  as white as the walls round it.
 - **Karts** (`render/drivers.ts`): each `Driver` is one of the friends: a body (`kart`, `trolley`,
   `banger`, `chair`), colours and a second paint (`alt`, for a bot repeating them), extras (on the
   driver and on the car), a trail and a horn. `buildKart` builds the model. Its
@@ -626,6 +646,17 @@ High is 7.24 MB gzipped (13.25 MB as is), about 4.6 MB more: the ground's classe
 the open world's area at Low's 2 m), its colours 0.95, the six photos 1.3, Basis's transcoder 0.25;
 about 2.4 MB more on Medium and 1.2 on Low, from the files' sizes. Loading only the tiles near the
 player would bring it down (braga-map's task 038).
+braga-map's facades (its task 017, on braga-map 1.17.0; `shots/2026-10-16-task017/` against
+`after016`, the median of the 29 viewpoints): draw calls 113 → 126 on High and Medium, 89 → 95 on
+Low (the ten photo facades where they're in view, a mesh each, now drawn for everyone; the signs' two
+meshes; the railings' one a square kilometre); triangles 1.37 → 1.66 M on High, 1.10 → 1.37 on
+Medium, 0.74 → 0.76 on Low (the balconies; the most, at `alameda-fujacal`, 2.46 → 2.85 M);
+textures 118 → 132 MB on High, 68 → 80 on Medium, 42 → 47 on Low (the kit's two arrays, 5.6 and 4.2
+MB with their mipmaps, a quarter of that on Low, and the ten photos). A frame takes 0.4–2.7 ms on
+every level. The city builds in 6.6 s on High at the median against 4.2 (4.4 against 3.8 on Medium,
+3.7 against 3.9 on Low): the buildings 0.8 s of it, the kit 0.1, the photos' wait 0.5. The download
+on High is 7.96 MB gzipped (14.25 as is), 0.72 MB more: the facades' photos, now fetched always,
+and the tiles 0.15 MB more gzipped over the open world's 53 (each building's facade, the signs).
 
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),

@@ -1,5 +1,5 @@
 // The map's photo textures (braga-map's task 007, its decision 030): photos of facades straightened onto
-// their walls, drawn only with ?photos until braga-map's task 017 rolls them out; and the kinds of
+// their walls, in their buildings' own colour and the game's light (its task 017); and the kinds of
 // ground's (its task 016), which cover.ts loads with this file's ktx2Loader. They're KTX2 files,
 // compressed with Basis Universal's ETC1S, which three.js's KTX2Loader turns into what this graphics
 // card takes (ETC1 on a phone, BC7 on a PC) in its workers, and which stays compressed on the card:
@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import transcoderJs from 'three/addons/libs/basis/basis_transcoder.js?url';
 import transcoderWasm from 'three/addons/libs/basis/basis_transcoder.wasm?url';
+import { lessSky, linearOf } from './facades.ts';
 import type { Quality } from './look.ts';
 
 // How far in front of its wall a facade stands, so it never fights the wall for the same pixels.
@@ -31,8 +32,9 @@ export function ktx2Loader(renderer: THREE.WebGLRenderer): KTX2Loader {
 }
 
 // Loads the photo textures on the tiles loaded, at the graphics level asked for, and makes their
-// facades. dispose frees them, for when a tile goes (braga-map's task 038: none does yet).
-export async function loadPhotos(photos: PhotoTexture[], renderer: THREE.WebGLRenderer, quality: Quality): Promise<Photos> {
+// facades, each in its building's colour (`colours`, the map's facade colours). dispose frees them, for
+// when a tile goes (braga-map's task 038: none does yet).
+export async function loadPhotos(photos: PhotoTexture[], colours: Record<string, [number, number, number]>, renderer: THREE.WebGLRenderer, quality: Quality): Promise<Photos> {
   const loader = ktx2Loader(renderer);
   const textures: THREE.Texture[] = [];
   const load = async (p: PhotoTexture) => {
@@ -45,7 +47,7 @@ export async function loadPhotos(photos: PhotoTexture[], renderer: THREE.WebGLRe
   loader.dispose();
   const facades = new THREE.Group();
   facades.name = 'photo facades';
-  for (const { p, map } of walls) facades.add(facade(p, map));
+  for (const { p, map } of walls) facades.add(facade(p, map, colours[p.colour]));
   return {
     facades,
     dispose() {
@@ -62,8 +64,17 @@ export async function loadPhotos(photos: PhotoTexture[], renderer: THREE.WebGLRe
 }
 
 // A facade's quads: each step of its wall that faces the photo, its part of the texture across it
-// (by where it falls along the wall's chord), from the photo's bottom to its top, a little proud.
-function facade(p: FacadePhoto, map: THREE.Texture): THREE.Mesh {
+// (by where it falls along the wall's chord), from the photo's bottom to its top, a little proud. Its
+// colour is the wall's colour in the photo taken out and its building's put in (in linear light, each
+// channel times at most 4 and at least a quarter), so a photo at dusk or from a tinted windscreen is
+// as bright and as white as the walls round it.
+function facade(p: FacadePhoto, map: THREE.Texture, colour: [number, number, number] | undefined): THREE.Mesh {
+  const tint = new THREE.Color(1, 1, 1);
+  if (colour) {
+    const want = linearOf(colour);
+    const has = linearOf(p.wallColour);
+    tint.setRGB(...([0, 1, 2].map((c) => Math.min(4, Math.max(0.25, want[c] / Math.max(1e-3, has[c])))) as [number, number, number]), THREE.LinearSRGBColorSpace);
+  }
   const [ax, az] = p.wall[0];
   const [bx, bz] = p.wall[p.wall.length - 1];
   const L = Math.hypot(bx - ax, bz - az);
@@ -106,7 +117,10 @@ function facade(p: FacadePhoto, map: THREE.Texture): THREE.Mesh {
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   geo.setIndex(idx);
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map, roughness: 0.9, side: THREE.FrontSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  // As little of the sky's reflections as the walls round it take (facades.ts).
+  const material = new THREE.MeshStandardMaterial({ map, color: tint, roughness: 0.9, side: THREE.FrontSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  material.onBeforeCompile = (sh) => lessSky(sh);
+  const mesh = new THREE.Mesh(geo, material);
   mesh.name = p.id;
   mesh.receiveShadow = true;
   return mesh;

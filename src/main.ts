@@ -45,9 +45,6 @@ const RECORD = Number(new URLSearchParams(location.search).get('record')) || 0;
 const SCENERY = new URLSearchParams(location.search).has('scenery');
 // ?stats: what the game costs on this screen, in a corner, for measuring it on a phone.
 const STATS = new URLSearchParams(location.search).has('stats');
-// ?photos: the map's photos of ten facades too (render/photos.ts), until braga-map's task 017 rolls
-// them out.
-const PHOTOS = new URLSearchParams(location.search).has('photos');
 if (SCENERY) {
   let seed = 1;
   Math.random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -77,7 +74,7 @@ let quality = stored('pk-quality', PHONE ? (SMALL ? 'low' : 'medium') : 'high') 
 // under the HUD. Say so, and open a step lower the next time.
 canvas.addEventListener('webglcontextlost', lostGraphics, { once: true });
 const building = performance.now();
-const world = await buildCity(track, amigos, quality, renderer, { photos: PHOTOS });
+const world = await buildCity(track, amigos, quality, renderer);
 // What's round every part of the city, for its sound: from the map the karts drive on, once the city
 // is up and the game is running, so it never holds the page.
 if (!SCENERY) setTimeout(() => cityIs(ambienceOf(world.drive.d.world, amigos)), 1500);

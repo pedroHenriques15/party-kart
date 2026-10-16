@@ -6,7 +6,7 @@
 // carriageway; trees; the Rio Este and its bridges; the decks and tunnels (levels.ts); the granite
 // plinth with Braga's arms at the start; the sights (sights.ts); and the friends' easter eggs on their
 // houses (eggs.ts). What only the race adds to the streets is road.ts.
-import { heightOn, loadWorld, type Box, type Building as MapBuilding, type Track as Course, type World as Braga } from 'braga-map';
+import { heightOn, loadWorld, type Box, type Building as MapBuilding, type FacadeProportions, type Track as Course, type World as Braga } from 'braga-map';
 import * as THREE from 'three';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
 import { Rings, trimmed, worldGround, type WorldGround } from '../world/ground.ts';
@@ -22,7 +22,9 @@ import { GRIDS, KINDS, loadCover, type Cover } from './cover.ts';
 import { raceMarks } from './road.ts';
 import { clipConvex, convexPieces, faces, shapeOf, wallTop } from './roofs.ts';
 import { buildStreets, groundPaths, streetEdges, type Built } from './streets.ts';
+import { baysOf, facadeKit, layerOfGround, layerOfType, linearOf, MATERIALS, storeys, Walls, type Kit, type WallLayout } from './facades.ts';
 import * as tex from './textures.ts';
+import { buildSigns } from './signs.ts';
 import { plantTrees, type Tree } from './trees.ts';
 import type { World } from './world.ts';
 
@@ -72,9 +74,6 @@ const LAND: Record<string, string> = {
 // Street classes as the map numbers them: whether they have pavements. (Each street comes
 // with its own width.)
 const PAVED = [true, false, true, true, true, true, false, false, false, false];
-// Facade colours, which tint the near-white wall textures.
-const FACADES = ['#f2ede3', '#ecd7a2', '#e0b874', '#e0ad9c', '#b9cfdb', '#d8c5ab', '#efe0bf', '#bfd3bb'];
-const SHOPS = ['#eeeeea', '#dcdcd6', '#e6e0d4', '#cfd4d6'];
 const ROOFS = ['#b55a3c', '#a54e35', '#c26942', '#9c4a34'];
 
 // The ground's material. Where the map has classed the ground (cover.ts, braga-map's task 016), each
@@ -196,16 +195,15 @@ ${kinds.map((k) => `  if (w[${k}] > 0.0) coverRgb += w[${k}] * texture(coverColo
 
 // Besides the city, the world as the karts' ground (ground.ts), built for it and kept for driving on.
 // What the map says the ground is, each kind with its photo (cover.ts), as the renderer's graphics card
-// takes them; and with `photos` (?photos), the map's photos of facades too (photos.ts).
-export async function buildCity(track: Track, course: Course, quality: Quality, renderer: THREE.WebGLRenderer, look: { photos?: boolean } = {}): Promise<World & { eggs: Eggs; drive: WorldGround; race: WorldGround; stageYaw: number; marks: THREE.Object3D }> {
+// takes them; and the map's photos of facades (photos.ts).
+export async function buildCity(track: Track, course: Course, quality: Quality, renderer: THREE.WebGLRenderer): Promise<World & { eggs: Eggs; drive: WorldGround; race: WorldGround; stageYaw: number; marks: THREE.Object3D }> {
   const map = await loadWorld(course.box);
   // Fetched, and turned for the graphics card in workers, while the land is worked out. If they can't be
-  // had, the city goes without them: the ground painted from the map, as it was before task 016.
-  const photosLoading = look.photos
-    ? import('./photos.ts')
-        .then((m) => m.loadPhotos(map.photos, renderer, quality))
-        .catch((e: unknown) => (console.warn('The photo textures failed to load:', e), null))
-    : null;
+  // had, the city goes without them: the ground painted from the map, as it was before task 016, and the
+  // facades in their kits alone.
+  const photosLoading = import('./photos.ts')
+    .then((m) => m.loadPhotos(map.photos, map.facadeColours, renderer, quality))
+    .catch((e: unknown) => (console.warn('The photo textures failed to load:', e), null));
   const coverLoading = loadCover(map, renderer, quality).catch((e: unknown) => (console.warn('What the ground is failed to load:', e), null));
   const B = course.box;
   const group = new THREE.Group();
@@ -520,8 +518,10 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   // Those left out aren't walls for the karts either.
   const kept = new Set(list);
   for (const b of all) if (!kept.has(b)) wg.unwall(b.pts);
-  group.add(Object.assign(buildBuildings(list), { name: 'buildings' }));
+  group.add(Object.assign(buildBuildings(list, map, facadeKit(map.facadeTypes, quality), quality), { name: 'buildings' }));
   if (photos) group.add(photos.facades);
+  // The shops' signs, on the buildings drawn.
+  group.add(buildSigns(map.signs.filter((s) => near(s.from[0], s.from[1]) <= 300 && !keepOut.some((k) => Math.hypot(s.from[0] - k.x, s.from[1] - k.z) < k.r)), map.facadeColours));
 
   // ---- Trees, from the map and filling its parks and woods. In the area every one the karts can
   // hit (all but those on a carriageway, ground.ts); round it the map's own anywhere in the box and
@@ -943,15 +943,120 @@ function seenUpClose([r, g, b]: [number, number, number]): [number, number, numb
   return [r, g, b].map((c) => Math.max(0, Math.min(255, 0.85 * (l + (c - l) * k))) / 255) as [number, number, number];
 }
 
+// Whether the wall from a to b, facing out (nx, nz), faces a street: one of the map's streets within 7 m
+// of the point 4 m in front of its middle, past the street's half width.
+function streetFront(map: Braga): (ax: number, az: number, bx: number, bz: number, nx: number, nz: number) => boolean {
+  const C = 40;
+  const cells = new Map<string, [number, number, number, number, number][]>();
+  for (const l of map.lines) {
+    if (l.level === 'tunnel' || l.kind > 7) continue;
+    for (let k = 1; k < l.pts.length; k++) {
+      const [ax, az] = l.pts[k - 1];
+      const [bx, bz] = l.pts[k];
+      const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / C));
+      const seen = new Set<string>();
+      for (let f = 0; f <= n; f++) {
+        const key = `${Math.floor((ax + ((bx - ax) * f) / n) / C)},${Math.floor((az + ((bz - az) * f) / n) / C)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (!cells.has(key)) cells.set(key, []);
+        cells.get(key)!.push([ax, az, bx, bz, l.w / 2]);
+      }
+    }
+  }
+  return (ax, az, bx, bz, nx, nz) => {
+    const x = (ax + bx) / 2 + nx * 4;
+    const z = (az + bz) / 2 + nz * 4;
+    const i = Math.floor(x / C);
+    const j = Math.floor(z / C);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const [sx, sz, ex, ez, hw] of cells.get(`${i + a},${j + b}`) ?? []) if (segDist(x, z, sx, sz, ex, ez) - hw < 7) return true;
+    return false;
+  };
+}
+
+// A quad into a batch, facing n whichever way round its corners come.
+function faceQuad(batch: Batch, p: THREE.Vector3[], uv: [number, number][], n: [number, number, number], color: THREE.Color): void {
+  const c = new THREE.Vector3().subVectors(p[1], p[0]).cross(new THREE.Vector3().subVectors(p[2], p[0]));
+  if (c.x * n[0] + c.y * n[1] + c.z * n[2] >= 0) batch.quad(p[0], p[1], p[2], p[3], uv[0], uv[1], uv[2], uv[3], color);
+  else batch.quad(p[0], p[3], p[2], p[1], uv[0], uv[3], uv[2], uv[1], color);
+}
+
+// A wall's balconies, as its facade says they are (braga-map's task 017), on each storey over the
+// ground floor: projecting, a slab under every other bay's window (every bay's on a wall of two or
+// fewer) with a railing round it; continuous, a slab the wall's length; enclosed, a slab glazed in
+// up to the next floor; French, a railing across the window. Slabs in the walls' colour (into the
+// flat roofs' batch, whose texture is concrete's grain), railings dark on an old house and a house,
+// light aluminium on a block.
+function balconiesOn(f: MapBuilding['facade'], P: FacadeProportions, w: WallLayout, a: [number, number], d: [number, number], n: [number, number], L: number, foot: number, into: { flat: Batch; rails: Batch }, colour: [number, number, number]): void {
+  const kind = f.balconies;
+  if (kind === 'none' || kind === 'recessed' || !w.bays) return;
+  const wallCol = new THREE.Color().setRGB(colour[0] / 255, colour[1] / 255, colour[2] / 255, THREE.SRGBColorSpace);
+  const rail = new THREE.Color(f.type === 'old-house' || f.type === 'house' ? '#2a2a2a' : '#d6d6d2');
+  const glass = new THREE.Color('#4c5d6b');
+  const V = (s: number, out: number, y: number) => new THREE.Vector3(a[0] + d[0] * s + n[0] * out, y, a[1] + d[1] * s + n[1] * out);
+  const nOut: [number, number, number] = [n[0], 0, n[1]];
+  const along: [number, number, number] = [d[0], 0, d[1]];
+  const back: [number, number, number] = [-d[0], 0, -d[1]];
+  // A slab from s0 to s1 along the wall, out to `depth`, from y0 to y1, as it's seen from the street: its
+  // front and its underside (its top, behind the railing, and its thin ends aren't drawn); with `box`,
+  // its ends too (a glazed balcony's).
+  const slab = (s0: number, s1: number, depth: number, y0: number, y1: number, col: THREE.Color, batch: Batch, box = false) => {
+    const uv = (x: number, y: number): [number, number] => [x / 3, y / 3];
+    faceQuad(batch, [V(s0, 0, y0), V(s1, 0, y0), V(s1, depth, y0), V(s0, depth, y0)], [uv(s0, 0), uv(s1, 0), uv(s1, depth), uv(s0, depth)], [0, -1, 0], col);
+    faceQuad(batch, [V(s0, depth, y0), V(s1, depth, y0), V(s1, depth, y1), V(s0, depth, y1)], [uv(s0, y0), uv(s1, y0), uv(s1, y1), uv(s0, y1)], nOut, col);
+    if (!box) return;
+    faceQuad(batch, [V(s0, 0, y0), V(s0, depth, y0), V(s0, depth, y1), V(s0, 0, y1)], [uv(0, y0), uv(depth, y0), uv(depth, y1), uv(0, y1)], back, col);
+    faceQuad(batch, [V(s1, 0, y0), V(s1, depth, y0), V(s1, depth, y1), V(s1, 0, y1)], [uv(0, y0), uv(depth, y0), uv(depth, y1), uv(0, y1)], along, col);
+  };
+  // A railing 1 m high round a slab's front and ends (or across a window, 10 cm out).
+  const railing = (s0: number, s1: number, depth: number, y: number, ends: boolean) => {
+    const uv = (x: number, h: number): [number, number] => [x / 1, h];
+    faceQuad(into.rails, [V(s0, depth, y), V(s1, depth, y), V(s1, depth, y + 1), V(s0, depth, y + 1)], [uv(0, 0), uv(s1 - s0, 0), uv(s1 - s0, 1), uv(0, 1)], nOut, rail);
+    if (!ends) return;
+    for (const s of [s0, s1]) faceQuad(into.rails, [V(s, 0.05, y), V(s, depth, y), V(s, depth, y + 1), V(s, 0.05, y + 1)], [uv(0, 0), uv(depth, 0), uv(depth, 1), uv(0, 1)], s === s0 ? back : along, rail);
+  };
+  const D = Math.max(0.6, P.balcony || 1.2);
+  for (let i = 1; i < w.floors; i++) {
+    const y = foot + w.G + (i - 1) * w.S;
+    if (kind === 'continuous') {
+      slab(w.margin, L - w.margin, D, y - 0.18, y, wallCol, into.flat);
+      railing(w.margin, L - w.margin, D, y, true);
+      continue;
+    }
+    for (let k = 0; k < w.bays; k++) {
+      const mid = w.margin + (k + 0.5) * w.bayW;
+      if (kind === 'french') {
+        const half = Math.min(w.bayW / 2 - 0.1, P.win[0] / 2 + 0.1);
+        railing(mid - half, mid + half, 0.12, y, false);
+        continue;
+      }
+      if (w.bays > 2 && k % 2 === 0) continue;
+      const half = Math.min(w.bayW / 2 - 0.15, P.win[0] / 2 + 0.45);
+      if (kind === 'projecting') {
+        slab(mid - half, mid + half, D, y - 0.18, y, wallCol, into.flat);
+        railing(mid - half, mid + half, D, y, true);
+      } else if (kind === 'enclosed') {
+        slab(mid - half, mid + half, D, y - 0.18, y + 0.9, wallCol, into.flat, true);
+        slab(mid - half, mid + half, D, y + 0.9, y + Math.min(w.S - 0.25, 2.4), glass, into.flat, true);
+      }
+    }
+  }
+}
+
 // Each building stands on the ground at its lowest corner, from the map, its walls going a little
 // below it, so a row of houses steps down a hill as the real ones do. Its walls rise to its eaves,
 // and under a gable to its roof, which is as the map measured it (roofs.ts): its shape, the way it
-// runs, its pitch, its ridge's height and its colour, tiles or sheets or flat. The walls' windows
-// are its storeys. A wall another building stands against, as high as it or higher, isn't drawn.
-function buildBuildings(list: Building[]): THREE.Group {
+// runs, its pitch, its ridge's height and its colour, tiles or sheets or flat. Its walls are its
+// facade as the map says it is (facades.ts, braga-map's task 017): its kind's windows, in its storeys,
+// its material and colours, and along a street its ground floor as it is. A wall another building
+// stands against, as high as it or higher, isn't drawn.
+function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality): THREE.Group {
+  // Balconies on the buildings in the open world or by it (High: within 60 m of its edge; Medium: in it).
+  const balconyReach = quality === 'high' ? 60 : quality === 'medium' ? 0 : -1;
+  const front = streetFront(map);
   // The batches a kilometre square at a time, so whole squares out of view are skipped, and the sun's
   // shadows (drawn only 70 m round the camera) draw only those near it.
-  const batches = () => ({ walls: { flats: new Batch(), house: new Batch(), shop: new Batch(), church: new Batch() }, tiles: new Batch(), flat: new Batch() });
+  const batches = () => ({ walls: new Walls(), tiles: new Batch(), flat: new Batch(), rails: new Batch() });
   const sets = new Map<string, ReturnType<typeof batches>>();
   const setOf = (b: Building) => {
     const k = `${Math.floor(b.cx / 1000)},${Math.floor(b.cz / 1000)}`;
@@ -978,19 +1083,40 @@ function buildBuildings(list: Building[]): THREE.Group {
   for (const it of all) for (let k = 0; k < it.pts.length; k++) sides.set(side(it.pts[k], it.pts[(k + 1) % it.pts.length]), it);
 
   for (const { b, pts, shape } of all) {
-    const { walls, tiles, flat } = setOf(b);
+    const { walls, tiles, flat, rails } = setOf(b);
     const base = b.y - 0.6;
     const foot = b.y;
     const church = b.kind === 3;
-    col.set(church ? '#f6f4ef' : b.kind === 2 || b.kind === 4 ? SHOPS[b.color % SHOPS.length] : FACADES[b.color % FACADES.length]);
     if (b.roofColor) roofCol.setRGB(...seenUpClose(b.roofColor), THREE.SRGBColorSpace);
     else roofCol.set(b.material === 0 ? ROOFS[b.color % ROOFS.length] : b.material === 1 ? '#8b8e90' : '#8f8c86');
 
-    // Walls: one texture all the way up, a window's row to each storey; flats with a ground floor
-    // of doors and shops (their material draws it below the first storey's line, v = 1).
-    const storey = Math.max(2.4, (b.h - 0.4) / Math.max(1, b.floors));
-    const upper = church ? walls.church : b.kind === 0 ? walls.house : b.kind === 1 ? walls.flats : walls.shop;
-    const v = (y: number) => (y - foot) / storey;
+    // Walls: the facade's kind's bays along each wall and its storeys up it, the ground floor below
+    // the first storey's line (v = 1) as it is along a street, else as its storeys are (or plain wall,
+    // behind a building with shops or garages); its material and colours.
+    const f = b.facade;
+    const P = map.facadeTypes[f.type];
+    const { G, S, floors } = storeys(P, b.h, b.floors, b.roof === 0);
+    const wallRgb = linearOf(map.facadeColours[f.colour]);
+    const baseRgb = f.base ? linearOf(map.facadeColours[f.base.colour]) : wallRgb;
+    const shutRgb = linearOf(f.shutters ? map.facadeColours[f.shutters] : [216, 213, 206]);
+    const storeyLayer = layerOfType(f.type);
+    const wallMat = MATERIALS.indexOf(f.material);
+    const baseMat = f.base ? MATERIALS.indexOf(f.base.material) : wallMat;
+    const homes = f.type === 'house' || f.type === 'old-house' || f.type.startsWith('block');
+    // Its front door: in the middle of its longest wall along a street, where its ground floor is homes.
+    let doorWall = -1;
+    if (homes && f.ground === 'housing') {
+      let best = 0;
+      for (let k = 0; k < pts.length; k++) {
+        const [ax, az] = pts[k];
+        const [bx, bz] = pts[(k + 1) % pts.length];
+        const l = Math.hypot(bx - ax, bz - az);
+        if (l > best && l > 2 && front(ax, az, bx, bz, (bz - az) / l, -(bx - ax) / l)) {
+          best = l;
+          doorWall = k;
+        }
+      }
+    }
     let u = 0;
     for (let k = 0; k < pts.length; k++) {
       const top = wallTop(shape, pts[k], pts[(k + 1) % pts.length]);
@@ -1000,15 +1126,25 @@ function buildBuildings(list: Building[]): THREE.Group {
       // One polygon, its top the roof over it: convex, as the roof is the lowest of its planes, so a
       // fan from its first corner's foot.
       const [x0, z0] = top[0];
-      const along = (x: number, z: number) => (u + Math.hypot(x - x0, z - z0)) / 6;
-      if (!hidden) {
-        const [x1, z1] = top[top.length - 1];
-        const foot0 = V(x0, base, z0);
-        const corners = top.map(([x, z, h]) => ({ p: V(x, foot + h, z), uv: [along(x, z), v(foot + h)] as [number, number] }));
-        corners.push({ p: V(x1, base, z1), uv: [along(x1, z1), v(base)] });
-        for (let q = 0; q + 1 < corners.length; q++) upper.tri(foot0, corners[q].p, corners[q + 1].p, [along(x0, z0), v(base)], corners[q].uv, corners[q + 1].uv, col);
+      const [x1, z1] = top[top.length - 1];
+      const L = Math.hypot(x1 - x0, z1 - z0);
+      if (!hidden && L > 0.01) {
+        // The footprint runs counter-clockwise seen from above, so out is to the right of the way round.
+        const nx = (z1 - z0) / L;
+        const nz = -(x1 - x0) / L;
+        const onStreet = front(x0, z0, x1, z1, nx, nz);
+        const groundLayer = onStreet ? (f.ground === 'housing' ? storeyLayer : layerOfGround(f.ground)) : homes && (f.ground === 'housing' || f.type === 'house' || f.type === 'old-house') ? storeyLayer : -1;
+        const bays = baysOf(P, L, f.type);
+        const layout: WallLayout = { G, S, floors, ...bays, s0: u, kit: [storeyLayer, groundLayer, wallMat, baseMat], wall: wallRgb, base: baseRgb, shut: shutRgb, door: k === doorWall && bays.bays ? Math.floor(bays.bays / 2) : -1 };
+        const at = (x: number, z: number, y: number) => [x, y, z, Math.hypot(x - x0, z - z0), y - foot];
+        const foot0 = at(x0, z0, base);
+        const corners = top.map(([x, z, h]) => at(x, z, foot + h));
+        corners.push(at(x1, z1, base));
+        for (let q = 0; q + 1 < corners.length; q++) walls.tri(foot0, corners[q], corners[q + 1], layout);
+        // Its balconies, along a street, in the open world or by it.
+        if (onStreet && b.road <= balconyReach && floors > 1) balconiesOn(f, P, layout, [x0, z0], [(x1 - x0) / L, (z1 - z0) / L], [nx, nz], L, foot, { flat, rails }, map.facadeColours[f.colour]);
       }
-      u += Math.hypot(top[top.length - 1][0] - x0, top[top.length - 1][1] - z0);
+      u += L;
     }
 
     // The roof. Flat: the footprint at the eaves.
@@ -1057,10 +1193,13 @@ function buildBuildings(list: Building[]): THREE.Group {
       const tz = shape.cz - shape.uz * (shape.L - tw);
       const ty = foot + b.h + 9;
       const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, bb]) => [tx + (shape.ux * a + vx * bb) * tw, tz + (shape.uz * a + vz * bb) * tw]);
+      const tower: WallLayout = { ...storeys(P, ty - foot, 1, false), ...baysOf(P, 2 * tw, f.type), s0: 0, kit: [storeyLayer, storeyLayer, wallMat, baseMat], wall: wallRgb, base: baseRgb, shut: shutRgb, door: -1 };
       for (let k = 0; k < 4; k++) {
         const [ax, az] = corners[k];
         const [bx, bz] = corners[(k + 1) % 4];
-        walls.church.quad(V(ax, base, az), V(ax, ty, az), V(bx, ty, bz), V(bx, base, bz), [0, 0], [0, (ty - base) / 3], [(2 * tw) / 6, (ty - base) / 3], [(2 * tw) / 6, 0], col);
+        const l = Math.hypot(bx - ax, bz - az);
+        walls.tri([ax, base, az, 0, base - foot], [ax, ty, az, 0, ty - foot], [bx, ty, bz, l, ty - foot], tower);
+        walls.tri([ax, base, az, 0, base - foot], [bx, ty, bz, l, ty - foot], [bx, base, bz, l, base - foot], tower);
       }
       const apex = V(tx, ty + 4, tz);
       for (let k = 0; k < 4; k++) {
@@ -1072,19 +1211,17 @@ function buildBuildings(list: Building[]): THREE.Group {
   }
 
   const g = new THREE.Group();
-  // The walls' textures as the layers of one (the flats' floors, their ground floor of doors and
-  // shops, below the first storey, the houses', the shops' and the churches'), and the roofs' as
-  // another (tiles, flat): a square kilometre's walls are one mesh, and its roofs another.
-  const wallArt = [tex.flatsFloor(), tex.groundFloor(), tex.houseWall(), tex.shopWall(), tex.churchWall()];
+  // The walls in the kit's material (facades.ts), and the roofs' textures as the layers of one (tiles,
+  // flat): a square kilometre's walls are one mesh, and its roofs another.
   const roofArt = [tex.roofTiles(), tex.flatRoof()];
-  const walled = layeredMaterial(tex.layered(wallArt.map((t) => t.image as HTMLCanvasElement), 256, 128), 0.88, true);
   const roofed = layeredMaterial(tex.layered(roofArt.map((t) => t.image as HTMLCanvasElement), 256, 256), 0.85);
-  for (const t of [...wallArt, ...roofArt]) t.dispose();
-  for (const { walls, tiles, flat } of sets.values()) {
-    for (const mesh of [
-      merged([[walls.flats, 0], [walls.house, 2], [walls.shop, 3], [walls.church, 4]], walled),
-      merged([[tiles, 0], [flat, 1]], roofed),
-    ]) {
+  for (const t of roofArt) t.dispose();
+  // The balconies' railings: bars, in their colour, seen from both sides.
+  const railed = layeredMaterial(tex.layered([tex.railing().image as HTMLCanvasElement], 128, 128), 0.6);
+  railed.side = THREE.DoubleSide;
+  railed.alphaTest = 0.5;
+  for (const { walls, tiles, flat, rails } of sets.values()) {
+    for (const mesh of [walls.mesh(kit.material), merged([[tiles, 0], [flat, 1]], roofed), merged([[rails, 0]], railed)]) {
       if (mesh) g.add(mesh);
     }
   }

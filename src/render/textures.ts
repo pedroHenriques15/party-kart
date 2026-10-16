@@ -888,6 +888,22 @@ export const churchWall = () =>
     g.fill();
   });
 
+// A balcony's railing, a metre of it a metre high: a rail on top and at the foot, bars every 12 cm;
+// clear between them, tinted per building.
+export const railing = () =>
+  canvas(
+    128,
+    128,
+    (g) => {
+      g.clearRect(0, 0, 128, 128);
+      g.fillStyle = '#ffffff';
+      g.fillRect(0, 0, 128, 8);
+      g.fillRect(0, 120, 128, 6);
+      for (let x = 4; x < 128; x += 15.4) g.fillRect(x, 0, 3, 128);
+    },
+    true,
+  );
+
 // Roof tiles, Minho terracotta, in rows; tinted per building.
 export const roofTiles = () =>
   canvas(256, 256, (g) => {

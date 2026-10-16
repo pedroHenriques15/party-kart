@@ -178,8 +178,9 @@ npm run deploy   # publish to GitHub Pages (the gh-pages branch)
 ```
 
 Map data © OpenStreetMap contributors, under the Open Database Licence. The ground is from DGT's
-LiDAR (CC BY 4.0), and its photo from DGT's 2025 orthophoto (CC BY 4.0): informação geográfica
-cedida pela Direção-Geral do Território. The horizon beyond the map is from Terrain Tiles, on AWS
+LiDAR (CC BY 4.0), and what it is and its colour from that LiDAR and DGT's 2025 orthophoto (CC BY
+4.0): informação geográfica cedida pela Direção-Geral do Território. The ground's photos (asphalt,
+paving, setts, grass, soil and gravel) are from Poly Haven, CC0. The horizon beyond the map is from Terrain Tiles, on AWS
 Open Data. Europe terrain data produced using Copernicus data and information funded by the
 European Union - EU-DEM layers. The facades' photos are © Mapillary contributors, CC BY-SA 4.0,
 and so are the textures made from them: How to play names their authors, and braga-map's

@@ -9,7 +9,9 @@ recordings in `src/sounds/` (braga-map's decision 016 allows recordings for the 
 city, and nothing else). Photos may texture the city (braga-map's decision 002): they belong to
 the place, so they live in braga-map with the world, made by its `tools/textures.mjs` as KTX2
 files that stay compressed on the graphics card (its decision 030), and `render/photos.ts` draws
-them. They spend from the city's budget (`docs/architecture.md`), as anything else does. The
+them. The ground is drawn as braga-map says it is (its task 016, decision 034): each kind in its
+own photo (CC0, from Poly Haven) tinted with the place's colour, by `render/cover.ts` and the land's
+shader in `render/city.ts`. They spend from the city's budget (`docs/architecture.md`), as anything else does. The
 track and the city round it come from the map of Braga the games share: the `braga-map` package
 (https://github.com/pedroHenriques15/braga-map, a sibling repo at `../braga-map`), data made from
 OpenStreetMap and DGT's LiDAR, pinned to a version tag in `package.json`. The README promises "nothing to maintain", so treat that as a design constraint:
@@ -78,9 +80,10 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   race builds it, still, and the same every time (its textures' noise is seeded). The graphics are
   whatever `localStorage['pk-quality']` says. `window.__kart` has the build time, draw calls,
   triangles, textures and geometries, and `__kart.timeFrames(60)` the milliseconds a frame takes.
-- `?photos` draws the map's photo textures too (`render/photos.ts`, braga-map's task 007): the
-  orthophoto over one tile of the ground (Fujacal) and ten facades, until braga-map's tasks 016 and
-  017 roll them out. Without it the game never fetches them, nor three.js's KTX2Loader.
+- `?photos` draws the map's facades too (`render/photos.ts`, braga-map's task 007): ten of them,
+  until braga-map's task 017 rolls them out. Without it the game never fetches them. The ground's
+  photos are drawn always (braga-map's task 016), so three.js's KTX2Loader and Basis's transcoder
+  come with the city.
 - `?stats` shows what the game costs in a corner, for measuring it on a phone (`src/stats.ts`): the
   frame rate and the worst second (of the race, or round the city since the last; after its first two), the graphics level, draw calls,
   triangles, the textures' memory, how long the city took to build and the page to be ready, what

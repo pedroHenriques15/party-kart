@@ -30,7 +30,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/audio.ts` | browser | Every sound and the mix it goes through (buses, a limiter, places): synthesized with Web Audio, but the city's, recorded (`src/sounds/`) |
 | `src/ambience.ts` | sim | What's round any point of the city on a grid every 10 m (traffic, town, park, woods), each point worked out the first time it's needed, and where the churches, the rivers, the bus stops and the stadium are, from the map, for the city's sound |
 | `src/input.ts` | browser | The keyboard and the touch screen: held controls, plus actions counted once per press |
-| `src/render/` | browser | three.js: the look, the city round the track (`city.ts`, its land on `lattice.ts`), every street in the open world's area (`streets.ts`, laid on the ground by `tin.ts`), what the race adds to them (`road.ts`), the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
+| `src/render/` | browser | three.js: the look, the city round the track (`city.ts`, its land on `lattice.ts`, what its ground is from `cover.ts`), every street in the open world's area (`streets.ts`, laid on the ground by `tin.ts`), what the race adds to them (`road.ts`), the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
 
 The **sim** files never import three.js or touch the DOM, so `node --test` can load them. The
 tests in `test/` drive real cars round the real track with them.
@@ -353,12 +353,27 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     shows through a street. Further off, the whole map's hills every 50 m, coloured by the map's
     woods and towns and tucked under it, and the horizon's hills 15 km round every 250 m (`horizon`
     in `sights.ts`).
-  - What's on the land is painted onto one canvas over the land: the parks, woods and fields,
-    water, squares, and beyond the open world's tiles every street at its own width with its
-    pavements, and the railway. It's 1 m a pixel on High, 1.4 on Medium, 2 on Low, uploaded with
-    its colours times their share of what's clear, so the land's edge at a street isn't darkened. A
-    fine grain, tiled by world position (`onBeforeCompile`), keeps it from looking smeared up
-    close.
+  - What the ground is, where braga-map has classed it (its task 016, decision 034: every tile
+    under the Volta dos Amigos' box, which the city loads), is drawn in the land's shader
+    (`groundMaterial`, with `cover.ts`): each 50 cm cell's kind (asphalt, paving, setts, grass, bare
+    soil, gravel, water, a roof) in its own seamless photo (CC0, from Poly Haven), tiled at its real
+    size, its own mean colour divided out and the place's put in: that kind's colour over the tile,
+    the orthophoto's without its cars and shadows. A cell's kind blends into its neighbours' over
+    half its width; under a tree's crown the ground is 15% darker, and from 40 m off to 160 m a
+    crown's cells turn the green of the game's trees (the orthophoto's canopy reads slate-blue under
+    the game's light). The orthophoto's blue haze is taken out, and its brightness eased (`TONE`: as
+    it comes, its sunlit asphalt is a light grey). The classes are packed two cells a byte, a layer
+    a tile of one array texture, the colours a layer a tile and kind of another; a tile the open
+    world's area doesn't touch loads its classes at Low's 2 m, drawn at the level's cells all the
+    same. With every tile under the land classed, the canvas below is only a mask of where the
+    streets are, a byte a pixel, and its canvas is let go.
+  - Where the ground isn't classed (or the cover can't load), what's on the land is painted onto one
+    canvas over the land: the parks, woods and fields, water, squares, car parks, and beyond the
+    open world's tiles every street at its own width with its pavements, and the railway; an area's
+    holes (a clearing in a wood) left out. It's 1 m a pixel on High, 1.4 on Medium, 2 on Low,
+    uploaded with its colours times their share of what's clear, so the land's edge at a street
+    isn't darkened. A fine grain, tiled by world position (`onBeforeCompile`), keeps it from looking
+    smeared up close.
   - Buildings are their footprints from the map, standing on the ground at their lowest corner
     (`y`, from the map), so a row of houses steps down a hill, and raised to their floors: walls
     textured a floor and two windows at a time and tinted by vertex colour, a ground floor of
@@ -444,10 +459,10 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   `render/photos.ts` loads them with three.js's KTX2Loader, which turns Basis Universal's ETC1S
   into what the graphics card takes (ETC1 on a phone, BC7 on a PC) in its workers, so they stay
   compressed on the card: half a byte a pixel on a phone, a byte on a PC, where a canvas or a WebP
-  takes four. For now they're drawn only with `?photos`: the ground's photo over its tile in the
-  land's shader (`groundMaterial`, faded into the painting over its last 15 m), and each facade as
-  quads 4 cm in front of its wall, a mesh each. `photos.ts` and the loader are a chunk of their
-  own, fetched only then, and Basis's transcoder (0.56 MB, 0.26 MB gzipped) with them.
+  takes four. The kinds of ground's photos are drawn always (braga-map's task 016, above), so the
+  loader and Basis's transcoder (0.56 MB, 0.26 MB gzipped) come with the city. The facades are
+  drawn only with `?photos`, each as quads 4 cm in front of its wall, a mesh each, and never
+  fetched without it.
 - **Karts** (`render/drivers.ts`): each `Driver` is one of the friends: a body (`kart`, `trolley`,
   `banger`, `chair`), colours and a second paint (`alt`, for a bot repeating them), extras (on the
   driver and on the car), a trail and a horn. `buildKart` builds the model. Its
@@ -600,14 +615,26 @@ more texture memory (four more 256-pixel layers of the streets' texture, two sma
 ones), and the city built no slower (3.6–3.9 s on High, the desktop less busy than for 050); a frame
 0.3–2.2 ms. The tiles are 0.27 MB more gzipped (the open world's 53, 2.11 to 2.38 MB). Most of the
 triangles are the 80 km of retaining walls round the area, 59 of them found by the LiDAR.
+braga-map's ground as it is (its task 016, on braga-map 1.16.0; `shots/2026-10-16-after016/`
+against `after013`) takes no draw call and no triangle more (113 calls and 1.37 M triangles on High
+at the median, 89 and 0.74 M on Low), textures 98 → 118 MB on High, 62 → 68 on Medium and 45 → 42
+on Low as the PC holds them: the classes 24 MB on High (6 on Medium, 1.5 on Low), the kinds'
+colours 27 MB (17, 4), the six photos 8.4 MB as BC7 (a phone's ETC1 half that), and the painted
+map's 51 MB given back for a 12.7 MB mask. The city builds as fast as it did with 013 (4.2 s on High
+at the median; against `after050`, the painting it no longer does took 1.3 s off). The download on
+High is 7.24 MB gzipped (13.25 MB as is), about 4.6 MB more: the ground's classes 2.0 MB (a tile outside
+the open world's area at Low's 2 m), its colours 0.95, the six photos 1.3, Basis's transcoder 0.25;
+about 2.4 MB more on Medium and 1.2 on Low, from the files' sizes. Loading only the tiles near the
+player would bring it down (braga-map's task 038).
 
-- **Textures**, on High: the ground's painted map is 44 MB (3330 × 2600 pixels, a metre each; 22 MB
-  on Medium, 11 on Low), the sun's shadows 16 MB (4 on Medium), the street plates 10.5 MB, the sky's
-  reflections 6 MB, and everything else 5 MB (the streets' eight textures 2.8 MB of it, as one
-  array). That's counted as the scene holds them (`textureBytes`
-  in `src/stats.ts`): four bytes a pixel and a third more for the mipmaps. A canvas texture keeps its
-  canvas as well, which Chrome may hold on the graphics card too: the ground's is another 34 MB on
-  High.
+- **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
+  27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),
+  where the ground's painted map was 51 MB before task 016; the sun's shadows 16 MB (4 on Medium),
+  the street plates 10.5 MB, the sky's reflections 6 MB, and everything else the rest (the
+  streets' textures among it, as one array). That's counted as the scene holds them (`textureBytes`
+  in `src/stats.ts`): its bytes a pixel and a third more for the mipmaps. A canvas texture keeps its
+  canvas as well, which Chrome may hold on the graphics card too: the painted map's, where there is
+  one, may take as much again; the mask's is let go.
 - **The street plates** are one texture 512 pixels wide and 112 a street, 4032 high for 36 streets.
   The 37th takes it past 4096, the most some phones take.
 - **The karts cost more draw calls than the city.** Each is about 40 on Low to 60 on High (its parts

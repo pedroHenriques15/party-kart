@@ -625,7 +625,13 @@ at the median; against `after050`, the painting it no longer does took 1.3 s off
 High is 7.24 MB gzipped (13.25 MB as is), about 4.6 MB more: the ground's classes 2.0 MB (a tile outside
 the open world's area at Low's 2 m), its colours 0.95, the six photos 1.3, Basis's transcoder 0.25;
 about 2.4 MB more on Medium and 1.2 on Low, from the files' sizes. Loading only the tiles near the
-player would bring it down (braga-map's task 038).
+player would bring it down (braga-map's task 038). braga-map's streets without slivers (its task 048, on 1.17.1;
+`shots/2026-10-16-after048/` against `after016`) take no draw call more and no texture: 4 k more
+triangles on High at the median (1.37 M), 6 k on Low, the most at `robert-smith` (11 k), from the
+carriageways' points the snap rounding puts in and the scraps they keep (the carriageways laid in
+the race's box, 215 k → 227 k on High). Laying them takes 6 ms more (155 against 149), and the
+city builds as fast: shot side by side on 1.16.0 and 1.17.0 that afternoon, 5.9–6.5 s on High
+either way, the desktop busier than for `after016` (4.2 s).
 
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),

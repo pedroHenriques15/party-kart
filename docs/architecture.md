@@ -664,6 +664,11 @@ every level. The city builds in 6.6 s on High at the median against 4.2 (4.4 aga
 3.7 against 3.9 on Low): the buildings 0.8 s of it, the kit 0.1, the photos' wait 0.5. The download
 on High is 7.96 MB gzipped (14.25 as is), 0.72 MB more: the facades' photos, now fetched always,
 and the tiles 0.15 MB more gzipped over the open world's 53 (each building's facade, the signs).
+Shot again after the merge with 048, on braga-map 1.18.0 (`shots/2026-10-16-after017/`, party-kart
+`ad9814e`, against `after048`): the same, 113 → 126 calls, 1.37 → 1.67 M triangles and 118 → 132 MB
+of textures on High at the median (89 → 95, 0.74 → 0.76 M and 42 → 47 MB on Low); the most
+triangles at `conselheiro-lobato`, 2.17 → 2.62 M on High. The city built in 4.7 s on High, 4.9 on
+Medium and 4.2 on Low, a frame 0.7–1.1 ms.
 
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),

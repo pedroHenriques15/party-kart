@@ -8,6 +8,7 @@
 // houses (eggs.ts). What only the race adds to the streets is road.ts.
 import { heightOn, loadWorld, type Box, type Building as MapBuilding, type FacadeProportions, type Track as Course, type World as Braga } from 'braga-map';
 import * as THREE from 'three';
+import { onGrid, type Bound } from '../game/flyer.ts';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
 import { Rings, trimmed, worldGround, type WorldGround } from '../world/ground.ts';
 import { smooth } from '../world/land.ts';
@@ -196,7 +197,7 @@ ${kinds.map((k) => `  if (w[${k}] > 0.0) coverRgb += w[${k}] * texture(coverColo
 // Besides the city, the world as the karts' ground (ground.ts), built for it and kept for driving on.
 // What the map says the ground is, each kind with its photo (cover.ts), as the renderer's graphics card
 // takes them; and the map's photos of facades (photos.ts).
-export async function buildCity(track: Track, course: Course, quality: Quality, renderer: THREE.WebGLRenderer): Promise<World & { eggs: Eggs; drive: WorldGround; race: WorldGround; stageYaw: number; marks: THREE.Object3D }> {
+export async function buildCity(track: Track, course: Course, quality: Quality, renderer: THREE.WebGLRenderer): Promise<World & { eggs: Eggs; drive: WorldGround; race: WorldGround; stageYaw: number; marks: THREE.Object3D; above: (x: number, z: number) => number; horizon: Bound }> {
   const map = await loadWorld(course.box);
   // Fetched, and turned for the graphics card in workers, while the land is worked out. If they can't be
   // had, the city goes without them: the ground painted from the map, as it was before task 016, and the
@@ -576,10 +577,37 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
     wg.wall({ ax, az, bx, bz, y0: plinth.y - 0.5, y1: plinth.y + 7 });
   }
 
+  // What's drawn at (x, z), anywhere the horizon reaches: the city's ground in the box, the hills every
+  // 50 m round it and the horizon's every 250 m past them, each the height of its triangles, tucked
+  // under the nearer ones as they're drawn above. For the flying camera (main.ts), which keeps over it.
+  const fg = map.far;
+  const hz = map.horizon;
+  const inBox = (x: number, z: number, m: number) => x > B.x0 + m && x < B.x1 - m && z > B.z0 + m && z < B.z1 - m;
+  const inFar = (x: number, z: number, m: number) => x > fg.x0 + m && x < fg.x0 + (fg.nx - 1) * fg.step - m && z > fg.z0 + m && z < fg.z0 + (fg.nz - 1) * fg.step - m;
+  const hillsAt = (x: number, z: number) =>
+    onGrid(
+      fg,
+      x,
+      z,
+      (i, j) => fg.h[j * fg.nx + i] - (inBox(fg.x0 + i * fg.step, fg.z0 + j * fg.step, 0) ? 4 : 0),
+      (i, j) => !inBox(fg.x0 + (i + 0.5) * fg.step, fg.z0 + (j + 0.5) * fg.step, 80),
+    );
+  const horizonAt = (x: number, z: number) =>
+    onGrid(
+      hz,
+      x,
+      z,
+      (i, j) => hz.h[j * hz.nx + i] - (inFar(hz.x0 + i * hz.step, hz.z0 + j * hz.step, 0) ? 12 : 0),
+      (i, j) => !inFar(hz.x0 + (i + 0.5) * hz.step, hz.z0 + (j + 0.5) * hz.step, 300),
+    );
+  const above = (x: number, z: number): number => Math.max(inBox(x, z, 0) ? ground(x, z) : -Infinity, hillsAt(x, z) ?? -Infinity, horizonAt(x, z) ?? -Infinity, -100);
+
   return {
     group,
     update: (t) => updates.forEach((u) => u(t)),
     ground,
+    above,
+    horizon: { x0: hz.x0, x1: hz.x0 + (hz.nx - 1) * hz.step, z0: hz.z0, z1: hz.z0 + (hz.nz - 1) * hz.step },
     stage: plinth.stage,
     stageAt: plinth.at,
     stageYaw: plinth.yaw,

@@ -197,6 +197,16 @@ button.small {
   flex: 0 0 auto;
 }
 
+/* A row whose buttons keep their labels on one line, and go on to the next when they don't fit. */
+.row.wrap {
+  flex-wrap: wrap;
+}
+
+.row.wrap > button {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
 .or {
   text-align: center;
   color: var(--muted);
@@ -730,6 +740,20 @@ body.paneled #hud .speedlines {
   display: none;
 }
 
+/* Flying, there's no speed to show, and the mouse dragged on the world looks round. */
+body.flying #hud .speed,
+body.flying #hud .speedlines {
+  display: none;
+}
+
+body.flying.driving #view {
+  cursor: grab;
+}
+
+body.flying.looking #view {
+  cursor: grabbing;
+}
+
 /* The street's name as you turn into it, on a plate as Braga's are: white on blue, a white rule
    inside its edge. */
 .plate {
@@ -1000,8 +1024,51 @@ body.touch.driving .t-pad {
 }
 
 .t-pad[data-mode='time'] .t-item,
-.t-pad[data-mode='roam'] .t-item {
+.t-pad[data-mode='roam'] .t-item,
+.t-pad[data-mode='fly'] .t-item {
   display: none;
+}
+
+/* Flying: Subir and Descer where Derrapar and Travar are, and a drag anywhere else on the right half
+   looks round. */
+.t-look,
+.t-rise,
+.t-sink,
+.t-pad[data-mode='fly'] .t-drift,
+.t-pad[data-mode='fly'] .t-brake {
+  display: none;
+}
+
+.t-pad[data-mode='fly'] .t-look {
+  display: block;
+  position: absolute;
+  inset: 0 0 0 50%;
+  pointer-events: auto;
+}
+
+.t-pad[data-mode='fly'] .t-rise,
+.t-pad[data-mode='fly'] .t-sink {
+  display: grid;
+  white-space: pre-line;
+  text-align: center;
+  line-height: 1.1;
+  letter-spacing: 0;
+  border-color: rgba(127, 212, 255, 0.85);
+}
+
+.t-rise {
+  right: calc(20px + var(--sr));
+  bottom: calc(20px + var(--sb));
+  width: 100px;
+  height: 100px;
+}
+
+.t-sink {
+  right: calc(140px + var(--sr));
+  bottom: calc(14px + var(--sb));
+  width: 66px;
+  height: 66px;
+  font-size: 12px;
 }
 
 .t-item.full {

@@ -26,6 +26,9 @@ export class Look {
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
+  // A box 20 km across, which goes with the camera: the flying camera goes further than 10 km from
+  // the map's middle, and the sky's colour is only the way you look.
+  private sky: Sky;
   quality: Quality = 'high';
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
@@ -36,7 +39,7 @@ export class Look {
     renderer.toneMappingExposure = LIGHT.exposure;
     renderer.shadowMap.type = THREE.PCFShadowMap;
 
-    const sky = new Sky();
+    const sky = (this.sky = new Sky());
     sky.scale.setScalar(20000);
     const u = sky.material.uniforms;
     u.turbidity.value = 7;
@@ -100,6 +103,7 @@ export class Look {
   }
 
   render(): void {
+    this.sky.position.copy(this.camera.position);
     this.renderer.render(this.scene, this.camera);
   }
 }

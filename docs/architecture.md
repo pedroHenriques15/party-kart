@@ -23,13 +23,14 @@ change things, read [making-changes.md](making-changes.md).
 | `src/game/items.ts` | sim | What the items are, the odds by place, the events, where a projectile is at a given time |
 | `src/game/bot.ts` | sim | The bots' driving (each on its own line across the road, moving out to pass) and when they use their items |
 | `src/game/roamer.ts` | sim | `Roamer`: your car round the city, outside a race, on the world's ground (bumps and slipstreams, back on the street when lost) |
+| `src/game/flyer.ts` | sim | `Flyer`: the flying camera (braga-map's task 054), its pace by its height, kept 1 to 500 m over the ground it's given and inside its bound; `landing`: where your kart is put when you stop flying; `onGrid`: a grid of heights as its triangles are drawn |
 | `src/session.ts` | browser | Rooms over PeerJS: `HostRoom` and `ClientRoom` |
 | `src/main.ts` | browser | Free roam, the menu over it, the race and its screens, the loop, the cameras, and the glue between all of it |
 | `src/hud.ts` | browser | What's on the screen while you drive: in a race (`Hud`: place, lap, item slot, clock, minimap, order, feed), and round the city (`RoamHud`: speed, the street's name, a minimap round you, feed) |
 | `src/stats.ts` | browser | `?stats`: what the game costs on this screen, in a corner, for measuring it on a phone |
 | `src/audio.ts` | browser | Every sound and the mix it goes through (buses, a limiter, places): synthesized with Web Audio, but the city's, recorded (`src/sounds/`) |
 | `src/ambience.ts` | sim | What's round any point of the city on a grid every 10 m (traffic, town, park, woods), each point worked out the first time it's needed, and where the churches, the rivers, the bus stops and the stadium are, from the map, for the city's sound |
-| `src/input.ts` | browser | The keyboard and the touch screen: held controls, plus actions counted once per press |
+| `src/input.ts` | browser | The keyboard, the mouse (a drag looks round while flying) and the touch screen (its layouts for driving and for flying): held controls, plus actions counted once per press |
 | `src/render/` | browser | three.js: the look, the city round the track (`city.ts`, its land on `lattice.ts`, what its ground is from `cover.ts`), every street in the open world's area (`streets.ts`, laid on the ground by `tin.ts`), what the race adds to them (`road.ts`), the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
 
 The **sim** files never import three.js or touch the DOM, so `node --test` can load them. The
@@ -47,18 +48,26 @@ start; and goes back to it after a race, where you were before it.
 1. **`syncOthers`**, as in a race (below), but for the room's players only: the bots are out only
    in a race. A friend who has just joined is put on the street nearest the host once the host's
    first position comes in (`besideTheHost`).
-2. **Key actions**: horn, camera, back on the street.
+2. **Key actions**: horn, camera, back on the street, and flying (V, the bar's and the menu's
+   buttons: `fly`).
 3. **Fixed steps** of `DT`: your `Roamer` on the world's ground (`world.drive`), bumping into the
-   others where they're drawn. With a panel open (the menu, the results) it pulls up and waits.
-4. **Notes**: the bumps, slipstreams, mini-turbos, walls and landings, through `feel` as in a race.
-5. **`sendPos`**: your snapshot, if you're in a room.
-6. **Drawing and sound**: your kart (its driver the room's, which gives you another if someone has
-   yours), the engines and the city round you (`hearRoam`), the eggs (the track's sample you're by,
+   others where they're drawn. With a panel open (the menu, the results), or while you fly, it pulls
+   up and waits.
+4. **Flying** (`r.fly`, braga-map's task 054): the `Flyer` stepped once a frame by your keys, mouse
+   and thumbs (`flight`), unless a panel is open.
+5. **Notes**: the bumps, slipstreams, mini-turbos, walls and landings, through `feel` as in a race.
+6. **`sendPos`**: your snapshot, if you're in a room: parked, while you fly.
+7. **Drawing and sound**: your kart (its driver the room's, which gives you another if someone has
+   yours), the engines and the city round you (`hearRoam`; flying, your engine from where your kart
+   waits and the city from under the camera), the eggs (the track's sample you're by,
    from `locate`, while you're within 8 m of the route's edge), the street's name within 20 m of
-   where the route turns into one of its streets, and the `RoamHud` with its minimap.
+   where the route turns into one of its streets, and the `RoamHud` with its minimap (flying, round
+   the camera, your kart a dot).
 
 The chase camera follows, or with a panel open the camera turns slowly round your kart (`orbit`),
-which stands on the right of the screen, clear of the menu.
+which stands on the right of the screen, clear of the menu. Flying, the camera is the flyer's
+(`flyCam`), held still while a panel is open, and the sun's shadows fall round where it looks on the
+ground, at most 100 m ahead (`lookedAt`).
 
 **In a race** it calls `stepRace`:
 
@@ -318,6 +327,18 @@ server restarting, a phone changing networks) and the race carries on.
 a race. The menu's "Corrida" gives the host the race's settings, and starting it takes everyone in
 the room (braga-map's decision 019).
 
+**Flying** (braga-map's task 054), in free roam: your kart waits where it is, sending its snapshot,
+and the camera flies (`Flyer`, `src/game/flyer.ts`): 6 m/s at a person's height, rising to 80 m/s
+from 80 m up, four times that with Shift, easing in and out in about 0.15 s. It keeps 1 m over what's
+drawn (`world.above`: the city's ground in the box, the hills every 50 m round it and the horizon's
+every 250 m, each as its triangles are drawn) and climbs no higher than 500 m over it, through
+buildings and trees; and it flies as far as the horizon (`world.horizon`, the hills 15 km round), short
+of their end by 6 km, where the haze hides it (`HAZED`). Stopping puts your kart on the street
+nearest the point under the camera, at the level under it (`landing`, from the area's nearest point
+when the camera is outside it, facing into the area); the others see it jump, as after a respawn. A
+race the host starts ends the flight, and you're back in your kart where it waited when it's over.
+The sky goes with the camera (`Look.render`), as it's a box 20 km across.
+
 **Race**: 1 to 3 laps from a random starting grid, with positions. Power-ups and catch-up can each
 be turned off in the race's settings.
 
@@ -330,7 +351,8 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
 
 ## Rendering
 
-- **`Look`** (`render/look.ts`): a golden-hour `Sky` and an environment map made from it, a
+- **`Look`** (`render/look.ts`): a golden-hour `Sky` (a box 20 km across that goes with the camera,
+  so the flying camera never leaves it) and an environment map made from it, a
   hemisphere light, a sun whose shadow box follows the camera, ACES tone mapping and fog. There are
   three quality levels. High has pixel ratio up to 2 and 2048 shadows. Medium has 1.25 and 1024
   shadows. Low has 1 and no shadows. Changing quality marks every material for recompiling.
@@ -677,6 +699,12 @@ Shot again after the merge with 048, on braga-map 1.18.0 (`shots/2026-10-16-afte
 of textures on High at the median (89 → 95, 0.74 → 0.76 M and 42 → 47 MB on Low); the most
 triangles at `conselheiro-lobato`, 2.17 → 2.62 M on High. The city built in 4.7 s on High, 4.9 on
 Medium and 4.2 on Low, a frame 0.7–1.1 ms.
+
+braga-map's corners cut back at the decks' and tunnels' ends (its task 046, on 1.18.1;
+`shots/2026-10-16-after046/`, shot on `d49612c` with braga-map installed from its checkout, against
+`after017`): the same, 126 calls, 1.67 M triangles and 132 MB of textures on High at the median (95,
+0.76 M and 47 MB on Low), no viewpoint more than about a thousand triangles off. The city built in
+5.3 s on High, 4.8 on Medium and 4.2 on Low, a frame 0.6–0.8 ms.
 
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),

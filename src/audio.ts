@@ -563,13 +563,13 @@ function settle(): void {
 }
 
 // Every frame of a race: your engine, in your head, the nearest others' from where they are, and
-// your tyres and the wind. Without your kart yours fades out, and without others theirs do.
+// your tyres and the wind. Without your kart yours fades out (flying, it's one of the others), and
+// without others theirs do; and once yours has, everything's silenced, in case no frame comes again.
 export function engines(me: MyKart | null, others: Kart[], dt: number): void {
   if (!ctx || !bus) return;
   const c = ctx;
   const t = c.currentTime;
   tyres(me);
-  if (!me) setTimeout(settle, 700);
   mine ??= newVoice(c, bus.engine, false);
   if (me) {
     mine.free = 0;
@@ -578,6 +578,7 @@ export function engines(me: MyKart | null, others: Kart[], dt: number): void {
     mine.level.gain.setTargetAtTime(0, t, 0.1);
     mine.free = t + 0.5;
     mine.gear = 0;
+    setTimeout(settle, 700);
   } else if (t > mine.free) hush(mine);
   const near = others
     .map((k) => ({ k, d: Math.hypot(k.p.x - ear.x, k.p.y - ear.y, k.p.z - ear.z) }))

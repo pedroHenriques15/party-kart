@@ -8,12 +8,13 @@ import { autopilot } from './car/autopilot.ts';
 import { carAt, clampSteer, newCar, speedOf, stopInput, type Car, type Input } from './car/car.ts';
 import { Arena, FLAG, type ArenaFx, type CarInfo, type Rules } from './game/arena.ts';
 import { botControls, newBrain, type Brain } from './game/bot.ts';
+import { Flyer, landing, type Bound, type FlyInput } from './game/flyer.ts';
 import { ITEMS } from './game/items.ts';
 import { NO_CONTROLS, Racer, type Controls, type Note } from './game/racer.ts';
 import { Roamer } from './game/roamer.ts';
 import { fmt, fmtDiff, Hud, ordinal, RoamHud } from './hud.ts';
-import { Keyboard, TouchPad } from './input.ts';
-import { v3 } from './math.ts';
+import { Keyboard, Mouse, TouchPad } from './input.ts';
+import { clamp, v3, type V } from './math.ts';
 import { buildKart, driverById, DRIVERS, type KartModel } from './render/drivers.ts';
 import { Particles } from './render/fx.ts';
 import { ItemsView } from './render/items3d.ts';
@@ -61,6 +62,7 @@ const PHONE = matchMedia('(pointer: coarse)').matches;
 // ---- Three.js ----
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
+const mouse = new Mouse(canvas);
 const ui = document.querySelector<HTMLDivElement>('#ui')!;
 const hudRoot = document.querySelector<HTMLDivElement>('#hud')!;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -265,6 +267,7 @@ interface RoamCtx {
   idx: number | null; // the track's sample you're by while you're on the route, for the eggs
   street: string; // the street whose name was shown last
   kept: number; // performance.now() when where you are was last kept
+  fly: Flyer | null; // the camera, while you fly and your kart waits (braga-map's task 054)
 }
 
 let roam: RoamCtx | null = null;
@@ -440,7 +443,13 @@ function menuScreen(): HTMLElement {
     h('button', { class: 'primary', onclick: closeMenu }, 'Conduzir'),
     h('label', {}, 'Amigos'),
     friends,
-    h('div', { class: 'row' }, h('button', { onclick: () => void openRace(), disabled: !!busy }, '🏁 Corrida'), h('button', { onclick: reposition }, '↺ Reposicionar')),
+    h(
+      'div',
+      { class: 'row wrap' },
+      h('button', { onclick: () => void openRace(), disabled: !!busy }, '🏁 Corrida'),
+      h('button', { onclick: reposition }, '↺ Reposicionar'),
+      roam && h('button', { onclick: () => (fly(roam!, !roam!.fly), closeMenu()) }, roam.fly ? '🏎️ Voltar ao kart' : '🎥 Voar pela cidade'),
+    ),
     h('p', { class: 'err' }, busy || notice),
     h('div', { class: 'row foot' }, qualityPicker()),
     howTo(),
@@ -458,6 +467,8 @@ function howTo(): HTMLElement {
       h('li', { class: 'keys-only' }, h('b', {}, 'Conduzir:'), ' setas ou WASD, por onde quiseres dentro da zona (o mapa mostra o limite a vermelho). ', h('b', {}, 'Derrapar:'), ' mantém o Espaço numa curva; quando as faíscas ficarem azuis, e depois laranja, larga para um mini-turbo.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Virar:'), ' com o polegar esquerdo, a arrastar para a esquerda e para a direita em qualquer sítio dessa metade do ecrã. Pela cidade, o kart anda enquanto lá tiveres o polegar e para quando o levantas; na corrida anda sozinho. ', h('b', {}, 'Travar'), ' abranda, e faz marcha-atrás depois de parar. Melhor com o telemóvel deitado.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Derrapar:'), ' mantém-no numa curva; quando as faíscas ficarem azuis, e depois laranja, larga para um mini-turbo.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Voar:'), ' V, ou 🎥 Voar pela cidade no menu, deixa o kart à espera e leva a câmara por cima da cidade e dos montes, até ao horizonte. WASD ou ↑↓ anda, ←→ vira, ', h('b', {}, 'E'), ' sobe, ', h('b', {}, 'Q'), ' desce, ', h('b', {}, 'Shift'), ' vai mais depressa, e arrastar o rato olha à volta. V outra vez põe o kart na rua por baixo da câmara.'),
+      h('li', { class: 'touch-only' }, h('b', {}, 'Voar:'), ' Voar lá em cima, ou 🎥 Voar pela cidade no menu, deixa o kart à espera e leva a câmara por cima da cidade e dos montes, até ao horizonte. O polegar esquerdo anda para onde o arrastares, arrastar na metade direita olha à volta, e ▲ Subir e ▼ Descer. Voltar ao kart põe-no na rua por baixo da câmara.'),
       h('li', {}, h('b', {}, 'Amigos:'), ' Convidar amigos dá-te uma ligação para lhes mandares; quem a abrir aparece ao teu lado, no teu mundo.'),
       h('li', {}, h('b', {}, 'Corrida:'), ' a Volta dos Amigos, com toda a gente da sala e bots nos lugares vazios. O anfitrião escolhe as voltas e os itens e dá a partida; no fim voltas para onde estavas.'),
       h('li', { class: 'keys-only' }, h('b', {}, 'Itens, na corrida:'), ' passa pelas caixas ?; ', h('b', {}, 'E'), ' ou ', h('b', {}, 'Shift'), ' usa o que te saiu (com ↓ atiras para trás). Quanto mais atrás fores, melhor o que te sai.'),
@@ -603,14 +614,16 @@ function bar(): HTMLElement {
     );
   }
   const humans = room ? room.lobby.members.filter((m) => !m.bot).length : 0;
+  const flying = !!roam?.fly;
   return h(
     'div',
     { class: 'bar' },
     h('button', { class: 'small ghost', title: 'Menu (Esc)', onclick: openMenu }, '☰ Menu'),
     room && h('span', { class: 'room-code' }, 'Sala ', h('b', {}, room.lobby.code), ` · ${humans} ${humans === 1 ? 'piloto' : 'pilotos'}`),
-    touchBtn('↺', 'Voltar à rua', () => pad.press('respawn')),
+    !flying && touchBtn('↺', 'Voltar à rua', () => pad.press('respawn')),
+    touchBtn(flying ? '🏎️ Voltar ao kart' : 'Voar', flying ? 'Voltar ao kart' : 'Voar pela cidade', () => pad.press('fly')),
     touchBtn('📢', 'Buzina', () => pad.press('horn')),
-    touchBtn('🎥', 'Câmara', () => pad.press('camera')),
+    !flying && touchBtn('🎥', 'Câmara', () => pad.press('camera')),
     sound,
   );
 }
@@ -618,8 +631,11 @@ function bar(): HTMLElement {
 function render(): void {
   const panel = race ? null : results && room ? 'results' : menu ? 'menu' : null;
   const driving = (!!race || !!roam) && !panel;
+  const flying = !race && !!roam?.fly;
   keys.enabled = driving;
-  pad.show(driving ? (race ? race.rules.mode : 'roam') : null);
+  mouse.enabled = driving && flying;
+  pad.show(driving ? (race ? race.rules.mode : flying ? 'fly' : 'roam') : null);
+  document.body.classList.toggle('flying', flying);
   document.body.classList.toggle('racing', !!race);
   document.body.classList.toggle('driving', driving);
   document.body.classList.toggle('paneled', !!panel);
@@ -798,7 +814,7 @@ function keepWhere(c: Car): void {
 function startRoam(car: Car): void {
   car.v = v3();
   const me = new Roamer(world.drive, room?.you || 'me', myName(), car);
-  roam = { me, kart: showKart(myDriver(), null), karts: new Map(), cars: new Map(), hud: new RoamHud(hudRoot, mapLines), acc: 0, cam: 0, steer: 0, throttle: 0, shake: 0, vice: 0, idx: null, street: '', kept: 0 };
+  roam = { me, kart: showKart(myDriver(), null), karts: new Map(), cars: new Map(), hud: new RoamHud(hudRoot, mapLines), acc: 0, cam: 0, steer: 0, throttle: 0, shake: 0, vice: 0, idx: null, street: '', kept: 0, fly: null };
   slow.frames = slow.time = 0;
 }
 
@@ -835,6 +851,54 @@ function honk(k: Shown): void {
   room?.honk();
 }
 
+// ---- Flying (braga-map's task 054) ----
+
+// The flying camera goes as far as the horizon (the owner's choice): the hills drawn 15 km round, short
+// of where they end by enough for the haze to hide it.
+const HAZED = 6000;
+const FLY_BOUND: Bound = { x0: world.horizon.x0 + HAZED, x1: world.horizon.x1 - HAZED, z0: world.horizon.z0 + HAZED, z1: world.horizon.z1 - HAZED };
+
+// Into the air from where the camera is, facing the way it faces, your kart waiting where it is; or
+// back down, your kart put on the street under the camera (the owner's choice), and the chase camera
+// going to it from where the flying camera was.
+function fly(r: RoamCtx, on: boolean): void {
+  if (on === !!r.fly) return;
+  if (on) {
+    const d = camera.getWorldDirection(new THREE.Vector3());
+    r.fly = new Flyer(v3(camera.position.x, camera.position.y, camera.position.z), Math.atan2(d.z, d.x), Math.asin(clamp(d.y, -1, 1)), world.above, FLY_BOUND);
+    r.hud.feed(pad.on ? '🎥 A voar: o polegar esquerdo anda, a metade direita olha, ▲ sobe e ▼ desce' : '🎥 A voar: WASD anda, ←→ vira, E sobe, Q desce, Shift acelera, o rato olha; V volta ao kart', 'big');
+  } else {
+    const f = r.fly!;
+    r.fly = null;
+    try {
+      r.me.car = landing(world.drive, f.p.x, f.p.y, f.p.z, f.yaw);
+      r.me.slip = 0;
+    } catch {
+      /* no street near: the kart stays where it waited */
+    }
+    keepWhere(r.me.car);
+    r.kept = performance.now();
+    camPos.copy(camera.position);
+  }
+  r.hud.fly(on);
+  render();
+}
+
+// Your keys, mouse and thumbs, for the flying camera.
+function flight(): FlyInput {
+  const k = keys.flight();
+  const p = pad.flight();
+  const m = mouse.look();
+  return {
+    fwd: clamp(k.fwd + p.fwd, -1, 1),
+    side: clamp(k.side + p.side, -1, 1),
+    up: clamp(k.up + p.up, -1, 1),
+    turn: k.turn,
+    look: { x: m.x + p.look.x, y: m.y + p.look.y },
+    fast: k.fast,
+  };
+}
+
 function stepRoam(r: RoamCtx, now: number, dt: number): void {
   const me = r.me;
   me.id = room?.you || 'me';
@@ -844,6 +908,8 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
 
   for (const act of [...keys.actions(), ...pad.actions()]) {
     if (act === 'horn') honk(r.kart);
+    if (act === 'fly') fly(r, !r.fly);
+    if (r.fly) continue;
     if (act === 'camera') r.cam = (r.cam + 1) % 2;
     if (act === 'respawn') me.respawn();
   }
@@ -852,12 +918,14 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
     r.acc -= DT;
     const k = keys.controls();
     const p = pad.controls();
-    // With the menu open, or no thumb on a touch screen's steering half, the kart pulls up and waits.
-    const ctl: Input = open || (pad.waiting && !k.throttle && !k.brake) ? stopInput(me.car) : { throttle: Math.max(k.throttle, p.throttle), brake: Math.max(k.brake, p.brake), steer: clampSteer(k.steer + p.steer), drift: k.drift || p.drift };
+    // With the menu open, flying, or no thumb on a touch screen's steering half, the kart pulls up and
+    // waits.
+    const ctl: Input = open || r.fly || (pad.waiting && !k.throttle && !k.brake) ? stopInput(me.car) : { throttle: Math.max(k.throttle, p.throttle), brake: Math.max(k.brake, p.brake), steer: clampSteer(k.steer + p.steer), drift: k.drift || p.drift };
     r.steer = ctl.steer;
     r.throttle = ctl.throttle;
     me.step(r.cars.values(), ctl, DT);
   }
+  if (r.fly && !open) r.fly.step(flight(), dt);
   for (const n of me.notes) {
     if (n.k === 'respawn') r.hud.feed('De volta à rua');
     else feel(r, n);
@@ -889,7 +957,10 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
 
   streetName(r);
   r.hud.set({ speed: speedOf(c), boosting: c.boost > 0, slip: me.slip });
-  r.hud.minimap({ x: c.p.x, z: c.p.z, yaw: c.yaw }, [...r.cars.values()].map((o) => ({ x: o.x, z: o.z, color: colorOf(o.id) })));
+  // Flying, round the camera, your kart a dot where it waits.
+  const others = [...r.cars.values()].map((o) => ({ x: o.x, z: o.z, color: colorOf(o.id) }));
+  if (r.fly) r.hud.minimap({ x: r.fly.p.x, z: r.fly.p.z, yaw: r.fly.yaw }, [...others, { x: c.p.x, z: c.p.z, color: r.kart.model.driver.color }]);
+  else r.hud.minimap({ x: c.p.x, z: c.p.z, yaw: c.yaw }, others);
 
   if (now - r.kept > 3000) {
     r.kept = now;
@@ -910,7 +981,8 @@ function streetName(r: RoamCtx): void {
   }
 }
 
-// Your engine, tyres and wind, the others' engines, and the city round you.
+// Your engine, tyres and wind, the others' engines, and the city round you. Flying, your engine is heard
+// from where your kart waits, as the others' are, and the city from the ground under the camera.
 function hearRoam(r: RoamCtx, dt: number): void {
   const c = r.me.car;
   const others: Kart[] = [];
@@ -919,8 +991,10 @@ function hearRoam(r: RoamCtx, dt: number): void {
     others.push({ id: o.id, p: o, v: { x: o.vx, y: 0, z: o.vz }, speed, throttle: speed > 2 ? 1 : 0, grounded: true });
   }
   const slip = Math.abs(-c.v.x * Math.sin(c.yaw) + c.v.z * Math.cos(c.yaw));
-  engines({ id: r.me.id, p: c.p, v: c.v, speed: speedOf(c), throttle: r.throttle, grounded: c.grounded, drifting: c.drifting, slip, cobble: world.drive.surface(c.p.x, c.p.z, c.p.y) === 'setts' }, others, dt);
-  citySound(c.p, dt);
+  const mine = { id: r.me.id, p: c.p, v: c.v, speed: speedOf(c), throttle: r.throttle, grounded: c.grounded, drifting: c.drifting, slip, cobble: world.drive.surface(c.p.x, c.p.z, c.p.y) === 'setts' };
+  if (r.fly) engines(null, [...others, mine], dt);
+  else engines(mine, others, dt);
+  citySound(r.fly?.p ?? c.p, dt);
 }
 
 // ---- The race ----
@@ -1508,6 +1582,31 @@ function orbit(c: Car, t: number, dt: number): void {
   widen(58, dt);
 }
 
+// Flying: the camera is the flyer's, at a field of view of 70°. Any other camera starts from it.
+function flyCam(f: Flyer, dt: number): void {
+  const d = f.dir();
+  camera.position.set(f.p.x, f.p.y, f.p.z);
+  camera.lookAt(f.p.x + d.x, f.p.y + d.y, f.p.z + d.z);
+  camPos.copy(camera.position);
+  widen(70, dt);
+}
+
+// Where the flying camera looks on the ground, at most 100 m ahead, for the sun's shadows to fall
+// round, as ?scenery's fall 8 m ahead of its camera.
+function lookedAt(f: Flyer): V {
+  const d = f.dir();
+  const level = Math.hypot(d.x, d.z) || 1e-6;
+  for (let s = 4; s <= 100; s += 4) {
+    const x = f.p.x + (d.x / level) * s;
+    const z = f.p.z + (d.z / level) * s;
+    const y = world.above(x, z);
+    if (f.p.y + (d.y / level) * s <= y) return v3(x, y, z);
+  }
+  const x = f.p.x + (d.x / level) * 100;
+  const z = f.p.z + (d.z / level) * 100;
+  return v3(x, world.above(x, z), z);
+}
+
 // The sounds' listener, on the camera.
 const ahead = new THREE.Vector3();
 const above = new THREE.Vector3();
@@ -1555,14 +1654,18 @@ function frame(now: number): void {
   } else if (roam) {
     const r = roam;
     stepRoam(r, now, dt);
-    if (menu || results) orbit(r.me.car, t, dt);
+    if (r.fly) flyCam(r.fly, dt);
+    else if (menu || results) orbit(r.me.car, t, dt);
     else chase(r, dt);
     fitTags(r.karts.values());
-    look.follow(r.me.car.p);
+    look.follow(r.fly ? lookedAt(r.fly) : r.me.car.p);
     if (AUTODRIVE) {
       const c = r.me.car;
+      const d = camera.getWorldDirection(new THREE.Vector3());
       (window as unknown as { __kart: object }).__kart = {
         mode: 'roam',
+        fly: !!r.fly,
+        cam: { x: camera.position.x, y: camera.position.y, z: camera.position.z, yaw: Math.atan2(d.z, d.x), pitch: Math.asin(clamp(d.y, -1, 1)) },
         driver: r.kart.driver,
         x: c.p.x,
         y: c.p.y,

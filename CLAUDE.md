@@ -53,7 +53,8 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   `pk-where`; clear it to start on the plinth). Esc opens the menu over the world.
 - `?autodrive` lets the autopilot drive your car in a race and use its items. It also exposes
   `window.__kart` and `window.__scene`, for checking a change with Playwright: round the city
-  `mode: 'roam'`, where you are, the room, its members and the others where you see them; in a race
+  `mode: 'roam'`, where you are, the room, its members and the others where you see them, whether
+  you're flying (`fly`) and the camera (`cam`: its x, y, z, yaw and pitch); in a race
   `mode: 'race'`, where you are, lap, place, item, draw calls, triangles. Add `&at=<sample>` and your car starts
   the race there, to look at one part of the track without driving a lap to it.
 - To race alone, the menu's "🏁 Corrida": it opens a room of your own, and the empty places on the
@@ -62,6 +63,11 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   first's `localStorage`, its name and driver). Rooms go through PeerJS's public server, so this needs
   internet access.
 - `?exp= ?sun= ?hemi= ?env= ?fog=` override the lighting (`src/render/look.ts`), for tuning.
+- V, or the menu's "🎥 Voar pela cidade", flies the camera round the city from wherever it is, your
+  kart waiting (braga-map's task 054, `src/game/flyer.ts`): WASD, E and Q, Shift faster, the mouse
+  dragged to look; on a touch screen a stick on the left half, a drag on the right, ▲ Subir and
+  ▼ Descer. V again puts your kart on the street under the camera. To look at a place without
+  driving there, or at the city from the air; `?view=` is still the way to frame a still shot.
 - `?view=x,y,z,tx,ty,tz` holds the race's camera at (x, y, z), looking at (tx, ty, tz), to look at
   the scenery from anywhere (the sights on the hills, say). A seventh number sets its vertical
   field of view in degrees (the race's own widens with speed). Take positions from braga-map's map

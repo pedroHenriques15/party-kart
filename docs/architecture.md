@@ -143,7 +143,10 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
   outline's nearest edges', and where it meets the land at grade it's eased to the land's height
   over 10 m (the map's deck ends can be 0.4 m off the ground's). A ground pavement that runs onto a
   piece's road gives way to it. The normal is the surface's over 3 m, about a car's length, so the
-  2 m ground doesn't shake the car, and a flight of steps is a slope it climbs a riser at a time.
+  2 m ground doesn't shake the car, and a flight of steps is a slope it climbs a riser at a time. Off
+  a piece, where a deck's or a tunnel's road is nearer the car's height than the land under it, the
+  normal takes that road's height there: else a car just off a deck's end takes the embankment under
+  the deck for the land's slope, and at speed is thrown up off it (braga-map's task 026).
 - **The walls** are 2D segments, each standing from a foot to a top, so a car flies over one it's
   above and passes under one it's below: every building's outline, trimmed at the kerb where it
   stands on a carriageway (the map's street too wide or its line off the middle, until braga-map's
@@ -228,7 +231,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk34-` plus a five-character room code, and the invite link is `?room=<code>`, which
+`partykart-pk35-` plus a five-character room code, and the invite link is `?room=<code>`, which
 opens the game straight into the room. A room is made only when someone invites friends ("Convidar
 amigos") or starts a race; until then the game is alone, with no network at all.
 

@@ -93,15 +93,17 @@ test('straight across a junction on Fujacal, on the carriageway and on the groun
 });
 
 test('up a kerb onto the pavement, with a bump, and back down onto the road', () => {
-  // The Rua do Fujacal's east kerb, 15 cm high, from (166.5, 793.8) to (172.5, 812.6): from the
-  // carriageway at 30° to it, onto the pavement, then back.
+  // The Rua do Fujacal's east kerb, 15 cm high, from (168.4, 793.8) to (174.4, 812.6) (where the LiDAR
+  // has it, braga-map's task 026): from the carriageway at 30° to it, onto the pavement, then back.
+  // North of the garden wall at the pavement's back from (174.2, 795.4) to (171.8, 802.3), 3 m from
+  // the kerb, which a car turning back off the pavement would touch.
   const kx = 6 / 19.73;
   const kz = 18.8 / 19.73;
   const nx = kz;
   const nz = -kx; // out of the road, east
   const s30 = Math.sin(Math.PI / 6);
   const c30 = Math.cos(Math.PI / 6);
-  const c = start(165, 795, 165 + kx * c30 + nx * s30, 795 + kz * c30 + nz * s30, 12);
+  const c = start(171.2, 808.3, 171.2 + kx * c30 + nx * s30, 808.3 + kz * c30 + nz * s30, 12);
   const yaw = c.yaw;
   const r1 = run(c, (c) => ({ throttle: speedOf(c) < 12 ? 1 : 0, brake: 0, steer: clamp(angleDiff(yaw, c.yaw) * 2, -1, 1), drift: false }), 3, () => ground.floor(c.p.x, c.p.z, c.p.y).kind === 'pavement' && c.grounded && ground.floor(c.p.x - nx, c.p.z - nz, c.p.y).kind === 'pavement');
   const up = r1.steps.findIndex((s) => s.kind === 'pavement');

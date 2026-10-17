@@ -192,7 +192,10 @@ A sight that's on the map (a building or a monument the track passes) is easiest
 `src/render/sights.ts`: find its OpenStreetMap id (braga-map's `.cache/osm/*.json`), add it to the
 `sights` in braga-map's `tools/world.mjs` with whatever the builder needs (a position, a
 footprint's rectangle, a front), make the world again (see "The track"), and add a builder for its
-`kind`. The other games get it too. Otherwise:
+`kind`. The other games get it too. One that stands for a building of the tiles' carries that
+building's outline as `covers`, and the city doesn't draw the building (it's still a wall to the
+karts). Small ones of a few materials go in `chapels.ts`'s way: built apart, baked together in
+`buildSights`, so six chapels cost the draw calls of one. Otherwise:
 
 1. Build it as a function returning a `THREE.Group`, in `src/render/city.ts` or a file of its own,
    from the helpers in `src/render/kit.ts`:

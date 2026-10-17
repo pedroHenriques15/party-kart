@@ -1,7 +1,8 @@
 // The sights a Bracarense steers by. Bom Jesus and the Sameiro on the hills to the east, seen from
 // all over the track, and the hills of the horizon behind them; the cross on top of the Picoto;
-// and along the way São João da Ponte's chapel (chapel.ts), the Estádio 1.º de Maio (stadium.ts),
-// the Altice Forum's α, Makro and the Tourigalo. At their real places and sizes from the map
+// and along the way São João da Ponte's chapel (chapel.ts), the route's other chapels, São Lázaro's
+// bell tower and two wayside shrines (chapels.ts), the Estádio 1.º de Maio (stadium.ts), the Altice
+// Forum's α, Makro and the Tourigalo. At their real places and sizes from the map
 // (braga-map's tools/world.mjs), but for Bom Jesus and the Sameiro, twice it, and the Tourigalo,
 // five times. Far off, it's their outline against the sky that counts.
 import type { Grid, Sight } from 'braga-map';
@@ -9,6 +10,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Track } from '../track/track.ts';
 import { saoJoaoChapel } from './chapel.ts';
+import { routeChapel, saoLazaroTower, shrine } from './chapels.ts';
 import { bake, box, mat, mesh, type Ground } from './kit.ts';
 import { stadium } from './stadium.ts';
 import * as tex from './textures.ts';
@@ -413,6 +415,7 @@ function alticeLogo(s: Extract<Sight, { kind: 'altice' }>): THREE.Group {
 export function buildSights(list: Sight[], track: Track, ground: Ground, far: Ground): { group: THREE.Group; update: (t: number) => void } {
   const group = Object.assign(new THREE.Group(), { name: 'sights' });
   const updates: ((t: number) => void)[] = [];
+  const route = new THREE.Group();
   for (const s of list) {
     let g: THREE.Group | null = null;
     if (s.kind === 'bomjesus') g = bomJesus({ ...s, y: far(s.x, s.z) }, far);
@@ -427,8 +430,15 @@ export function buildSights(list: Sight[], track: Track, ground: Ground, far: Gr
     if (s.kind === 'stadium') g = stadium({ ...s, y: ground(s.x, s.z) }, ground);
     // On the ground at its front, the square it looks to.
     if (s.kind === 'saojoao') g = saoJoaoChapel({ ...s, y: ground(s.x + Math.cos(s.face) * (s.L - 4.8), s.z + Math.sin(s.face) * (s.L - 4.8)) });
+    // The route's other chapels, São Lázaro's tower and the shrines, on the ground at their fronts
+    // too, baked together: small and of the same few materials, they're a draw call a material so.
+    const front = 'L' in s && 'face' in s ? ground(s.x + Math.cos(s.face) * s.L, s.z + Math.sin(s.face) * s.L) : 0;
+    if (s.kind === 'chapel') route.add(routeChapel({ ...s, y: front }));
+    if (s.kind === 'saolazaro') route.add(saoLazaroTower({ ...s, y: front }));
+    if (s.kind === 'shrine') route.add(shrine({ ...s, y: front }));
     if (g) group.add(bake(g));
   }
+  if (route.children.length) group.add(bake(route));
   return { group, update: (t) => updates.forEach((u) => u(t)) };
 }
 

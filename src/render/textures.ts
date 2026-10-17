@@ -929,6 +929,57 @@ export const shopWall = () =>
     for (let x = 0; x < 256; x += 32) g.fillRect(x, 44, 3, 40);
   });
 
+// Dressed granite, its blocks in courses half a metre deep, each its own warm grey, the joints fine:
+// Santa Justa's front, São Lázaro's tower (braga-map's task 056). 256 pixels are 2 m across and up;
+// tinted by its material.
+export const ashlar = () =>
+  canvas(256, 256, (g) => {
+    g.fillStyle = '#8c8270';
+    g.fillRect(0, 0, 256, 256);
+    for (let y = 0; y < 256; y += 64) {
+      let x = -Math.random() * 60;
+      while (x < 256) {
+        const w = 70 + Math.random() * 80;
+        const l = 165 + Math.random() * 40;
+        g.fillStyle = `rgb(${l},${l - 7},${l - 22})`;
+        g.fillRect(x + 1.5, y + 1.5, w - 3, 61);
+        if (x + w > 256) g.fillRect(x + 1.5 - 256, y + 1.5, w - 3, 61);
+        x += w;
+      }
+    }
+    noise(g, 256, 256, 9000, 0.12);
+    noise(g, 256, 256, 3000, 0.14, true);
+  });
+
+// Rubble masonry: rough granite stones of every size laid in rows in thick pale mortar, as Minho's
+// oldest chapels are built (Santo Adrião's, braga-map's task 056). 256 pixels are 2 m.
+export const rubble = () =>
+  canvas(256, 256, (g) => {
+    g.fillStyle = '#b4ab9b';
+    g.fillRect(0, 0, 256, 256);
+    // Ten rows of stones, each its own height, the stones' widths and tops uneven.
+    for (let r = 0; r < 10; r++) {
+      const y0 = r * 25.6;
+      let x = -Math.random() * 30;
+      while (x < 256) {
+        const w = 18 + Math.random() * 42;
+        const h = 14 + Math.random() * 10;
+        const l = 120 + Math.random() * 60;
+        const top = y0 + 1 + Math.random() * (24 - h);
+        const round = 3 + Math.random() * 5;
+        g.fillStyle = `rgb(${l + 8},${l},${l - 14})`;
+        for (const at of x + w > 256 ? [x, x - 256] : [x]) {
+          g.beginPath();
+          g.roundRect(at + 2, top, w - 4, h, round);
+          g.fill();
+        }
+        x += w;
+      }
+    }
+    noise(g, 256, 256, 9000, 0.14);
+    noise(g, 256, 256, 2500, 0.16, true);
+  });
+
 // Church walls: white plaster with granite bands and tall windows.
 export const churchWall = () =>
   canvas(256, 128, (g) => {

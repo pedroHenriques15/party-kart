@@ -16,10 +16,10 @@ type Chapel = Extract<Sight, { kind: 'saojoao' }>;
 let stoneMat: THREE.Material | null = null;
 let tilesMat: THREE.Material | null = null;
 const RENDER = () => mat('#f1eee6', { roughness: 0.9 });
-const STONE = () => (stoneMat ??= mat('#d6d0c3', { map: tex.granite(), roughness: 0.9 }));
+export const STONE = () => (stoneMat ??= mat('#d6d0c3', { map: tex.granite(), roughness: 0.9 }));
 const DARK = () => mat('#262a2e', { roughness: 0.5 });
 const DOOR = () => mat('#2f5b3d', { roughness: 0.6 });
-const TILES = () => (tilesMat ??= mat('#6c3424', { map: tex.roofTiles(), roughness: 0.8 }));
+export const TILES = () => (tilesMat ??= mat('#6c3424', { map: tex.roofTiles(), roughness: 0.8 }));
 const BRONZE = () => mat('#6b5a3a', { roughness: 0.4, metalness: 0.6 });
 const IRON = () => mat('#1d1f22', { roughness: 0.5, metalness: 0.4 });
 
@@ -30,14 +30,14 @@ const PORCH_W = 5.8;
 const BLOCK = 5;
 
 // A hipped roof w along x and d along z, h high, its eaves at y.
-function hipped(w: number, d: number, h: number, m: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
+export function hipped(w: number, d: number, h: number, m: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
   const g = new THREE.ConeGeometry(Math.SQRT1_2, 1, 4, 1).rotateY(Math.PI / 4).scale(w, h, d);
   return mesh(g, m, x, y + h / 2, z);
 }
 
 // A window or a door in a wall facing +x (or -x, out = -1) at (x, z), its sill at y: the dark pane
 // a little out from the wall, a frame of dressed granite round it.
-function opening(g: THREE.Group, x: number, z: number, y: number, w: number, h: number, out: 1 | -1, pane: THREE.Material, frame = 0.16): void {
+export function opening(g: THREE.Group, x: number, z: number, y: number, w: number, h: number, out: 1 | -1, pane: THREE.Material, frame = 0.16): void {
   g.add(box(0.06, h, w, pane, x + out * 0.03, y, z));
   const fx = x + out * 0.06;
   g.add(box(0.1, frame, w + 2 * frame, STONE(), fx, y - frame, z), box(0.1, frame, w + 2 * frame, STONE(), fx, y + h, z));
@@ -45,7 +45,7 @@ function opening(g: THREE.Group, x: number, z: number, y: number, w: number, h: 
 }
 
 // The same in a wall facing +z (out = 1) or -z.
-function sideOpening(g: THREE.Group, x: number, z: number, y: number, w: number, h: number, out: 1 | -1, pane: THREE.Material, frame = 0.16): void {
+export function sideOpening(g: THREE.Group, x: number, z: number, y: number, w: number, h: number, out: 1 | -1, pane: THREE.Material, frame = 0.16): void {
   g.add(box(w, h, 0.06, pane, x, y, z + out * 0.03));
   const fz = z + out * 0.06;
   g.add(box(w + 2 * frame, frame, 0.1, STONE(), x, y - frame, fz), box(w + 2 * frame, frame, 0.1, STONE(), x, y + h, fz));
@@ -53,14 +53,14 @@ function sideOpening(g: THREE.Group, x: number, z: number, y: number, w: number,
 }
 
 // A finial: an urn on a block.
-function finial(g: THREE.Group, x: number, y: number, z: number, s = 1): void {
+export function finial(g: THREE.Group, x: number, y: number, z: number, s = 1): void {
   g.add(box(0.4 * s, 0.25 * s, 0.4 * s, STONE(), x, y, z));
   g.add(mesh(new THREE.SphereGeometry(0.2 * s, 10, 8), STONE(), x, y + 0.42 * s, z));
   g.add(mesh(new THREE.ConeGeometry(0.08 * s, 0.3 * s, 8), STONE(), x, y + 0.72 * s, z));
 }
 
 // A pinnacle: a granite pyramid on a block.
-function pinnacle(g: THREE.Group, x: number, y: number, z: number): void {
+export function pinnacle(g: THREE.Group, x: number, y: number, z: number): void {
   g.add(box(0.5, 0.35, 0.5, STONE(), x, y, z));
   g.add(mesh(new THREE.ConeGeometry(0.22, 0.9, 4).rotateY(Math.PI / 4), STONE(), x, y + 0.8, z));
 }

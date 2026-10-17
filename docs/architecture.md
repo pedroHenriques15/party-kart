@@ -760,6 +760,17 @@ High, 81–268 and 0.81–2.30 M on Medium, 54–237 and 0.46–1.42 M on Low; t
 on High, 4.1–5.5 on Low. The download on High is 8.04 MB gzipped (14.42 as is), 0.05 MB more, the
 tiles.
 
+braga-map's chapels and shrines along the route (its task 056, on 1.21.1; `shots/2026-10-17-after056/`,
+party-kart `09d0f7c`, against `after026`, at the median of the 32 viewpoints both shot): the six baked
+together into 13 materials, about 8,000 triangles, drawn wherever any is in view. Draw calls 143 →
+155 on High, 142.5 → 154.5 on Medium, 103.5 → 110 on Low (up to 19 more on High, at
+`conselheiro-lobato` and `alameda-fujacal`; 3 or 4 where none is in view); triangles 1.802 → 1.809 M
+on High, 1.507 → 1.515 on Medium, 0.826 → 0.830 on Low; textures 133 → 134 MB on High and 48 → 49
+on Low (`ashlar` and `rubble`), the same on Medium. The city built in 4.7–5.2 s on High, 3.7–4.0 on
+Low, a frame 0.4–2.2 ms. The two new viewpoints: `capela-santa-justa` 137 calls and 1.75 M
+triangles on High, `capela-santo-adriao` 121 and 1.52 M (97 and 83 calls on Low). The download on
+High is 8.04 MB gzipped (14.43 as is), 0.01 MB more: braga-map's base with the sights.
+
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),
   where the ground's painted map was 51 MB before task 016; the sun's shadows 16 MB (4 on Medium),

@@ -149,9 +149,10 @@ function sameiro(s: Extract<Sight, { kind: 'sameiro' }>, ground: Ground): THREE.
 function cruzeiro(s: { x: number; y: number; z: number }): THREE.Group {
   const g = new THREE.Group();
   const white = mat('#f1f0ec', { roughness: 0.5, metalness: 0.2 });
-  g.add(mesh(new THREE.CylinderGeometry(0.6, 0.75, 1.5, 4).rotateY(Math.PI / 4), GRANITE(), 0, 0.75, 0));
-  g.add(box(0.2, 4.2, 0.2, white, 0, 1.5, 0), box(0.2, 0.2, 2.3, white, 0, 4.15, 0));
-  const ring = mesh(new THREE.TorusGeometry(0.6, 0.045, 6, 28), mat('#6e4a33', { roughness: 0.7, metalness: 0.3 }), 0, 4.25, 0);
+  // Its top 4.8 m over the ground and its arms 3.7, as the LiDAR saw them.
+  g.add(mesh(new THREE.CylinderGeometry(0.6, 0.75, 1, 4).rotateY(Math.PI / 4), GRANITE(), 0, 0.5, 0));
+  g.add(box(0.2, 3.8, 0.2, white, 0, 1, 0), box(0.2, 0.2, 2.3, white, 0, 3.6, 0));
+  const ring = mesh(new THREE.TorusGeometry(0.6, 0.045, 6, 28), mat('#6e4a33', { roughness: 0.7, metalness: 0.3 }), 0, 3.7, 0);
   ring.rotation.y = Math.PI / 2;
   g.add(ring);
   g.position.set(s.x, s.y, s.z);

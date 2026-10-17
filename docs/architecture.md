@@ -483,8 +483,8 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     metre a step, its outer wall, the main stand's roof and its four floodlights where the LiDAR
     saw them; Makro's sign; the Altice Forum's α; and the Tourigalo, a black bull with a rooster's head on its lawn, head to the west, five times its
     real size and exaggerated (braga-map's decision 015), its testicles swinging (the one moving
-    part, outside the bake), with its restaurant's sign behind; 9 draw calls and about 25,000
-    triangles.
+    part, outside the bake), with its restaurant's sign behind; 42 meshes and about 62,000
+    triangles, drawn whole wherever they're in view (9 and 25,000 before braga-map's task 021).
 - **The road** (`render/road.ts`): what the race adds to the streets (`raceMarks`): the start
   line, the gates at the start and the checkpoints, the boost pads, the barriers at the start and in
   rows across the side streets (braga-map's `closures`, and the fences where the race's road drops
@@ -705,6 +705,21 @@ braga-map's corners cut back at the decks' and tunnels' ends (its task 046, on 1
 `after017`): the same, 126 calls, 1.67 M triangles and 132 MB of textures on High at the median (95,
 0.76 M and 47 MB on Low), no viewpoint more than about a thousand triangles off. The city built in
 5.3 s on High, 4.8 on Medium and 4.2 on Low, a frame 0.6–0.8 ms.
+
+braga-map's landmarks along the route (its task 021, on 1.19.0; `shots/2026-10-17-after021/`,
+party-kart `a86355b` with 054's flying camera merged in, against `after046`, at the median of the 29
+viewpoints both shot): the sights are 42 meshes and 61,900 triangles where they were 9 and about
+25,000 (São João da Ponte's chapel in nine materials, the stadium's stands, wall, roof, track and
+floodlights in seven). Draw calls 126 → 132 on High and Medium (up to 15 more where the chapel and
+the arch's side of the city are in view: `sao-joao-da-ponte`, `liberdade`), 95 → 96 on Low;
+triangles 1.67 → 1.71 M on High, 1.38 → 1.42 on Medium, 0.76 → 0.79 on Low (41 k more everywhere,
+as the sights are drawn whole, and 63 k at `estadio`); textures 132 → 133 MB on High, 80 → 81 on
+Medium, 47 → 48 on Low (the stadium's wall and the α, two canvases). The city built in 6.5 s on
+High against 5.3 (6.0 against 4.8 on Medium, 5.1 against 4.2 on Low), with 054's camera in it too;
+a frame 0.7–1.4 ms. The three new viewpoints: `capela-sao-joao` 146 calls and 1.69 M triangles on
+High, `altice-forum` 197 and 2.43 M, `picoto-top` 200 and 2.16 M (105, 163 and 169 calls on Low).
+The download on High is 7.99 MB gzipped (14.32 as is), 0.03 MB more: the code, and braga-map's base
+with the stadium's stands (5,100 heights).
 
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),

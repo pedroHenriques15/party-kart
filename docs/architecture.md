@@ -692,6 +692,12 @@ of textures on High at the median (89 → 95, 0.74 → 0.76 M and 42 → 47 MB o
 triangles at `conselheiro-lobato`, 2.17 → 2.62 M on High. The city built in 4.7 s on High, 4.9 on
 Medium and 4.2 on Low, a frame 0.7–1.1 ms.
 
+braga-map's corners cut back at the decks' and tunnels' ends (its task 046, on 1.18.1;
+`shots/2026-10-16-after046/`, shot on `d49612c` with braga-map installed from its checkout, against
+`after017`): the same, 126 calls, 1.67 M triangles and 132 MB of textures on High at the median (95,
+0.76 M and 47 MB on Low), no viewpoint more than about a thousand triangles off. The city built in
+5.3 s on High, 4.8 on Medium and 4.2 on Low, a frame 0.6–0.8 ms.
+
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),
   where the ground's painted map was 51 MB before task 016; the sun's shadows 16 MB (4 on Medium),

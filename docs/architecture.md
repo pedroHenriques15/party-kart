@@ -744,6 +744,16 @@ High, `altice-forum` 197 and 2.43 M, `picoto-top` 200 and 2.16 M (105, 163 and 1
 The download on High is 7.99 MB gzipped (14.32 as is), 0.03 MB more: the code, and braga-map's base
 with the stadium's stands (5,100 heights).
 
+braga-map's streets on their real carriageways (its task 026, on 1.20.1; `shots/2026-10-17-after026/`,
+party-kart `fd4dc07`, with 022's light and 021's landmarks both in it): against `after021` and
+`after022`, the mean of the 29 viewpoints all three shot, what's left after the light (0.05 M
+triangles more on High, 0.03 on Low) and the landmarks (0.02 M) is about 0.01 M triangles on High
+and Low, 0.6%: the streets measured wider and their edges where the LiDAR has them. One draw call
+more, the same textures. Over the 32 viewpoints, 81–269 draw calls and 0.91–2.95 M triangles on
+High, 81–268 and 0.81–2.30 M on Medium, 54–237 and 0.46–1.42 M on Low; the city built in 5.9–7.0 s
+on High, 4.1–5.5 on Low. The download on High is 8.04 MB gzipped (14.42 as is), 0.05 MB more, the
+tiles.
+
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),
   where the ground's painted map was 51 MB before task 016; the sun's shadows 16 MB (4 on Medium),

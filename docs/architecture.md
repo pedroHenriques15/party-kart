@@ -490,7 +490,13 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   - The sights (`sights.ts`): Bom Jesus and its Escadório and the Sameiro on the hills, at twice
     their size so they show from the track; the Picoto's white steel cross, with its ring, on a
     granite block; São João da Ponte's chapel (`chapel.ts`, braga-map's task 021), drawn in its
-    building's place (the building's still a wall to the karts); the Estádio 1.º de Maio
+    building's place (the building's still a wall to the karts); the route's other chapels, Santa
+    Justa's, Santo Adrião's and Santa Tecla's, the Igreja de São Lázaro's bell tower and the
+    shrines of the Senhor do Bonfim and the Senhor da Boa Morte (`chapels.ts`, braga-map's task
+    056), each from its photos at the size and heights braga-map gives it, in its buildings' place
+    as São João's is (any sight with `covers`), and baked together into a mesh a material, a draw
+    call each wherever any of them is in view (the shrines, which the tiles leave out, aren't walls
+    to the karts); the Estádio 1.º de Maio
     (`stadium.ts`), its stands as braga-map measured them along spokes round the track, stepped a
     metre a step, its outer wall, the main stand's roof and its four floodlights where the LiDAR
     saw them; Makro's sign; the Altice Forum's α; and the Tourigalo, a black bull with a rooster's head on its lawn, head to the west, five times its

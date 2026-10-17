@@ -91,6 +91,79 @@ export interface Land {
   openings: Mouth[];
 }
 
+// How far the stadium's bowl takes to ease to nothing before a street, in metres.
+export const BOWL_EASE = 10;
+
+// How far (x, z) is from the nearest carriageway or pavement on the ground, in the box, up to `far`
+// metres (`far` beyond it, and outside the box): on a grid of half a metre, each cell in a street
+// or not by its middle, and the distance between cells as a chamfer of straight and diagonal steps,
+// read between the four cells round (x, z) so it has no steps of its own.
+export function streetDistance(map: Braga, B: Box, far: number): (x: number, z: number) => number {
+  const S = 0.5;
+  const nx = Math.ceil((B.x1 - B.x0) / S) + 1;
+  const nz = Math.ceil((B.z1 - B.z0) / S) + 1;
+  const d = new Float32Array(nx * nz).fill(far);
+  const pieces = [...map.streets.carriageways, ...map.streets.pavements].filter((p) => p.level === 'ground');
+  for (const p of pieces) {
+    let z0 = Infinity;
+    let z1 = -Infinity;
+    for (const [, z] of p.rings[0]) {
+      z0 = Math.min(z0, z);
+      z1 = Math.max(z1, z);
+    }
+    // Each row of cells the piece spans: where its rings' edges cross the row's middle, filled
+    // between each two (its holes, as rings of their own, left out).
+    for (let j = Math.max(0, Math.ceil((z0 - B.z0) / S)); j <= Math.min(nz - 1, Math.floor((z1 - B.z0) / S)); j++) {
+      const z = B.z0 + j * S;
+      const xs: number[] = [];
+      for (const r of p.rings) {
+        for (let k = 0, m = r.length - 1; k < r.length; m = k++) {
+          const [ax, az] = r[m];
+          const [bx, bz] = r[k];
+          if (az > z !== bz > z) xs.push(ax + ((z - az) * (bx - ax)) / (bz - az));
+        }
+      }
+      xs.sort((a, b) => a - b);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        for (let i = Math.max(0, Math.ceil((xs[k] - B.x0) / S)); i <= Math.min(nx - 1, Math.floor((xs[k + 1] - B.x0) / S)); i++) d[j * nx + i] = 0;
+      }
+    }
+  }
+  const D = S * Math.SQRT2;
+  const step = (i: number, j: number, di: number, dj: number, w: number) => {
+    const a = i + di;
+    const b = j + dj;
+    if (a >= 0 && a < nx && b >= 0 && b < nz) d[j * nx + i] = Math.min(d[j * nx + i], d[b * nx + a] + w);
+  };
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) {
+      step(i, j, -1, 0, S);
+      step(i, j, 0, -1, S);
+      step(i, j, -1, -1, D);
+      step(i, j, 1, -1, D);
+    }
+  }
+  for (let j = nz - 1; j >= 0; j--) {
+    for (let i = nx - 1; i >= 0; i--) {
+      step(i, j, 1, 0, S);
+      step(i, j, 0, 1, S);
+      step(i, j, 1, 1, D);
+      step(i, j, -1, 1, D);
+    }
+  }
+  return (x, z) => {
+    const u = (x - B.x0) / S;
+    const v = (z - B.z0) / S;
+    if (u < 0 || v < 0 || u > nx - 1 || v > nz - 1) return far;
+    const i = Math.min(nx - 2, Math.floor(u));
+    const j = Math.min(nz - 2, Math.floor(v));
+    const fu = u - i;
+    const fv = v - j;
+    const at = (a: number, b: number) => d[b * nx + a];
+    return (at(i, j) * (1 - fu) + at(i + 1, j) * fu) * (1 - fv) + (at(i, j + 1) * (1 - fu) + at(i + 1, j + 1) * fu) * fv;
+  };
+}
+
 // The land in the box (and 100 m round it, for the river). Given the race's track, the river is
 // kept well below the road where the road crosses it.
 export function makeLand(map: Braga, B: Box, track?: Track): Land {
@@ -137,8 +210,16 @@ export function makeLand(map: Braga, B: Box, track?: Track): Land {
     return best > 80 ? { d: Infinity, y: 0 } : { d: best, y };
   };
 
-  // The stadium's ground is level, its pitch and stands in a bowl cut into the slope.
+  // The stadium's ground is level, its pitch and stands in a bowl cut into the slope. But a street
+  // keeps its own level (braga-map's task 049): the bowl eases to nothing over BOWL_EASE metres
+  // before a carriageway or a pavement on the ground, so the street beside the stadium is drawn and
+  // driven on braga-map's ground, not 1.2 m under it.
   const pads = map.sights.flatMap((s) => (s.kind === 'stadium' ? [{ x: s.x, z: s.z, c: Math.cos(s.angle), s: Math.sin(s.angle), rx: s.L + s.W + 30, rz: s.W + 36, y: nat(s.x, s.z) }] : []));
+  const offStreets = pads.map((p) => {
+    const ex = 1.3 * Math.hypot(p.rx * p.c, p.rz * p.s);
+    const ez = 1.3 * Math.hypot(p.rx * p.s, p.rz * p.c);
+    return streetDistance(map, { x0: p.x - ex, x1: p.x + ex, z0: p.z - ez, z1: p.z + ez }, BOWL_EASE);
+  });
   // In front of a tunnel's mouth, and in its throat, the land is down at the tunnel's road: the
   // LiDAR's ground slopes up there from the cutting's floor to whatever is over the tunnel, which
   // would bury the opening (levels.ts). But not in front of it on another street's carriageway, one
@@ -165,12 +246,12 @@ export function makeLand(map: Braga, B: Box, track?: Track): Land {
     });
   const firm = (x: number, z: number): number => {
     let h = nat(x, z);
-    for (const p of pads) {
+    pads.forEach((p, k) => {
       const dx = x - p.x;
       const dz = z - p.z;
       const e = Math.hypot((dx * p.c + dz * p.s) / p.rx, (-dx * p.s + dz * p.c) / p.rz);
-      if (e < 1.3) h = p.y + (h - p.y) * smooth(0.9, 1.3, e);
-    }
+      if (e < 1.3) h += (p.y - h) * (1 - smooth(0.9, 1.3, e)) * smooth(0, BOWL_EASE, offStreets[k](x, z));
+    });
     openings.forEach((m, k) => {
       const dx = x - m.x;
       const dz = z - m.z;

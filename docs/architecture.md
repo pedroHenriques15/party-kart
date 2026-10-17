@@ -363,7 +363,7 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   the sun faint, the sky's light stronger, the haze thicker, and the streets' surfaces and paint darker and glossy
   (`WET`, in `streets.ts`); `?weather=rain` adds the rain, 10,000 streaks in a box 40 m across that goes with the
   camera, each worked out on the graphics card from the clock (one draw call). The street lamps light and glow only
-  once the sun is under 4° (`LIT`). A `Sky` (a box 20 km across that goes with the camera,
+  once the sun is under 4° (`LIT`); by day a lamp is its post, its arm and a pale grey head. A `Sky` (a box 20 km across that goes with the camera,
   so the flying camera never leaves it) and an environment map made from it, a
   hemisphere light, a sun whose shadow box follows the camera, ACES tone mapping and fog. There are
   three quality levels. High has pixel ratio up to 2 and 2048 shadows. Medium has 1.25 and 1024

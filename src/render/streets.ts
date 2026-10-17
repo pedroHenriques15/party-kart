@@ -937,6 +937,7 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   {
     const posts: THREE.Matrix4[] = [];
     const heads: THREE.Matrix4[] = [];
+    const arms: THREE.Matrix4[] = [];
     const placed = new Grid<[number, number]>(30);
     const free = (x: number, z: number) => {
       for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const [px, pz] of placed.at(x + a * 30, z + b * 30)) if (Math.hypot(px - x, pz - z) < 26) return false;
@@ -955,16 +956,22 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
         placed.add(x, z, x, z, [x, z]);
         const y = paveTop(x, z);
         posts.push(new THREE.Matrix4().makeTranslation(x, y + 3.5, z));
-        heads.push(new THREE.Matrix4().compose(new THREE.Vector3(x - nx * 1.8, y + 6.9, z - nz * 1.8), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -Math.atan2(tz, tx), 0)), new THREE.Vector3(1, 1, 1)));
+        const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -Math.atan2(tz, tx), 0));
+        heads.push(new THREE.Matrix4().compose(new THREE.Vector3(x - nx * 1.8, y + 6.9, z - nz * 1.8), turn, new THREE.Vector3(1, 1, 1)));
+        arms.push(new THREE.Matrix4().compose(new THREE.Vector3(x - nx * 0.9, y + 6.98, z - nz * 0.9), turn, new THREE.Vector3(1, 1, 1)));
       }
     }
-    const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.14, 7, 8), new THREE.MeshStandardMaterial({ color: '#2e3a33', metalness: 0.5, roughness: 0.5 }), posts.length);
+    const steel = new THREE.MeshStandardMaterial({ color: '#2e3a33', metalness: 0.5, roughness: 0.5 });
+    const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.14, 7, 8), steel, posts.length);
     posts.forEach((m, k) => post.setMatrixAt(k, m));
+    // The arm out over the road from the post's top to the head: by day the head is seen for what it is.
+    const arm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08, 0.08, 1.8), steel, arms.length);
+    arms.forEach((m, k) => arm.setMatrixAt(k, m));
     // Lit, and glowing, only once the sun is down (look.ts); by day a lamp's a pale grey box.
     const head = new THREE.InstancedMesh(new THREE.BoxGeometry(0.9, 0.22, 0.45), LIT ? new THREE.MeshBasicMaterial({ color: '#fff4d0', toneMapped: false }) : mat('#cfccc4', { roughness: 0.5 }), heads.length);
     heads.forEach((m, k) => head.setMatrixAt(k, m));
-    for (const im of [post, head]) im.computeBoundingSphere();
-    group.add(post, head);
+    for (const im of [post, arm, head]) im.computeBoundingSphere();
+    group.add(post, arm, head);
     if (LIT) group.add(halos(heads.map((m) => new THREE.Vector3().setFromMatrixPosition(m).add(new THREE.Vector3(0, -0.3, 0))), ['#8a7440'], 4));
     counts.lamps = posts.length;
   }

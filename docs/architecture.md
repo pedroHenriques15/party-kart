@@ -143,7 +143,10 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
   outline's nearest edges', and where it meets the land at grade it's eased to the land's height
   over 10 m (the map's deck ends can be 0.4 m off the ground's). A ground pavement that runs onto a
   piece's road gives way to it. The normal is the surface's over 3 m, about a car's length, so the
-  2 m ground doesn't shake the car, and a flight of steps is a slope it climbs a riser at a time.
+  2 m ground doesn't shake the car, and a flight of steps is a slope it climbs a riser at a time. Off
+  a piece, where a deck's or a tunnel's road is nearer the car's height than the land under it, the
+  normal takes that road's height there: else a car just off a deck's end takes the embankment under
+  the deck for the land's slope, and at speed is thrown up off it (braga-map's task 026).
 - **The walls** are 2D segments, each standing from a foot to a top, so a car flies over one it's
   above and passes under one it's below: every building's outline, trimmed at the kerb where it
   stands on a carriageway (the map's street too wide or its line off the middle, until braga-map's
@@ -228,7 +231,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk34-` plus a five-character room code, and the invite link is `?room=<code>`, which
+`partykart-pk35-` plus a five-character room code, and the invite link is `?room=<code>`, which
 opens the game straight into the room. A room is made only when someone invites friends ("Convidar
 amigos") or starts a race; until then the game is alone, with no network at all.
 
@@ -746,6 +749,16 @@ a frame 0.7–1.4 ms. The three new viewpoints: `capela-sao-joao` 146 calls and 
 High, `altice-forum` 197 and 2.43 M, `picoto-top` 200 and 2.16 M (105, 163 and 169 calls on Low).
 The download on High is 7.99 MB gzipped (14.32 as is), 0.03 MB more: the code, and braga-map's base
 with the stadium's stands (5,100 heights).
+
+braga-map's streets on their real carriageways (its task 026, on 1.20.1; `shots/2026-10-17-after026/`,
+party-kart `fd4dc07`, with 022's light and 021's landmarks both in it): against `after021` and
+`after022`, the mean of the 29 viewpoints all three shot, what's left after the light (0.05 M
+triangles more on High, 0.03 on Low) and the landmarks (0.02 M) is about 0.01 M triangles on High
+and Low, 0.6%: the streets measured wider and their edges where the LiDAR has them. One draw call
+more, the same textures. Over the 32 viewpoints, 81–269 draw calls and 0.91–2.95 M triangles on
+High, 81–268 and 0.81–2.30 M on Medium, 54–237 and 0.46–1.42 M on Low; the city built in 5.9–7.0 s
+on High, 4.1–5.5 on Low. The download on High is 8.04 MB gzipped (14.42 as is), 0.05 MB more, the
+tiles.
 
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),

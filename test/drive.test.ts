@@ -82,7 +82,9 @@ test('locate: on the centre line, beside it, and above it', () => {
 });
 
 test("the autopilot laps the race cleanly, on the world's ground within its walls", () => {
-  const d = drive(600);
+  // Long enough for two laps of up to 310 s from the standing start (braga-map's task 026 made the
+  // loop 10.25 km, the two laps 604 s).
+  const d = drive(640);
   console.log(
     `laps ${d.laps.map((ms) => (ms / 1000).toFixed(1)).join(', ')} s; respawns ${d.respawns}; longest air ${d.maxAir.toFixed(2)} s; top ${(d.topSpeed * 3.6).toFixed(0)} km/h; wall hits ${d.wallHits}`,
   );

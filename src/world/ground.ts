@@ -474,7 +474,21 @@ export class WorldGround implements Ground {
       const k = (s.y1 - s.y0) / s.L;
       return norm(v3(-s.ux * k, 1, -s.uz * k));
     }
-    const h = f.piece ? (a: number, b: number) => f.piece!.height(a, b) : f.kind === 'steps' ? this.groundAt : f.kind === 'land' ? this.d.land.land : this.d.land.firm;
+    const base = f.kind === 'steps' ? this.groundAt : f.kind === 'land' ? this.d.land.land : this.d.land.firm;
+    // Off a piece, where a deck's or a tunnel's road is nearer the car's height than the land under it
+    // (the deck it has just come off, over the embankment), that road: else a car off a deck's end at
+    // speed takes the embankment's slope for the land's, and is thrown up off it (braga-map's task 026).
+    const h = f.piece
+      ? (a: number, b: number) => f.piece!.height(a, b)
+      : (a: number, b: number) => {
+          let y = base(a, b);
+          for (const p of this.d.pieceCells.at(a, b) ?? []) {
+            if (!p.rings.has(a, b)) continue;
+            const yp = p.height(a, b);
+            if (Math.abs(yp - f.y) < Math.abs(y - f.y)) y = yp;
+          }
+          return y;
+        };
     const gx = (h(x + SMOOTH, z) - h(x - SMOOTH, z)) / (2 * SMOOTH);
     const gz = (h(x, z + SMOOTH) - h(x, z - SMOOTH)) / (2 * SMOOTH);
     return norm(v3(-gx, 1, -gz));

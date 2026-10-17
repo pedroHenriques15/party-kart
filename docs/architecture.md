@@ -779,6 +779,14 @@ Low, a frame 0.4–2.2 ms. The two new viewpoints: `capela-santa-justa` 137 call
 triangles on High, `capela-santo-adriao` 121 and 1.52 M (97 and 83 calls on Low). The download on
 High is 8.04 MB gzipped (14.43 as is), 0.01 MB more: braga-map's base with the sights.
 
+braga-map's jump on its real street (its task 057, on 1.22.0; `shots/2026-10-17-after057/`, party-kart
+`9256881`): the world's walls a race takes down are drawn apart, and the race's road works' boards
+round the landing's corner come with its marks. At `couteiro`, shot here before (1.21.1,
+`before057-1211`) and after, 201 → 204 draw calls and 294 triangles more on High, 164 → 167 and 142
+more on Low, the same textures. Over the 34 viewpoints, 85–284 draw calls (median 148.5) and
+0.91–2.95 M triangles on High, 54–252 and 0.46–1.42 M on Low; the city built in 4.8–5.2 s on High,
+3.8–4.1 on Low.
+
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),
   where the ground's painted map was 51 MB before task 016; the sun's shadows 16 MB (4 on Medium),

@@ -9,6 +9,7 @@ change things, read [making-changes.md](making-changes.md).
 | | | |
 |---|---|---|
 | `src/math.ts` | sim | A small vector type `V` and its maths, without three.js |
+| `src/sun.ts` | sim | Where the sun is over Braga at any moment (NOAA's equations), and `?time=` read in Braga's clock (braga-map's task 022) |
 | `braga-map/tracks/amigos.js` | sim | The Volta dos Amigos: Braga's real streets, from the map the games share (the `braga-map` package) |
 | `src/track/layout.ts` | sim | The `Point` type; and `LAYOUT`, the first track (the cartoon Braga Grand Prix), kept for reference and for the tests |
 | `src/track/track.ts` | sim | `buildTrack`: the road sampled every metre. `locate`: where a point is relative to the road |
@@ -351,7 +352,18 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
 
 ## Rendering
 
-- **`Look`** (`render/look.ts`): a golden-hour `Sky` (a box 20 km across that goes with the camera,
+- **`Look`** (`render/look.ts`, braga-map's task 022): Braga's light at a moment of the day, by default the clear
+  March afternoon of the photos of the Rua do Fujacal (`DEFAULT_TIME`), or `?time=`'s; the sun where `sun.ts` puts
+  it, its colour what's left of it through the air (Preetham's extinction, as the sky's shader has it). Matched to
+  the photos: the sun about four times the sky's light, as a shadow in them is a quarter as bright as the sunlit
+  ground beside it; a clear sky's deep blue overhead (turbidity 2), with three's procedural clouds made a fair day's
+  cumulus (six octaves of noise, a sharper edge) that drift with the game's clock; and a haze that thickens with the
+  distance, not its square (`fog_fragment` changed once for every material), blue-grey, hiding about half of a hill
+  4 km off. `?weather=grey` is a grey Minho day: the sky an overcast (the sky's shader's colour replaced),
+  the sun faint, the sky's light stronger, the haze thicker, and the streets' surfaces and paint darker and glossy
+  (`WET`, in `streets.ts`); `?weather=rain` adds the rain, 10,000 streaks in a box 40 m across that goes with the
+  camera, each worked out on the graphics card from the clock (one draw call). The street lamps light and glow only
+  once the sun is under 4° (`LIT`). A `Sky` (a box 20 km across that goes with the camera,
   so the flying camera never leaves it) and an environment map made from it, a
   hemisphere light, a sun whose shadow box follows the camera, ACES tone mapping and fog. There are
   three quality levels. High has pixel ratio up to 2 and 2048 shadows. Medium has 1.25 and 1024

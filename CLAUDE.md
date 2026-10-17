@@ -62,7 +62,11 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   (`?room=<code>`) in a second browser, or a Playwright context of its own (a second tab shares the
   first's `localStorage`, its name and driver). Rooms go through PeerJS's public server, so this needs
   internet access.
-- `?exp= ?sun= ?hemi= ?env= ?fog=` override the lighting (`src/render/look.ts`), for tuning.
+- The light is Braga's at a moment of the day (braga-map's task 022, `src/render/look.ts`): by default a clear afternoon
+  in March, as the photos of the Rua do Fujacal have it. `?time=2026-10-13T17:30` (Braga's clock) puts the sun where it
+  was then (`src/sun.ts`); `?weather=grey` makes it a grey Minho day (an overcast sky, faint shadows, wet streets), and
+  `?weather=rain` the same in the rain. `?clouds=` sets a clear day's cover (0 to 1), and `?exp= ?sun= ?hemi= ?env=
+  ?fog=` override the lighting, for tuning. Night isn't made yet: past sunset the street lamps light, but the city is dark.
 - V, or the menu's "🎥 Voar pela cidade", flies the camera round the city from wherever it is, your
   kart waiting (braga-map's task 054, `src/game/flyer.ts`): WASD, E and Q, Shift faster, the mouse
   dragged to look; on a touch screen a stick on the left half, a drag on the right, ▲ Subir and
@@ -112,7 +116,7 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
 ## The two halves
 
 **The simulation** is pure TypeScript with no three.js and no DOM, so it runs under `node --test`:
-`src/math.ts`, `src/track/`, `src/car/`, `src/world/`, `src/race.ts` and `src/game/`. Keep it that way. If one of
+`src/math.ts`, `src/sun.ts`, `src/track/`, `src/car/`, `src/world/`, `src/race.ts` and `src/game/`. Keep it that way. If one of
 these files imports `three` or touches `window`/`document`, the tests can no longer load it.
 
 **The browser** is everything else: `src/render/` (three.js), `src/session.ts` (PeerJS),

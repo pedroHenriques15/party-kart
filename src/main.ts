@@ -1687,7 +1687,7 @@ function frame(now: number): void {
   fx.update(dt);
   glow.update(dt);
   smoke.update(dt);
-  look.render();
+  look.render(t);
   stats?.frame(quality, race ? 'race' : roam ? 'roam' : null);
   requestAnimationFrame(frame);
 }

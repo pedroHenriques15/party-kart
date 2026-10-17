@@ -17,7 +17,7 @@ import { distanceToRoad, type Track } from '../track/track.ts';
 import { alongSpan, wallSpan, type Piece, type WorldGround } from '../world/ground.ts';
 import { bake, box, mat } from './kit.ts';
 import type { Surface } from './lattice.ts';
-import type { Quality } from './look.ts';
+import { LIT, WET, type Quality } from './look.ts';
 import { halos } from './road.ts';
 import * as tex from './textures.ts';
 import { edgePoints, surface, type Grain, type Height } from './tin.ts';
@@ -179,9 +179,10 @@ function layers(): THREE.DataArrayTexture {
   return tex.layered(images, S, S);
 }
 
-// The streets' material: each vertex's texture is a layer of the array, its uv and layer in `tuv`.
+// The streets' material: each vertex's texture is a layer of the array, its uv and layer in `tuv`. Wet
+// (look.ts's grey day), a street is darker and gives back the sky.
 function surfaceMaterial(): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({ roughness: 0.86, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
+  const m = new THREE.MeshStandardMaterial({ color: WET ? '#a6a6a6' : '#ffffff', roughness: WET ? 0.32 : 0.86, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
   const array = layers();
   m.onBeforeCompile = (sh) => {
     sh.uniforms.layers = { value: array };
@@ -336,7 +337,7 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
 
   // ---- The materials, and the batches per tile: the surfaces and faces, and the paint. ----
   const surfaces = surfaceMaterial();
-  const paintMat = new THREE.MeshStandardMaterial({ color: '#efefe8', roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 });
+  const paintMat = new THREE.MeshStandardMaterial({ color: WET ? '#c9c9c3' : '#efefe8', roughness: WET ? 0.3 : 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 });
   // Metres a tile of each texture: along the street's rows for the setts and the calçada.
   const SCALE: Partial<Record<Layer, number>> = { asphalt: 8, setts: 2, calcada: 2.5, verge: 2, dirt: 6, granite: 1, paving: 2, cycle: 8, gravel: 4, blocks: 2, render: 2, hedge: 2, cement: 2, planks: 0.6 };
   const tiles = new Map<string, { surf: Batch; paint: Batch }>();
@@ -1026,6 +1027,7 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   {
     const posts: THREE.Matrix4[] = [];
     const heads: THREE.Matrix4[] = [];
+    const arms: THREE.Matrix4[] = [];
     const placed = new Grid<[number, number]>(30);
     const free = (x: number, z: number) => {
       for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const [px, pz] of placed.at(x + a * 30, z + b * 30)) if (Math.hypot(px - x, pz - z) < 26) return false;
@@ -1044,16 +1046,23 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
         placed.add(x, z, x, z, [x, z]);
         const y = paveTop(x, z);
         posts.push(new THREE.Matrix4().makeTranslation(x, y + 3.5, z));
-        heads.push(new THREE.Matrix4().compose(new THREE.Vector3(x - nx * 1.8, y + 6.9, z - nz * 1.8), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -Math.atan2(tz, tx), 0)), new THREE.Vector3(1, 1, 1)));
+        const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -Math.atan2(tz, tx), 0));
+        heads.push(new THREE.Matrix4().compose(new THREE.Vector3(x - nx * 1.8, y + 6.9, z - nz * 1.8), turn, new THREE.Vector3(1, 1, 1)));
+        arms.push(new THREE.Matrix4().compose(new THREE.Vector3(x - nx * 0.9, y + 6.98, z - nz * 0.9), turn, new THREE.Vector3(1, 1, 1)));
       }
     }
-    const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.14, 7, 8), new THREE.MeshStandardMaterial({ color: '#2e3a33', metalness: 0.5, roughness: 0.5 }), posts.length);
+    const steel = new THREE.MeshStandardMaterial({ color: '#2e3a33', metalness: 0.5, roughness: 0.5 });
+    const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.14, 7, 8), steel, posts.length);
     posts.forEach((m, k) => post.setMatrixAt(k, m));
-    const head = new THREE.InstancedMesh(new THREE.BoxGeometry(0.9, 0.22, 0.45), new THREE.MeshBasicMaterial({ color: '#fff4d0', toneMapped: false }), heads.length);
+    // The arm out over the road from the post's top to the head: by day the head is seen for what it is.
+    const arm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08, 0.08, 1.8), steel, arms.length);
+    arms.forEach((m, k) => arm.setMatrixAt(k, m));
+    // Lit, and glowing, only once the sun is down (look.ts); by day a lamp's a pale grey box.
+    const head = new THREE.InstancedMesh(new THREE.BoxGeometry(0.9, 0.22, 0.45), LIT ? new THREE.MeshBasicMaterial({ color: '#fff4d0', toneMapped: false }) : mat('#cfccc4', { roughness: 0.5 }), heads.length);
     heads.forEach((m, k) => head.setMatrixAt(k, m));
-    for (const im of [post, head]) im.computeBoundingSphere();
-    group.add(post, head);
-    group.add(halos(heads.map((m) => new THREE.Vector3().setFromMatrixPosition(m).add(new THREE.Vector3(0, -0.3, 0))), ['#8a7440'], 4));
+    for (const im of [post, arm, head]) im.computeBoundingSphere();
+    group.add(post, arm, head);
+    if (LIT) group.add(halos(heads.map((m) => new THREE.Vector3().setFromMatrixPosition(m).add(new THREE.Vector3(0, -0.3, 0))), ['#8a7440'], 4));
     counts.lamps = posts.length;
   }
 

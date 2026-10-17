@@ -710,6 +710,14 @@ braga-map's corners cut back at the decks' and tunnels' ends (its task 046, on 1
 0.76 M and 47 MB on Low), no viewpoint more than about a thousand triangles off. The city built in
 5.3 s on High, 4.8 on Medium and 4.2 on Low, a frame 0.6–0.8 ms.
 
+braga-map's light (its task 022; `shots/2026-10-17-after022/`, shot on `909539b`, braga-map 1.18.1,
+against `after046`): the same 126 calls on High and Medium and 95 on Low at the median (each viewpoint
+within 6, as the sun's new direction puts other things in its shadow box), 1.67 → 1.76 M triangles on
+High and 0.76 → 0.79 M on Low (the street lamps' arms, and the shadows), the same textures. The sky's
+clouds cost 0.15–0.17 ms a frame at 1920 × 1080 on the desktop, against a sky without them (three
+viewpoints, alternated); the round's frame times (0.8–1.2 ms at the median) and build times (6.8 s on
+High) were taken with other sessions busy on the desktop. `?weather=rain` adds one draw call.
+
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),
   where the ground's painted map was 51 MB before task 016; the sun's shadows 16 MB (4 on Medium),

@@ -1058,6 +1058,7 @@ function startRace(goIn: number, endIn: number, grid: Record<string, number>): v
   arena.fx = (f) => onArenaFx(ctx, f);
   race = ctx;
   world.marks.visible = true;
+  world.cleared.visible = false;
   slow.frames = slow.time = 0;
   resetMeter();
   if (RECORD) recordAudio(RECORD);
@@ -1074,6 +1075,7 @@ function endRace(resume = true): void {
   scene.remove(race.items.group);
   race = null;
   world.marks.visible = false;
+  world.cleared.visible = true;
   engines(null, [], 0);
   citySound(null, 0);
   hudRoot.replaceChildren();

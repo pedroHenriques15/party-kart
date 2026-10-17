@@ -197,9 +197,11 @@ export function buildRoad(track: Track, overWater: (s: Sample) => boolean, signs
 
 // What the race adds to the road: the barriers along the kerbs at the start and in rows across the
 // side streets (`rows`, braga-map's closures: each a row along its points, [x, y, z]), the boost
-// pads, the start line, the gates at the start and the checkpoints, and the ramp. Given `at`, laid on
-// what it says is under them (the streets as they're drawn) rather than on the track's own surface.
-export function raceMarks(track: Track, signs: RoadSigns, at?: At, rows: [number, number, number][][] = []): { group: THREE.Group; update: (t: number) => void } {
+// pads, the start line, the gates at the start and the checkpoints, the ramp, and the road works'
+// boards round the corner its road takes in at the ramp's landing (`boards`, rows as `rows`). Given
+// `at`, laid on what it says is under them (the streets as they're drawn) rather than on the track's
+// own surface.
+export function raceMarks(track: Track, signs: RoadSigns, at?: At, rows: [number, number, number][][] = [], boards: [number, number, number][][] = []): { group: THREE.Group; update: (t: number) => void } {
   const group = new THREE.Group();
   const updates: ((t: number) => void)[] = [];
   const N = track.samples.length;
@@ -225,8 +227,41 @@ export function raceMarks(track: Track, signs: RoadSigns, at?: At, rows: [number
   for (const i of track.checkpoints) group.add(gate(track, i, signs.checkpoint, 6.5, at));
 
   for (const r of track.ramps) group.add(ramp(track, r, at));
+  if (boards.length) group.add(works(boards, at));
 
   return { group, update: (t) => updates.forEach((u) => u(t)) };
+}
+
+// Road-works barriers along rows of points [x, y, z] (braga-map's `boards`, its task 057): two
+// red-and-white boards on trestles every 2 m or so, as where a street leaves the open world
+// (streets.ts), on what `at` says is under them. The race's wall stands along them already.
+function works(rows: [number, number, number][][], at?: At): THREE.Group {
+  const g = new THREE.Group();
+  const boards = new THREE.MeshStandardMaterial({ map: tex.roadworks(), roughness: 0.6, side: THREE.DoubleSide });
+  const legs = new THREE.MeshStandardMaterial({ color: '#e9e6df', roughness: 0.6 });
+  const every = rows.map((r) => {
+    const pts: [number, number, number][] = [];
+    for (let k = 1; k < r.length; k++) {
+      const [ax, ay, az] = r[k - 1];
+      const [bx, by, bz] = r[k];
+      const n = Math.max(1, Math.round(Math.hypot(bx - ax, bz - az) / 2));
+      for (let i = k === 1 ? 0 : 1; i <= n; i++) pts.push([ax + ((bx - ax) * i) / n, ay + ((by - ay) * i) / n, az + ((bz - az) * i) / n]);
+    }
+    return pts;
+  });
+  for (const y of [0.5, 0.9]) g.add(new THREE.Mesh(rowWalls(every, y, y + 0.24, 2, at), boards));
+  // A trestle at each point, across the row.
+  for (const pts of every) {
+    pts.forEach(([x, y, z], k) => {
+      const [px, , pz] = pts[Math.max(0, k - 1)];
+      const [qx, , qz] = pts[Math.min(pts.length - 1, k + 1)];
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.15, 0.6), legs);
+      leg.position.set(x, (at ? at(x, z) : y) + 0.575, z);
+      leg.rotation.y = -Math.atan2(qz - pz, qx - px);
+      g.add(leg);
+    });
+  }
+  return g;
 }
 
 // Panels along rows of points [x, y, z], from height a to b over what `at` says is under each point (or

@@ -197,7 +197,7 @@ ${kinds.map((k) => `  if (w[${k}] > 0.0) coverRgb += w[${k}] * texture(coverColo
 // Besides the city, the world as the karts' ground (ground.ts), built for it and kept for driving on.
 // What the map says the ground is, each kind with its photo (cover.ts), as the renderer's graphics card
 // takes them; and the map's photos of facades (photos.ts).
-export async function buildCity(track: Track, course: Course, quality: Quality, renderer: THREE.WebGLRenderer): Promise<World & { eggs: Eggs; drive: WorldGround; race: WorldGround; stageYaw: number; marks: THREE.Object3D; above: (x: number, z: number) => number; horizon: Bound }> {
+export async function buildCity(track: Track, course: Course, quality: Quality, renderer: THREE.WebGLRenderer): Promise<World & { eggs: Eggs; drive: WorldGround; race: WorldGround; stageYaw: number; marks: THREE.Object3D; cleared: THREE.Object3D; above: (x: number, z: number) => number; horizon: Bound }> {
   const map = await loadWorld(course.box);
   // Fetched, and turned for the graphics card in workers, while the land is worked out. If they can't be
   // had, the city goes without them: the ground painted from the map, as it was before task 016, and the
@@ -462,16 +462,21 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   const streets = buildStreets(map, wg, landMesh, (x, z) => houses.has(x, z), quality, track, course);
   streets.group.name = 'streets';
   group.add(streets.group);
+  // The world's walls a race takes down while it runs (braga-map's `cleared`): up round the city,
+  // hidden while a race is on (main.ts).
+  streets.cleared.name = 'cleared walls';
+  group.add(streets.cleared);
   updates.push(streets.update);
 
   // ---- What only the race adds to the streets: the start line, the gates, the boost pads, the
-  // barriers at the start and across every side street it passes, the ramp. Up only while a race is
-  // on (main.ts): round the city the streets are as they are. Its ground is the world's, with its
+  // barriers at the start and across every side street it passes, the ramp, and the road works'
+  // boards round the corner it takes in at the ramp's landing. Up only while a race is on (main.ts):
+  // round the city the streets are as they are. Its ground is the world's, with its
   // walls and ramp (race.ts). Each laid on the street at the route's level there: on a deck, the
   // deck. ----
   const raced = raceGround(wg, track, course);
   const onRoute = (x: number, z: number) => wg.floor(x, z, track.samples[distanceToRoad(track, x, z).i].p.y + 1.5).y;
-  const road = raceMarks(track, { start: tex.sign('VOLTA DOS AMIGOS', 'BRAGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('PONTO DE CONTROLO', '', '#111318', '#ffe14d', 1024, 160) }, onRoute, raced.rows);
+  const road = raceMarks(track, { start: tex.sign('VOLTA DOS AMIGOS', 'BRAGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('PONTO DE CONTROLO', '', '#111318', '#ffe14d', 1024, 160) }, onRoute, raced.rows, course.boards ?? []);
   const marks = Object.assign(bake(road.group), { name: 'race marks', visible: false });
   group.add(marks);
   updates.push(road.update);
@@ -612,6 +617,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
     stageAt: plinth.at,
     stageYaw: plinth.yaw,
     marks,
+    cleared: streets.cleared,
     eggs,
     drive: wg,
     race: raced.ground,

@@ -123,7 +123,8 @@ cycleway, the cycle lanes in red, and every flight of steps, each step at its he
 handrails where it has them. The race takes its streets as they
 are, at their real widths: a narrow one is as narrow in a race, its kerbs are the race's walls, and a
 row of the race's barriers closes every side street it passes. Only while it's on do its start line,
-gates, boost pads and barriers stand in them. A blue-and-white plate names each street as you turn into it, and
+gates, boost pads and barriers stand in them; and where the jump lands, the corner of a walled lot is
+the race's, its walls down and road works' boards round it. A blue-and-white plate names each street as you turn into it, and
 its bus stops stand on the pavement. Bom Jesus and the
 Sameiro stand on the hills to the east, drawn twice their size so you can find them; on top of the
 Picoto its white steel cross, and the miradouro's boardwalk round it. São João da Ponte's chapel

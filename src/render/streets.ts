@@ -15,6 +15,7 @@ import type { Track as Course, Path, Sight, Streets, World as Braga } from 'brag
 import * as THREE from 'three';
 import { distanceToRoad, type Track } from '../track/track.ts';
 import { alongSpan, wallSpan, type Piece, type WorldGround } from '../world/ground.ts';
+import { clearedPieces } from '../world/race.ts';
 import { bake, box, mat } from './kit.ts';
 import type { Surface } from './lattice.ts';
 import { LIT, WET, type Quality } from './look.ts';
@@ -288,6 +289,9 @@ class Drawn {
 
 export interface Built {
   group: THREE.Group;
+  // The world's walls a race takes down while it runs (braga-map's `cleared`, its task 057), drawn
+  // apart: up round the city, hidden in a race (main.ts).
+  cleared: THREE.Group;
   update: (t: number) => void;
   // The nearest raised kerb on the ground to (x, z) within r: the point on it, the way it runs and the
   // way into its pavement.
@@ -305,8 +309,9 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   const rise = quality === 'low' ? 0.25 : 0.12;
   const { firm } = wg.d.land;
   const group = new THREE.Group();
-  // What stands along them, baked at the end.
+  // What stands along them, baked at the end; and what of it a race takes down.
   const things = new THREE.Group();
+  const clearedThings = new THREE.Group();
   const updates: ((t: number) => void)[] = [];
   const counts: Record<string, number> = {};
   const edges = streetEdges(S);
@@ -341,10 +346,13 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   // Metres a tile of each texture: along the street's rows for the setts and the calçada.
   const SCALE: Partial<Record<Layer, number>> = { asphalt: 8, setts: 2, calcada: 2.5, verge: 2, dirt: 6, granite: 1, paving: 2, cycle: 8, gravel: 4, blocks: 2, render: 2, hedge: 2, cement: 2, planks: 0.6 };
   const tiles = new Map<string, { surf: Batch; paint: Batch }>();
+  // The walls a race takes down are batched apart, into these while they're drawn.
+  const clearedTiles = new Map<string, { surf: Batch; paint: Batch }>();
+  let into = tiles;
   const tileOf = (x: number, z: number) => {
     const k = `${Math.floor(x / TILE)},${Math.floor(z / TILE)}`;
-    let t = tiles.get(k);
-    if (!t) tiles.set(k, (t = { surf: new Batch(), paint: new Batch() }));
+    let t = into.get(k);
+    if (!t) into.set(k, (t = { surf: new Batch(), paint: new Batch() }));
     return t;
   };
   const batch = (x: number, z: number, m: Layer | 'paint') => {
@@ -725,11 +733,14 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
       bars: new THREE.MeshStandardMaterial({ map: tex.bars(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.5, metalness: 0.5 }),
     };
     const panes = { mesh: { pos: [] as number[], uv: [] as number[] }, bars: { pos: [] as number[], uv: [] as number[] } };
+    // And those of the walls a race takes down, apart.
+    const clearedPanes = { mesh: { pos: [] as number[], uv: [] as number[] }, bars: { pos: [] as number[], uv: [] as number[] } };
+    let paneSet = panes;
     // A see-through pane along a line, between two heights at each point: the mesh's uv in metres
     // over two, the bars' along in metres over two and up from 0 at the foot to 1 at the top.
     const pane = (which: 'mesh' | 'bars', pts: [number, number, number, number][]) => {
       let u = 0;
-      const p = panes[which];
+      const p = paneSet[which];
       for (let k = 1; k < pts.length; k++) {
         const [ax, az, a0, a1] = pts[k - 1];
         const [bx, bz, b0, b1] = pts[k];
@@ -747,7 +758,11 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
     const LAYER: Record<string, Layer> = { granite: 'blocks', rendered: 'render', concrete: 'cement', wood: 'dirt', metal: 'skirt' };
     // How finely a wall follows the ground, by the graphics level.
     const step = quality === 'high' ? 3 : quality === 'medium' ? 4 : 6;
-    for (const w of world.walls) {
+    // Each cut where it crosses the race's `cleared`, the pieces inside drawn apart.
+    for (const { w, down } of clearedPieces(world.walls, course.cleared ?? [])) {
+      into = down ? clearedTiles : tiles;
+      paneSet = down ? clearedPanes : panes;
+      const sink = down ? clearedThings : things;
       const span = wallSpan(wg, w, step);
       if (span.length < 2) continue;
       // Along it, each point with its foot and top.
@@ -798,26 +813,29 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
         const bar = box(Math.hypot(b.x - a.x, b.z - a.z), 0.08, 0.08, red);
         bar.position.set((a.x + b.x) / 2, a.y1 - 0.04, (a.z + b.z) / 2);
         bar.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
-        things.add(bar);
+        sink.add(bar);
       } else pane(w.kind === 'fence' ? 'mesh' : 'bars', pts.map((q) => [q[0], q[1], q[2] + 0.3, q[3]]));
       // Its posts: every 2.5 m along a fence, a railing or a guard rail, and at each end of a gate.
       const L = span.reduce((a, q, k) => (k ? a + Math.hypot(q.x - span[k - 1].x, q.z - span[k - 1].z) : 0), 0);
       const every = w.kind === 'gate' || w.kind === 'bar' ? Math.max(L, 0.1) : 2.5;
       for (let s = 0; s <= L + 1e-6; s += every) {
         const q = alongSpan(span, s);
-        things.add(box(0.06, q.y1 - q.y0 - 0.3, 0.06, steel, q.x, q.y0 + 0.3, q.z));
+        sink.add(box(0.06, q.y1 - q.y0 - 0.3, 0.06, steel, q.x, q.y0 + 0.3, q.z));
         count('posts', 1);
       }
       count(w.kind === 'fence' ? 'fences' : w.kind === 'bar' ? 'lift gates' : w.kind + 's', 1);
     }
-    for (const which of ['mesh', 'bars'] as const) {
-      const p = panes[which];
-      if (!p.pos.length) continue;
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(p.pos, 3));
-      g.setAttribute('uv', new THREE.Float32BufferAttribute(p.uv, 2));
-      g.computeVertexNormals();
-      things.add(new THREE.Mesh(g, see[which]));
+    into = tiles;
+    for (const [set, sink] of [[panes, things], [clearedPanes, clearedThings]] as const) {
+      for (const which of ['mesh', 'bars'] as const) {
+        const p = set[which];
+        if (!p.pos.length) continue;
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(p.pos, 3));
+        g.setAttribute('uv', new THREE.Float32BufferAttribute(p.uv, 2));
+        g.computeVertexNormals();
+        sink.add(new THREE.Mesh(g, see[which]));
+      }
     }
   }
 
@@ -979,6 +997,8 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
     if (t.surf.pos.length) group.add(t.surf.mesh(surfaces));
     if (t.paint.pos.length) group.add(t.paint.mesh(paintMat));
   }
+  const cleared = new THREE.Group();
+  for (const t of clearedTiles.values()) if (t.surf.pos.length) cleared.add(t.surf.mesh(surfaces));
 
   // ---- What stands along them. ----
   const paves = wg.d.paves;
@@ -1246,5 +1266,6 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   }
 
   group.add(bake(things));
-  return { group, update: (t) => updates.forEach((u) => u(t)), counts, kerbNear: nearestKerb };
+  if (clearedThings.children.length) cleared.add(bake(clearedThings));
+  return { group, cleared, update: (t) => updates.forEach((u) => u(t)), counts, kerbNear: nearestKerb };
 }

@@ -3,7 +3,9 @@
 // widths, as they're drawn, and the ramp's flight. Its outline is the race's walls: every kerb along
 // the route, and a row of barriers wherever the street drawn goes on past it (`closures`: across each
 // side street it passes, and between a road's two carriageways where they're drawn as one). The ramp
-// into the dead end stands on its run-up: a slope a kart drives up, its sides walls.
+// into the dead end stands on its run-up: a slope a kart drives up, its sides walls. Round its landing
+// the race takes in the corner between the flight and the landing street, a walled lot's, and takes
+// the lot's walls there down while it runs (`cleared`, braga-map's task 057).
 import type { Ramp, Track } from '../track/track.ts';
 import { distanceToRoad } from '../track/track.ts';
 import { Rings, STEP, type Slope, type Wall, type WorldGround } from './ground.ts';
@@ -135,7 +137,7 @@ export function reachable(g: WorldGround, track: Track, road: [number, number][]
   const walled = (x: number, z: number, nx: number, nz: number, y: number) => {
     for (const cells of [g.d.walls, g.extra]) {
       for (const w of cells.near(Math.min(x, nx) - 1, Math.min(z, nz) - 1, Math.max(x, nx) + 1, Math.max(z, nz) + 1, near)) {
-        if (y >= w.y1 || y + 1.3 <= w.y0) continue;
+        if (y >= w.y1 || y + 1.3 <= w.y0 || g.down.has(w)) continue;
         const ex = w.bx - w.ax;
         const ez = w.bz - w.az;
         const L = ex * ex + ez * ez;
@@ -176,12 +178,70 @@ function rowWalls(rows: [number, number, number][][]): Wall[] {
   return rows.flatMap((r) => r.slice(1).map(([bx, y, bz], k) => ({ ax: r[k][0], az: r[k][2], bx, bz, y0: Math.min(y, r[k][1]) - LOW, y1: Math.max(y, r[k][1]) + HIGH })));
 }
 
-// The race's ground (the world's, with the race's walls and its ramps), and the rows of barriers it
-// stands: braga-map's closures, across the side streets and between a road's carriageways, and the
-// fences where its road drops away (raceDips).
-export function raceGround(g: WorldGround, track: Track, plan: { road: [number, number][][][]; closures: [number, number, number][][] }): { ground: WorldGround; rows: [number, number, number][][] } {
+// The world's walls a race takes down (braga-map's `cleared`): the pieces of the map's walls, fences,
+// hedges and gates in `g.d.walls` whose middle is inside it, never a building's or a deck's.
+export function clearedWalls(g: WorldGround, cleared: [number, number][][][]): Set<Wall> {
+  const down = new Set<Wall>();
+  const rings = cleared.flat();
+  if (!rings.length) return down;
+  const inside = new Rings(rings);
+  const xs = rings.flat().map((p) => p[0]);
+  const zs = rings.flat().map((p) => p[1]);
+  for (const w of g.d.walls.near(Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs), [])) if (w.kind && inside.has((w.ax + w.bx) / 2, (w.az + w.bz) / 2)) down.add(w);
+  return down;
+}
+
+// The world's walls (braga-map's `world.walls`) cut where they cross a race's `cleared`, each piece
+// marked whether it's inside: those a race takes down, which the city draws apart, to hide them while
+// it runs. Looked at every half metre along each; two pieces meet half way between the points either
+// side of the edge, and a piece keeps the wall's own corners.
+export function clearedPieces<W extends { pts: [number, number][]; ys: number[] }>(walls: W[], cleared: [number, number][][][]): { w: W; down: boolean }[] {
+  if (!cleared.length) return walls.map((w) => ({ w, down: false }));
+  const inside = new Rings(cleared.flat());
+  const out: { w: W; down: boolean }[] = [];
+  for (const w of walls) {
+    const marks: { p: [number, number]; y: number; down: boolean; corner: boolean }[] = [];
+    for (let i = 1; i < w.pts.length; i++) {
+      const [a, b] = [w.pts[i - 1], w.pts[i]];
+      const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.5));
+      for (let k = i === 1 ? 0 : 1; k <= n; k++) {
+        const f = k / n;
+        const p: [number, number] = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+        marks.push({ p, y: w.ys[i - 1] + (w.ys[i] - w.ys[i - 1]) * f, down: inside.has(p[0], p[1]), corner: k === 0 || k === n });
+      }
+    }
+    if (!marks.some((m) => m.down)) {
+      out.push({ w, down: false });
+      continue;
+    }
+    let run = [marks[0]];
+    const flush = () => {
+      const keep = run.filter((m, k) => k === 0 || k === run.length - 1 || m.corner);
+      if (keep.length > 1) out.push({ w: { ...w, pts: keep.map((m) => m.p), ys: keep.map((m) => m.y) }, down: run[0].down });
+    };
+    for (let k = 1; k < marks.length; k++) {
+      if (marks[k].down === run[0].down) {
+        run.push(marks[k]);
+        continue;
+      }
+      const a = marks[k - 1];
+      const b = marks[k];
+      const mid = { p: [(a.p[0] + b.p[0]) / 2, (a.p[1] + b.p[1]) / 2] as [number, number], y: (a.y + b.y) / 2, corner: true };
+      run.push({ ...mid, down: a.down });
+      flush();
+      run = [{ ...mid, down: b.down }, b];
+    }
+    flush();
+  }
+  return out;
+}
+
+// The race's ground (the world's, with the race's walls and its ramps, less the world's walls it
+// clears), and the rows of barriers it stands: braga-map's closures, across the side streets and
+// between a road's carriageways, and the fences where its road drops away (raceDips).
+export function raceGround(g: WorldGround, track: Track, plan: { road: [number, number][][][]; closures: [number, number, number][][]; cleared?: [number, number][][][] }): { ground: WorldGround; rows: [number, number, number][][] } {
   const slopes = track.ramps.map((r) => rampSlope(g, track, r));
   const dips = raceDips(g, track, new Rings(plan.road.flat()));
   const inside = new Rings(plan.road.flat());
-  return { ground: g.race(track, [...raceWalls(g, track, plan.road, slopes), ...rowWalls(dips)], slopes, inside), rows: [...plan.closures, ...dips] };
+  return { ground: g.race(track, [...raceWalls(g, track, plan.road, slopes), ...rowWalls(dips)], slopes, inside, clearedWalls(g, plan.cleared ?? [])), rows: [...plan.closures, ...dips] };
 }

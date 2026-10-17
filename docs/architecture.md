@@ -16,7 +16,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/car/car.ts` | sim | `stepCar`: the handling (grip, drift, mini-turbo, boost pads, flying, landing, walls, falling off), on a `Ground`; `trackGround`, a track's own road as one (the first track's, and the tests') |
 | `src/world/land.ts` | sim | `makeLand`: the land as it's drawn and driven on (braga-map's ground, held down at the tunnels' mouths, the stadium's bowl, the river's bed); `mouths` |
 | `src/world/ground.ts` | sim | `worldGround`: the world as a ground, for the open world: the land, every street and path at its level, each flight of steps a tread at a time, and the walls (buildings, parapets, tunnels, trees, handrails, risers too high to climb, the area's edge); and what the game stands on it (the plinth) |
-| `src/world/race.ts` | sim | `raceGround`: the world's ground for a race, with the race's walls (its road's outline, braga-map's `road`), its ramp and the fences where its road drops away; `reachable`, for the tests: whether a race is closed |
+| `src/world/race.ts` | sim | `raceGround`: the world's ground for a race, with the race's walls (its road's outline, braga-map's `road`), its ramp and the fences where its road drops away, less the world's walls it takes down (braga-map's `cleared`, `clearedWalls`, and `clearedPieces` for the city to draw them apart); `reachable`, for the tests: whether a race is closed |
 | `src/car/autopilot.ts` | sim | Drives the track by itself: for the bots, `?autodrive` and the tests |
 | `src/race.ts` | sim | Laps, checkpoints, splits, respawning |
 | `src/game/arena.ts` | sim | `Arena`: one browser's view of a race. `FLAG`: status bits sent with positions |
@@ -181,13 +181,21 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
   walls, ramps, road)`: the same world, sharing what was built, keeping each car's `idx` and `lat`
   along the track, and adding what only the race has. Its walls are the race's road's outline
   (braga-map's `road`: the route's own streets at their real widths, as they're drawn, and the
-  jump's flight, on past its landing as far as a kart flat out comes down), in pieces up to 2 m long, each standing from 1.5 m under the road beside it to 3 m
+  jump's flight, on past its landing as far as a kart flat out comes down, with the corner between
+  the flight and the landing street, its task 057), in pieces up to 2 m long, each standing from 1.5 m under the road beside it to 3 m
   over it, at the route's level (on a deck, the deck; under the jump's flight, the floor beside the
   edge, the river's bed or the Ecovia on its bank): every kerb along the route, and across each
   side street, and between a road's two carriageways drawn as one, where braga-map's `closures` say
   a row of barriers is drawn. In front of a tunnel's mouth, where the land is held down and the
   route's street runs by it, a fence stands where the road drops more than 1.5 m under the route
   (`raceDips`: 7 m at the Avenida da Liberdade's underpass, a few metres at the Avenida João XXI's).
+  Within 20 m of the jump's landing (braga-map's `cleared`) the race takes the world's walls down:
+  that corner is a walled lot's, and karts heading into the turn come down over its wall. Its ground
+  skips those pieces of the map's walls, fences, hedges and gates (`down`, the pieces of `d.walls`
+  whose middle is inside; never a building's or a deck's), and the city draws them apart
+  (`streets.cleared`, cut where they cross it), hidden while a race is on (`main.ts`): free roam
+  keeps them. The road works' boards along the corner's edge (braga-map's `boards`) are drawn with
+  the race's marks (`road.ts`); the race's wall stands there already.
   The ramp is a slope a car stands on (`floor`'s `ramp`), from the street at its foot to its lip,
   its sides walls a step short of its planks; its boost pads give a boost as wide as they're drawn.
   A car that comes down on what's under a ramp's flight, or 3 m under the flight's line, has fallen
@@ -231,7 +239,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk35-` plus a five-character room code, and the invite link is `?room=<code>`, which
+`partykart-pk36-` plus a five-character room code, and the invite link is `?room=<code>`, which
 opens the game straight into the room. A room is made only when someone invites friends ("Convidar
 amigos") or starts a race; until then the game is alone, with no network at all.
 

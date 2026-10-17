@@ -8,7 +8,7 @@ import { advance, newRun, noteSpeed, respawn, startGrid, type RunEvent } from '.
 import { LAYOUT } from '../src/track/layout.ts';
 import { buildTrack, locate, type Track } from '../src/track/track.ts';
 import { Rings, worldGround } from '../src/world/ground.ts';
-import { raceGround, reachable } from '../src/world/race.ts';
+import { clearedPieces, raceGround, reachable } from '../src/world/race.ts';
 
 // The game's track; and the first one, kept for reference, for its jump.
 const track = buildTrack(amigos.points, amigos.ramps);
@@ -17,7 +17,8 @@ const DT = 1 / 120;
 // The race as the game runs it (braga-map's task 037): on the world's ground, its road the route's own
 // streets at their real widths, walled at its edges and barred across the side streets.
 const world = await loadWorld({ open: true });
-const { ground: race, rows } = raceGround(worldGround(world), track, amigos);
+const roam = worldGround(world);
+const { ground: race, rows } = raceGround(roam, track, amigos);
 const road = new Rings(amigos.road.flat());
 
 interface Drive {
@@ -130,6 +131,21 @@ test("the jump into the dead end lands on the race's road from its speed to flat
   const back = race.place!(respawn(newRun(0), track, 0, car.idx));
   assert.equal(back.idx, (r.lip - 50 + N) % N);
   assert.ok(speedOf(back) > r.v);
+});
+
+// Round the jump's landing the race takes in the corner between the flight and the landing street, a
+// walled lot's, and takes the lot's walls there down while it runs (braga-map's task 057, `cleared`):
+// about 32 m of them and a gate. Round the city they stand, and no building's taken down.
+test("the race takes the lot's walls down at the landing, and round the city they stand", () => {
+  const down = [...race.down];
+  assert.equal(roam.down.size, 0);
+  assert.ok(down.length > 5, `${down.length} pieces of wall down`);
+  assert.ok(down.every((w) => w.kind && roam.d.walls.near(w.ax, w.az, w.ax, w.az, []).includes(w)), "only the map's walls, which free roam keeps");
+  // The pieces the city draws apart, to hide in a race: as long as braga-map says.
+  const pieces = clearedPieces(world.walls, amigos.cleared).filter((q) => q.down);
+  const length = pieces.reduce((s, q) => s + q.w.pts.reduce((t, p, k) => (k ? t + Math.hypot(p[0] - q.w.pts[k - 1][0], p[1] - q.w.pts[k - 1][1]) : 0), 0), 0);
+  console.log(`down in a race: ${down.length} pieces of wall, ${pieces.length} drawn apart, ${length.toFixed(1)} m`);
+  assert.ok(length > 25 && length < 40, `${length.toFixed(1)} m of wall down`);
 });
 
 // The race is closed (decision 019): from its line, a kart going anywhere a metre at a time, up no

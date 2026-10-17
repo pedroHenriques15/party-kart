@@ -46,7 +46,8 @@ const BUMP = 0.12; // the share of its speed across a kerb a car loses going up 
 const RAIL = 0.9; // a handrail's height over the steps, as braga-map has it
 const HOLD = 0.6; // how far a retaining wall stands over its top, for the karts
 
-// A wall: from (ax, az) to (bx, bz), standing from y0 to y1.
+// A wall: from (ax, az) to (bx, bz), standing from y0 to y1. `kind`: one of braga-map's walls, fences,
+// railings, hedges and gates (`world.walls`), what it is; a building's, a deck's and a race's have none.
 export interface Wall {
   ax: number;
   az: number;
@@ -54,6 +55,7 @@ export interface Wall {
   bz: number;
   y0: number;
   y1: number;
+  kind?: string;
 }
 
 // A flight of steps' tread (braga-map's task 050): its outline, its height, and its box.
@@ -361,8 +363,8 @@ interface Data {
 
 // The world as a ground: built once from braga-map's world, then given to stepCar. race() makes
 // another sharing it, for a race (race.ts, braga-map's task 037): one that keeps each car's place on
-// the track (idx and lat), has the race's walls and its ramp, gives a boost on its pads, and counts a
-// car that has come down short of a ramp's landing as fallen.
+// the track (idx and lat), has the race's walls and its ramp, takes down the world's walls it clears,
+// gives a boost on its pads, and counts a car that has come down short of a ramp's landing as fallen.
 export class WorldGround implements Ground {
   d: Data;
   track: Track | null;
@@ -370,22 +372,27 @@ export class WorldGround implements Ground {
   slopes: Slope[];
   // A race's road (braga-map's `road`): a car that comes down off it has left the race, and is lost.
   road: Rings | null;
+  // The world's walls a race takes down while it runs (braga-map's `cleared`, its task 057): pieces of
+  // `d.walls`, which stand for every other ground.
+  down: Set<Wall>;
   private state = new WeakMap<Car, State>();
   private seen: Wall[] = [];
   private seenPosts: Post[] = [];
 
-  constructor(d: Data, track: Track | null = null, extra: Wall[] = [], slopes: Slope[] = [], road: Rings | null = null) {
+  constructor(d: Data, track: Track | null = null, extra: Wall[] = [], slopes: Slope[] = [], road: Rings | null = null, down: Set<Wall> = new Set()) {
     this.d = d;
     this.track = track;
     this.slopes = slopes;
     this.road = road;
+    this.down = down;
     this.extra = new Cells<Wall>();
     for (const w of extra) this.extra.add(Math.min(w.ax, w.bx), Math.min(w.az, w.bz), Math.max(w.ax, w.bx), Math.max(w.az, w.bz), w);
   }
 
-  // The same world for a race on a track, with walls and ramps only it has, and its road.
-  race(track: Track, walls: Wall[] = [], slopes: Slope[] = [], road: Rings | null = null): WorldGround {
-    return new WorldGround(this.d, track, walls, slopes, road);
+  // The same world for a race on a track, with walls and ramps only it has, its road, and the world's
+  // walls it takes down.
+  race(track: Track, walls: Wall[] = [], slopes: Slope[] = [], road: Rings | null = null, down: Set<Wall> = new Set()): WorldGround {
+    return new WorldGround(this.d, track, walls, slopes, road, down);
   }
 
   // A car moved from `from` by something besides its own driving (bumped by another): out of any
@@ -634,7 +641,7 @@ export class WorldGround implements Ground {
     let best: { nx: number; nz: number; d: number } | null = null;
     for (const cells of [this.d.walls, this.extra]) {
       for (const w of cells.near(x0, z0, x1, z1, this.seen)) {
-        if (y >= w.y1 || y + WALL_H <= w.y0) continue;
+        if (y >= w.y1 || y + WALL_H <= w.y0 || this.down.has(w)) continue;
         const t = touch(w, qx, qz, q0x, q0z);
         if (t && (!best || t.d > best.d)) best = t;
       }
@@ -1147,7 +1154,7 @@ export function worldGround(world: Braga): WorldGround {
     for (let k = 1; k < span.length; k++) {
       const a = span[k - 1];
       const b = span[k];
-      for (const o of lines) addWall({ ax: a.x + a.nx * o, az: a.z + a.nz * o, bx: b.x + b.nx * o, bz: b.z + b.nz * o, y0: Math.min(a.y0, b.y0) - 0.7, y1: Math.max(a.y1, b.y1) + (w.kind === 'retaining' ? HOLD : 0) }, w.kind === 'gate' || w.kind === 'bar' ? 'gates' : w.kind === 'hedge' ? 'hedges' : w.kind === 'retaining' ? 'retaining walls' : w.kind === 'wall' ? 'walls' : 'fences and railings');
+      for (const o of lines) addWall({ ax: a.x + a.nx * o, az: a.z + a.nz * o, bx: b.x + b.nx * o, bz: b.z + b.nz * o, y0: Math.min(a.y0, b.y0) - 0.7, y1: Math.max(a.y1, b.y1) + (w.kind === 'retaining' ? HOLD : 0), kind: w.kind }, w.kind === 'gate' || w.kind === 'bar' ? 'gates' : w.kind === 'hedge' ? 'hedges' : w.kind === 'retaining' ? 'retaining walls' : w.kind === 'wall' ? 'walls' : 'fences and railings');
     }
   }
   return g;

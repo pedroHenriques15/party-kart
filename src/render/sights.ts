@@ -1,13 +1,16 @@
 // The sights a Bracarense steers by. Bom Jesus and the Sameiro on the hills to the east, seen from
 // all over the track, and the hills of the horizon behind them; the cross on top of the Picoto;
-// and along the way the Estádio 1.º de Maio, the Altice Forum, Makro and the Tourigalo.
-// Simple shapes, at their real places and sizes from the map (braga-map's tools/world.mjs), but
-// for the Tourigalo, five times its size. Far off, it's their outline against the sky that counts.
+// and along the way São João da Ponte's chapel (chapel.ts), the Estádio 1.º de Maio (stadium.ts),
+// the Altice Forum's α, Makro and the Tourigalo. At their real places and sizes from the map
+// (braga-map's tools/world.mjs), but for Bom Jesus and the Sameiro, twice it, and the Tourigalo,
+// five times. Far off, it's their outline against the sky that counts.
 import type { Grid, Sight } from 'braga-map';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { distanceToRoad, type Track } from '../track/track.ts';
+import type { Track } from '../track/track.ts';
+import { saoJoaoChapel } from './chapel.ts';
 import { bake, box, mat, mesh, type Ground } from './kit.ts';
+import { stadium } from './stadium.ts';
 import * as tex from './textures.ts';
 
 const WHITE = () => mat('#ece7dc', { roughness: 0.75 });
@@ -140,12 +143,17 @@ function sameiro(s: Extract<Sight, { kind: 'sameiro' }>, ground: Ground): THREE.
   return g;
 }
 
-// ---- The Picoto: the stone cross on its top, and the white survey pillar beside it. ----
+// ---- The Picoto: the cross on its top, as its photo shows it (braga-map's task 021): white steel,
+// a ring of rusted steel round where its arms cross, on a block of granite. The survey's vertex
+// there is the cross itself. ----
 function cruzeiro(s: { x: number; y: number; z: number }): THREE.Group {
   const g = new THREE.Group();
-  const stone = GRANITE();
-  g.add(box(3, 0.5, 3, stone, 0, 0, 0), box(2, 0.5, 2, stone, 0, 0.5, 0), box(0.4, 4.5, 0.4, stone, 0, 1, 0), box(0.4, 0.4, 1.8, stone, 0, 4.2, 0));
-  g.add(mesh(new THREE.CylinderGeometry(0.4, 0.45, 2.7, 12), mat('#f2f0ea'), 4, 1.35, 1));
+  const white = mat('#f1f0ec', { roughness: 0.5, metalness: 0.2 });
+  g.add(mesh(new THREE.CylinderGeometry(0.6, 0.75, 1.5, 4).rotateY(Math.PI / 4), GRANITE(), 0, 0.75, 0));
+  g.add(box(0.2, 4.2, 0.2, white, 0, 1.5, 0), box(0.2, 0.2, 2.3, white, 0, 4.15, 0));
+  const ring = mesh(new THREE.TorusGeometry(0.6, 0.045, 6, 28), mat('#6e4a33', { roughness: 0.7, metalness: 0.3 }), 0, 4.25, 0);
+  ring.rotation.y = Math.PI / 2;
+  g.add(ring);
   g.position.set(s.x, s.y, s.z);
   return g;
 }
@@ -375,7 +383,7 @@ function restaurant(f: { x: number; z: number; face: number; L: number }, ground
   return g;
 }
 
-// ---- A sign along a building's front: Makro's yellow and black, the Altice Forum's. ----
+// ---- A sign along a building's front: Makro's yellow and black. ----
 function fascia(s: { x: number; z: number; face: number; L: number }, ground: Ground, text: string, bg: string, fg: string, height: number, top: number): THREE.Group {
   const g = new THREE.Group();
   const width = Math.min(2 * s.L - 2, Math.max(12, text.length * height * 0.62));
@@ -389,90 +397,20 @@ function fascia(s: { x: number; z: number; face: number; L: number }, ground: Gr
   return g;
 }
 
-// ---- The Estádio 1.º de Maio: the pitch inside a red running track, terraces all round, a
-// covered stand on one side, and floodlights at the corners. ----
-function stadium(s: Extract<Sight, { kind: 'stadium' }>, track: Track): THREE.Group {
+// ---- The Altice Forum's α, high on its hall's west face, standing a little out from it. ----
+function alticeLogo(s: Extract<Sight, { kind: 'altice' }>): THREE.Group {
   const g = new THREE.Group();
-  const straight = s.L;
-  const r0 = s.W + 6;
-  // A stadium's oval at r beyond the pitch: [x, z] round it, in the pitch's frame.
-  const oval = (r: number, n = 48): [number, number][] => {
-    const out: [number, number][] = [];
-    for (let k = 0; k <= n; k++) {
-      const a = (k / n) * Math.PI * 2;
-      const c = Math.cos(a);
-      out.push([c >= 0 ? straight + Math.cos(a) * r : -straight + Math.cos(a) * r, Math.sin(a) * r]);
-    }
-    return out;
-  };
-  // The running track, a flat red ring.
-  {
-    const inner = oval(r0 - 5);
-    const outer = oval(r0 + 4);
-    const pos: number[] = [];
-    for (let k = 0; k < inner.length - 1; k++) {
-      const [a, b, c, d] = [inner[k], outer[k], outer[k + 1], inner[k + 1]];
-      pos.push(a[0], 0.08, a[1], c[0], 0.08, c[1], b[0], 0.08, b[1], a[0], 0.08, a[1], d[0], 0.08, d[1], c[0], 0.08, c[1]);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    geo.computeVertexNormals();
-    g.add(mesh(geo, mat('#b5523d', { roughness: 0.9 })));
-  }
-  // Terraces: rows rising outwards all round.
-  const concrete = mat('#bdb8ae', { roughness: 0.9 });
-  const rows = 8;
-  for (let r = 0; r < rows; r++) {
-    const ring = oval(r0 + 6 + r * 2.2, 40);
-    for (let k = 0; k < ring.length - 1; k++) {
-      const [ax, az] = ring[k];
-      const [bx, bz] = ring[k + 1];
-      const l = Math.hypot(bx - ax, bz - az);
-      const step = box(l + 0.3, 1 + r * 1.1, 2.2, concrete, 0, -1, 0);
-      step.position.set((ax + bx) / 2, -1 + (1 + r * 1.1) / 2, (az + bz) / 2);
-      step.rotation.y = -Math.atan2(bz - az, bx - ax);
-      g.add(step);
-    }
-  }
-  // The covered stand, on the long side further from the road.
-  const sideAway = (() => {
-    const far = (z: number) => {
-      const x = s.x - Math.sin(s.angle) * z;
-      const zz = s.z + Math.cos(s.angle) * z;
-      return distanceToRoad(track, x, zz).d;
-    };
-    return far(r0 + 15) > far(-(r0 + 15)) ? 1 : -1;
-  })();
-  const stand = new THREE.Group();
-  stand.add(box(straight * 1.6, 14, 18, concrete, 0, -1, 0));
-  const roof = box(straight * 1.7, 0.8, 24, mat('#e4e1da', { roughness: 0.6 }), 0, 17, -4);
-  stand.add(roof);
-  for (const x of [-0.6, -0.2, 0.2, 0.6]) stand.add(box(0.8, 18, 0.8, concrete, x * straight * 1.6, -1, 8));
-  stand.position.z = sideAway * (r0 + 22);
-  if (sideAway < 0) stand.rotation.y = Math.PI;
-  g.add(stand);
-  // Floodlights at the four corners, their lamps towards the pitch.
-  const steel = mat('#8c9298', { metalness: 0.6, roughness: 0.4 });
-  const lamp = new THREE.MeshBasicMaterial({ color: '#fff8e0', toneMapped: false });
-  for (const [x, z] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-    const mast = new THREE.Group();
-    mast.add(mesh(new THREE.CylinderGeometry(0.5, 0.9, 34, 8), steel, 0, 17, 0));
-    mast.add(box(4.5, 3, 0.6, steel, 0, 33, 0));
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 2.6), lamp);
-    face.position.set(0, 34.5, -0.31);
-    face.rotation.y = Math.PI;
-    mast.add(face);
-    mast.position.set(x * (straight + r0 * 0.75), 0, z * (r0 + 14));
-    mast.rotation.y = Math.atan2(x * (straight + r0 * 0.75), z * (r0 + 14));
-    g.add(mast);
-  }
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.MeshStandardMaterial({ map: tex.alpha(), alphaTest: 0.5, roughness: 0.5, side: THREE.DoubleSide }));
+  face.rotation.y = Math.PI / 2;
+  face.position.set(0.6, s.h, 0);
+  g.add(face);
   g.position.set(s.x, s.y, s.z);
-  g.rotation.y = -s.angle;
+  g.rotation.y = -s.face;
   return g;
 }
 
 export function buildSights(list: Sight[], track: Track, ground: Ground, far: Ground): { group: THREE.Group; update: (t: number) => void } {
-  const group = new THREE.Group();
+  const group = Object.assign(new THREE.Group(), { name: 'sights' });
   const updates: ((t: number) => void)[] = [];
   for (const s of list) {
     let g: THREE.Group | null = null;
@@ -484,8 +422,10 @@ export function buildSights(list: Sight[], track: Track, ground: Ground, far: Gr
       if (s.sign) group.add(bake(restaurant(s.sign, ground)));
     }
     if (s.kind === 'makro') g = fascia(s, ground, 'makro', '#ffd400', '#111111', 6, 10);
-    if (s.kind === 'altice') g = fascia(s, ground, 'ALTICE FORUM BRAGA', '#f4f4f2', '#1b1d22', 4.5, 14);
-    if (s.kind === 'stadium') g = stadium({ ...s, y: ground(s.x, s.z) }, track);
+    if (s.kind === 'altice') g = alticeLogo({ ...s, y: ground(s.x, s.z) });
+    if (s.kind === 'stadium') g = stadium({ ...s, y: ground(s.x, s.z) }, ground);
+    // On the ground at its front, the square it looks to.
+    if (s.kind === 'saojoao') g = saoJoaoChapel({ ...s, y: ground(s.x + Math.cos(s.face) * (s.L - 4.8), s.z + Math.sin(s.face) * (s.L - 4.8)) });
     if (g) group.add(bake(g));
   }
   return { group, update: (t) => updates.forEach((u) => u(t)) };

@@ -10,6 +10,8 @@
 // node scripts/shots.mjs baseline                   every viewpoint, into shots/<today>-baseline/
 // node scripts/shots.mjs facades estadio devesa     only the viewpoints named
 // node scripts/shots.mjs budget --medium            Medium too, for the budget (task 004)
+// node scripts/shots.mjs landmarks --map=../braga-map-021   the viewpoints and photos of another
+//                                                   braga-map checkout, such as a worktree's
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,15 +19,15 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
-const MAP = path.resolve(ROOT, '../braga-map');
 const H = 720;
 
 const flags = process.argv.slice(2).filter((a) => a.startsWith('--'));
+const MAP = path.resolve(ROOT, flags.find((a) => a.startsWith('--map='))?.slice(6) ?? '../braga-map');
 const QUALITIES = flags.includes('--medium') ? ['high', 'medium', 'low'] : ['high', 'low'];
 const LEVEL = { high: 'High', medium: 'Medium', low: 'Low' };
 const [label, ...only] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 if (!label || !/^[\w-]+$/.test(label)) {
-  console.error('node scripts/shots.mjs <label> [viewpoint ids…] [--medium]   the label in letters, numbers and dashes');
+  console.error('node scripts/shots.mjs <label> [viewpoint ids…] [--medium] [--map=<braga-map folder>]   the label in letters, numbers and dashes');
   process.exit(1);
 }
 const day = new Date();

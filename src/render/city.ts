@@ -518,7 +518,11 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   // Those left out aren't walls for the karts either.
   const kept = new Set(list);
   for (const b of all) if (!kept.has(b)) wg.unwall(b.pts);
-  group.add(Object.assign(buildBuildings(list, map, facadeKit(map.facadeTypes, quality), quality), { name: 'buildings' }));
+  // A sight drawn in a building's place (São João da Ponte's chapel) stands for it: the building is a
+  // wall to the karts still, but isn't drawn.
+  const covers = map.sights.flatMap((s) => (s.kind === 'saojoao' ? [s.covers] : []));
+  const drawn = list.filter((b) => !covers.some((r) => inside(r, b.cx, b.cz)));
+  group.add(Object.assign(buildBuildings(drawn, map, facadeKit(map.facadeTypes, quality), quality), { name: 'buildings' }));
   if (photos) group.add(photos.facades);
   // The shops' signs, on the buildings drawn.
   group.add(buildSigns(map.signs.filter((s) => near(s.from[0], s.from[1]) <= 300 && !keepOut.some((k) => Math.hypot(s.from[0] - k.x, s.from[1] - k.z) < k.r)), map.facadeColours));

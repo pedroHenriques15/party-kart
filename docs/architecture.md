@@ -422,7 +422,9 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     kerb over it, with the kerb's face where it meets a cycle lane; each tread flat at its height,
     with a face down to what's beside it where that's lower (the riser, between two treads) and a
     granite wall up to the land where that's higher; a steel handrail on posts every 1.5 m where
-    the map has one; a footbridge's deck and its parapets as a bridge's.
+    the map has one; a footbridge's deck and its parapets as a bridge's, but a wooden one's (the
+    Picoto's boardwalk, braga-map's task 021) its boards (`planks`, one more layer), a board along
+    its edge and a timber rail on posts every 1.5 m down to the ground.
   - The walls, fences, railings, hedges and gates (braga-map's task 013, `world.walls`), each on the
     ground the karts drive on (`ground.ts`'s `wallSpan`, every 3 m along it on High, 4 on Medium,
     6 on Low): a wall a block in what it's made of (granite blocks, render painted near white, a
@@ -437,7 +439,10 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     Where a street's outline meets the land, a skirt down to it, or a granite retaining wall up to
     it where the land stands more than 12 cm over the edge (25 on Low), and on High a granite step
     at a pavement's back; none against a building, nor where one of the map's retaining walls stands. The decks' undersides, and their parapets and
-    the tunnels' sides where the karts meet them (`ground.ts`'s `sides`).
+    the tunnels' sides where the karts meet them (`ground.ts`'s `sides`). Within an arch's reach
+    (São João da Ponte's bridge, braga-map's `arch` sight, task 021) a deck is granite: its parapets
+    dressed stone, and under them the arch's faces down to the ground, its opening over the river and
+    the paths beside it (`archOf`), on no pillars (`levels.ts` leaves them out).
   - The lines painted on the carriageways as they're drawn: lanes and middles, dashed or solid,
     zebras (their bars on one grid of a metre, so crossings the map has side by side line up),
     stop lines.
@@ -449,9 +454,12 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   - The surfaces and faces are one mesh a tile (500 m), their textures layers of one array
     texture (`tuv`: each vertex's uv and layer); the paint another.
   - The sights (`sights.ts`): Bom Jesus and its Escadório and the Sameiro on the hills, at twice
-    their size so they show from the track; the cross on the Picoto; the Estádio 1.º de Maio with
-    its track, terraces, covered stand and floodlights; Makro's and the Altice Forum's signs; and
-    the Tourigalo, a black bull with a rooster's head on its lawn, head to the west, five times its
+    their size so they show from the track; the Picoto's white steel cross, with its ring, on a
+    granite block; São João da Ponte's chapel (`chapel.ts`, braga-map's task 021), drawn in its
+    building's place (the building's still a wall to the karts); the Estádio 1.º de Maio
+    (`stadium.ts`), its stands as braga-map measured them along spokes round the track, stepped a
+    metre a step, its outer wall, the main stand's roof and its four floodlights where the LiDAR
+    saw them; Makro's sign; the Altice Forum's α; and the Tourigalo, a black bull with a rooster's head on its lawn, head to the west, five times its
     real size and exaggerated (braga-map's decision 015), its testicles swinging (the one moving
     part, outside the bake), with its restaurant's sign behind; 9 draw calls and about 25,000
     triangles.

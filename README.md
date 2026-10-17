@@ -105,8 +105,12 @@ are, at their real widths: a narrow one is as narrow in a race, its kerbs are th
 row of the race's barriers closes every side street it passes. Only while it's on do its start line,
 gates, boost pads and barriers stand in them. A blue-and-white plate names each street as you turn into it, and
 its bus stops stand on the pavement. Bom Jesus and the
-Sameiro stand on the hills to the east, drawn twice their size so you can find them, and the cross
-on top of the Picoto. By the Avenida Doutor António Alves Palha's roundabout stands the Tourigalo, the
+Sameiro stand on the hills to the east, drawn twice their size so you can find them; on top of the
+Picoto its white steel cross, and the miradouro's boardwalk round it. São João da Ponte's chapel
+stands in its park by the Avenida da Liberdade, its bell gable over its door and its porch before
+it, and the avenue crosses the Este there on a granite arch. The Estádio 1.º de Maio is its bowl of
+terraces as they really rise, walled outside, with its four floodlights, and the Altice Forum has
+its α. By the Avenida Doutor António Alves Palha's roundabout stands the Tourigalo, the
 black bull with a rooster's head, on its lawn: five times its real size, and exaggerated in every
 part, on purpose. Each friend's house has its joke on it: a dog, a
 dentist, a supermarket, a café, and an alarm clock.

@@ -97,7 +97,9 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   by git): a PNG each, the shape of its photo and 720 pixels high, `stats.json` with each one's cost
   (draw calls, triangles, textures' memory, build and frame time), and `index.html` setting
   each beside its real photo (`../braga-map/.cache/refs/`) and the round before's. Name viewpoints
-  after the label to shoot only those. It starts its own dev server, as one started before braga-map
+  after the label to shoot only those, and `--map=<folder>` to take the viewpoints and photos from
+  another braga-map checkout than `../braga-map` (a worktree's, whose viewpoints the main one hasn't
+  got yet). It starts its own dev server, as one started before braga-map
   was last installed still serves the old map; restart yours after `npm install` too. About 2 minutes.
 - The touch controls show on a touch screen: Chrome's device toolbar, or Playwright with
   `hasTouch` and `isMobile`. Drive them with real touches (CDP's `Input.dispatchTouchEvent`), not

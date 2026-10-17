@@ -326,6 +326,8 @@ export interface Side extends Wall {
   kind: 'parapet' | 'bore';
   nx: number;
   nz: number;
+  // The piece off the ground it's the edge of.
+  piece: Piece;
 }
 
 // The parts of the world's ground that don't change, shared by every ground made from them.
@@ -1001,7 +1003,7 @@ export function worldGround(world: Braga): WorldGround {
         }
         // A tunnel's side as high as a tunnel, or as the land beside it if that's lower: never so
         // high it stands in the street over the tunnel.
-        const side: Side = yg > ye ? { ax: x0, az: z0, bx: x1, bz: z1, y0: ye - 0.5, y1: Math.min(yg - STEP, ye + BORE), kind: 'bore', nx: px, nz: pz } : { ax: x0, az: z0, bx: x1, bz: z1, y0: ye - DEEP, y1: ye + PARAPET, kind: 'parapet', nx: px, nz: pz };
+        const side: Side = yg > ye ? { ax: x0, az: z0, bx: x1, bz: z1, y0: ye - 0.5, y1: Math.min(yg - STEP, ye + BORE), kind: 'bore', nx: px, nz: pz, piece: p } : { ax: x0, az: z0, bx: x1, bz: z1, y0: ye - DEEP, y1: ye + PARAPET, kind: 'parapet', nx: px, nz: pz, piece: p };
         addWall(side, side.kind === 'bore' ? 'tunnel sides' : 'parapets');
         sides.push(side);
       }

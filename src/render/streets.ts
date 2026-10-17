@@ -11,7 +11,7 @@
 // route's bus stops and street plates, and across every street and path where it leaves the area,
 // road-works barriers. A tile's surfaces and faces are one mesh, their textures layers of one, and its paint
 // another, so whole tiles out of view are skipped.
-import type { Track as Course, Path, Streets, World as Braga } from 'braga-map';
+import type { Track as Course, Path, Sight, Streets, World as Braga } from 'braga-map';
 import * as THREE from 'three';
 import { distanceToRoad, type Track } from '../track/track.ts';
 import { alongSpan, wallSpan, type Piece, type WorldGround } from '../world/ground.ts';
@@ -94,13 +94,58 @@ const WORLD: Frame = { ax: 0, az: 0, tx: 1, tz: 0, L: 0, s0: 0 };
 
 // The streets' textures, as layers of one texture: a tile's surfaces and faces are one mesh, whatever
 // they're made of.
-const LAYERS = ['asphalt', 'setts', 'calcada', 'verge', 'dirt', 'granite', 'skirt', 'concrete', 'paving', 'cycle', 'gravel', 'blocks', 'render', 'hedge', 'cement'] as const;
+const LAYERS = ['asphalt', 'setts', 'calcada', 'verge', 'dirt', 'granite', 'skirt', 'concrete', 'paving', 'cycle', 'gravel', 'blocks', 'render', 'hedge', 'cement', 'planks'] as const;
 type Layer = (typeof LAYERS)[number];
 
 // What a path is drawn in (braga-map's task 050): its surface's, a cycleway's asphalt red, a metal
-// footbridge's deck grey and a wooden one's as packed earth.
-const PATH_LAYER: Record<Path['surface'], Layer> = { calcada: 'calcada', paving: 'paving', setts: 'setts', asphalt: 'asphalt', concrete: 'concrete', gravel: 'gravel', dirt: 'dirt', metal: 'skirt', wood: 'dirt' };
+// footbridge's deck grey, and a wooden one's boards (the Picoto's boardwalk, its task 021).
+const PATH_LAYER: Record<Path['surface'], Layer> = { calcada: 'calcada', paving: 'paving', setts: 'setts', asphalt: 'asphalt', concrete: 'concrete', gravel: 'gravel', dirt: 'dirt', metal: 'skirt', wood: 'planks' };
 const pathLayer = (p: Path): Layer => (p.kind === 'cycleway' && p.surface === 'asphalt' ? 'cycle' : PATH_LAYER[p.surface]);
+
+// An arch's opening over the river (braga-map's task 021): across the river's way there, over the
+// water and the paths that pass under the deck beside it (its photos: the arch spans the river and
+// the riverside path), from the water up to just under the deck, a segmental curve. Its ceiling at
+// (x, z): the arch's face's height there, or Infinity outside its opening.
+export function archOf(s: Extract<Sight, { kind: 'arch' }>, rivers: { pts: [number, number, number][] }[], under: Path[]) {
+  // The river's way at the crossing: its nearest stretch's.
+  let best = { d: Infinity, ux: 1, uz: 0, y: s.y - 6 };
+  for (const r of rivers) {
+    for (let k = 1; k < r.pts.length; k++) {
+      const [ax, az] = r.pts[k - 1];
+      const [bx, bz] = r.pts[k];
+      const L = Math.hypot(bx - ax, bz - az) || 1;
+      const t = Math.max(0, Math.min(1, ((s.x - ax) * (bx - ax) + (s.z - az) * (bz - az)) / (L * L)));
+      const d = Math.hypot(ax + (bx - ax) * t - s.x, az + (bz - az) * t - s.z);
+      if (d < best.d) best = { d, ux: (bx - ax) / L, uz: (bz - az) / L, y: r.pts[k][2] };
+    }
+  }
+  const [px, pz] = [-best.uz, best.ux];
+  const across = (x: number, z: number) => (x - s.x) * px + (z - s.z) * pz;
+  // The water, 3 m either side of its line, and the paths under the deck, a metre and a half past.
+  let [a, b] = [-3, 3];
+  for (const p of under) {
+    for (const ring of p.rings) {
+      for (const [x, z] of ring) {
+        if (Math.hypot(x - s.x, z - s.z) > s.r) continue;
+        a = Math.min(a, across(x, z) - 1.5);
+        b = Math.max(b, across(x, z) + 1.5);
+      }
+    }
+  }
+  const half = (b - a) / 2;
+  const m = (a + b) / 2;
+  const crown = s.y - DEEP - 0.35;
+  const spring = Math.min(crown - 1, Math.max(best.y, crown - half * 0.9));
+  return {
+    x: s.x,
+    z: s.z,
+    r: s.r,
+    ceiling: (x: number, z: number) => {
+      const v = across(x, z) - m;
+      return Math.abs(v) >= half ? Infinity : spring + (crown - spring) * Math.sqrt(1 - (v / half) ** 2);
+    },
+  };
+}
 
 // The paths at the ground's level: on it, or under something there (a passage under a building).
 export function groundPaths(S: Streets): Path[] {
@@ -109,7 +154,7 @@ export function groundPaths(S: Streets): Path[] {
 
 function layers(): THREE.DataArrayTexture {
   const S = 256;
-  const art: Partial<Record<Layer, () => THREE.CanvasTexture>> = { asphalt: tex.asphalt, setts: tex.setts, calcada: tex.calcada, verge: tex.ground, dirt: tex.rock, granite: tex.granite, paving: tex.paving, cycle: tex.cycleway, gravel: tex.gravel, blocks: tex.wallBlocks, render: tex.plaster, hedge: tex.hedge, cement: tex.plaster };
+  const art: Partial<Record<Layer, () => THREE.CanvasTexture>> = { asphalt: tex.asphalt, setts: tex.setts, calcada: tex.calcada, verge: tex.ground, dirt: tex.rock, granite: tex.granite, paving: tex.paving, cycle: tex.cycleway, gravel: tex.gravel, blocks: tex.wallBlocks, render: tex.plaster, hedge: tex.hedge, cement: tex.plaster, planks: tex.planks };
   const tint: Partial<Record<Layer, string>> = { dirt: '#c9b79c', skirt: '#77736b', concrete: '#bcb7ae', cement: '#8a867f' };
   const images = LAYERS.map((name) => {
     const c = document.createElement('canvas');
@@ -293,7 +338,7 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   const surfaces = surfaceMaterial();
   const paintMat = new THREE.MeshStandardMaterial({ color: '#efefe8', roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 });
   // Metres a tile of each texture: along the street's rows for the setts and the calçada.
-  const SCALE: Partial<Record<Layer, number>> = { asphalt: 8, setts: 2, calcada: 2.5, verge: 2, dirt: 6, granite: 1, paving: 2, cycle: 8, gravel: 4, blocks: 2, render: 2, hedge: 2, cement: 2 };
+  const SCALE: Partial<Record<Layer, number>> = { asphalt: 8, setts: 2, calcada: 2.5, verge: 2, dirt: 6, granite: 1, paving: 2, cycle: 8, gravel: 4, blocks: 2, render: 2, hedge: 2, cement: 2, planks: 0.6 };
   const tiles = new Map<string, { surf: Batch; paint: Batch }>();
   const tileOf = (x: number, z: number) => {
     const k = `${Math.floor(x / TILE)},${Math.floor(z / TILE)}`;
@@ -306,6 +351,11 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
     return m === 'paint' ? new Pen(t.paint, 0) : new Pen(t.surf, LAYERS.indexOf(m));
   };
   const count = (what: string, n: number) => (counts[what] = (counts[what] ?? 0) + n);
+
+  // ---- São João da Ponte's bridge (braga-map's task 021): the decks within an arch's reach are an
+  // arch of dressed granite. ----
+  const arches = world.sights.flatMap((q) => (q.kind === 'arch' ? [archOf(q, world.rivers, S.paths.filter((p) => p.level === 'under'))] : []));
+  const archAt = (x: number, z: number) => arches.find((a) => Math.hypot(x - a.x, z - a.z) < a.r) ?? null;
 
   // ---- The ways the streets run, for their textures. ----
   const frames = new Grid<Frame>(20);
@@ -416,10 +466,11 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   for (const p of wg.d.pieces) {
     const h: Height = (x, z) => p.height(x, z) + LIFT;
     lay(p.outline, h, p.path ? pathLayer(p.path) : p.surface ? onCarriageway(p.surface) : 'calcada', !!p.surface && !p.path, p);
-    // A deck's underside.
+    // A deck's underside: under an arch, granite; under a boardwalk, its boards.
     if (p.level === 'bridge') {
+      const arch = archAt((p.box.x0 + p.box.x1) / 2, (p.box.z0 + p.box.z1) / 2);
       const under: Height = (x, z) => p.height(x, z) - DEEP;
-      const b = batch(p.outline[0][0][0], p.outline[0][0][1], 'concrete');
+      const b = batch(p.outline[0][0][0], p.outline[0][0][1], arch ? 'blocks' : p.path?.surface === 'wood' ? 'planks' : 'concrete');
       const corner: number[] = [];
       surface(p.outline, under, p.surface ? grain.road : grain.pave, (x, y, z) => {
         corner.push(x, y, z);
@@ -770,9 +821,48 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   }
 
   // ---- The decks' parapets and the tunnels' sides, where the karts meet them (ground.ts). ----
+  const timber = mat('#6b5641', { map: tex.planks(), roughness: 0.9 });
   for (const w of wg.d.sides) {
     const L = Math.hypot(w.bx - w.ax, w.bz - w.az);
     if (L < 1e-3) continue;
+    // A boardwalk's edge: a board along it under the deck, posts every 1.5 m from the ground to the
+    // handrail, and a rail half way up.
+    if (w.kind === 'parapet' && w.piece.path?.surface === 'wood') {
+      const road = w.y0 + DEEP;
+      const top = w.y1 - 0.05;
+      face('planks', [[w.ax + w.nx * 0.05, w.az + w.nz * 0.05, road - 0.25, road], [w.bx + w.nx * 0.05, w.bz + w.nz * 0.05, road - 0.25, road]], w.nx, w.nz);
+      const yaw = -Math.atan2(w.bz - w.az, w.bx - w.ax);
+      const [mx, mz] = [(w.ax + w.bx) / 2 - w.nx * 0.05, (w.az + w.bz) / 2 - w.nz * 0.05];
+      for (const y of [top - 0.08, road + 0.45]) {
+        const rail = box(L + 0.02, 0.08, 0.1, timber, mx, y, mz);
+        rail.rotation.y = yaw;
+        things.add(rail);
+      }
+      for (let d = 0; d < L; d += 1.5) {
+        const [px, pz] = [w.ax + ((w.bx - w.ax) * d) / L - w.nx * 0.05, w.az + ((w.bz - w.az) * d) / L - w.nz * 0.05];
+        const foot = Math.min(road - 0.25, firm(px, pz) - 0.2);
+        things.add(box(0.1, top - foot, 0.1, timber, px, foot, pz));
+      }
+      count('boardwalk', 8);
+      continue;
+    }
+    // An arch's: granite; and on its outer face, down from the deck, the arch's face over the river
+    // and the abutments either side, down to the ground.
+    const arch = w.kind === 'parapet' ? archAt((w.ax + w.bx) / 2, (w.az + w.bz) / 2) : null;
+    if (arch) {
+      const o = 0.3;
+      const n = Math.max(1, Math.ceil(L / 0.5));
+      const pts: [number, number, number, number][] = [];
+      for (let f = 0; f <= n; f++) {
+        const x = w.ax + ((w.bx - w.ax) * f) / n + w.nx * o;
+        const z = w.az + ((w.bz - w.az) * f) / n + w.nz * o;
+        pts.push([x, z, Math.min(w.y0, Math.max(firm(x, z) - 0.3, arch.ceiling(x, z))), w.y1]);
+      }
+      face('blocks', pts, w.nx, w.nz);
+      face('granite', [[w.ax, w.az, w.y0 + DEEP, w.y1], [w.bx, w.bz, w.y0 + DEEP, w.y1]], -w.nx, -w.nz);
+      batch((w.ax + w.bx) / 2, (w.az + w.bz) / 2, 'granite').quad([[w.ax, w.y1, w.az], [w.bx, w.y1, w.bz], [w.bx + w.nx * o, w.y1, w.bz + w.nz * o], [w.ax + w.nx * o, w.y1, w.az + w.nz * o]], 0, 1, 0);
+      continue;
+    }
     const b = batch((w.ax + w.bx) / 2, (w.az + w.bz) / 2, 'concrete');
     const quad = (pts: number[][], nx: number, ny: number, nz: number) => {
       b.quad(pts, nx, ny, nz);

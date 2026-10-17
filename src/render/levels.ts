@@ -128,9 +128,15 @@ export function buildLevels(map: Braga, land: Land, decks: Set<Line>, openings: 
     }
   };
 
+  // An arch's decks (São João da Ponte's bridge, braga-map's task 021) stand on the arch itself
+  // (streets.ts), not on pillars and abutments.
+  const arches = map.sights.flatMap((s) => (s.kind === 'arch' ? [s] : []));
+  const arched = (l: Line) => arches.some((a) => l.pts.every(([x, z]) => Math.hypot(x - a.x, z - a.z) < a.r));
+
   // ---- The bridges: each a deck along its line, at its heights (the streets' own where they're
   // drawn), on pillars. ----
   for (const l of decks) {
+    if (arched(l)) continue;
     const n = l.pts.length;
     const h = l.heights!;
     const hw = l.w / 2 + 1.5; // its carriageway and a pavement either side

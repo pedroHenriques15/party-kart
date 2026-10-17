@@ -1,5 +1,5 @@
-// The keyboard, and the touch screen. Actions (respawn, restart, horn, camera, use) are counted
-// presses, read once.
+// The keyboard, the mouse and the touch screen. Actions (respawn, restart, horn, camera, use, fly) are
+// counted presses, read once.
 const KEYS = {
   up: ['ArrowUp', 'KeyW'],
   down: ['ArrowDown', 'KeyS'],
@@ -18,9 +18,10 @@ const ACTIONS: Record<string, Action> = {
   Delete: 'restart',
   KeyH: 'horn',
   KeyC: 'camera',
+  KeyV: 'fly',
 };
 // 'useBack' throws the item backwards: the touch screen's swipe, where the keyboard holds ↓.
-export type Action = 'respawn' | 'restart' | 'horn' | 'camera' | 'use' | 'useBack';
+export type Action = 'respawn' | 'restart' | 'horn' | 'camera' | 'use' | 'useBack' | 'fly';
 
 export interface Held {
   throttle: number;
@@ -28,6 +29,22 @@ export interface Held {
   steer: number;
   drift: boolean;
 }
+
+// The flying camera's controls (src/game/flyer.ts's FlyInput): the moves from -1 to 1, and the drags
+// since they were last read, in radians.
+export interface Flight {
+  fwd: number;
+  side: number;
+  up: number;
+  turn: number;
+  look: { x: number; y: number };
+  fast: boolean;
+}
+
+// How far a drag turns the flying camera, in radians a CSS pixel: the mouse's, and a finger's, which
+// has fewer pixels to go across.
+const MOUSE_LOOK = 0.004;
+const TOUCH_LOOK = 0.007;
 
 const GAME_KEYS = new Set([...Object.values(KEYS).flat(), ...Object.keys(ACTIONS)]);
 const inField = (e: Event) => e.target instanceof HTMLElement && !!e.target.closest('input, select, textarea');
@@ -67,6 +84,56 @@ export class Keyboard {
     this.pending = [];
     return a;
   }
+
+  // Flying: W and S, or ↑ and ↓, forward and back; A and D sideways; ← and → turn; E up and Q down;
+  // Shift faster. The mouse looks round (Mouse).
+  flight(): Omit<Flight, 'look'> {
+    const k = (code: string) => (this.down.has(code) ? 1 : 0);
+    return {
+      fwd: Math.max(k('KeyW'), k('ArrowUp')) - Math.max(k('KeyS'), k('ArrowDown')),
+      side: k('KeyD') - k('KeyA'),
+      up: k('KeyE') - k('KeyQ'),
+      turn: k('ArrowRight') - k('ArrowLeft'),
+      fast: !!(k('ShiftLeft') || k('ShiftRight')),
+    };
+  }
+}
+
+// The mouse, while flying: dragged with a button held on the world, it looks round. There's no
+// pointer lock, as Esc is the menu.
+export class Mouse {
+  enabled = false;
+  private x = 0;
+  private y = 0;
+  private held: number | null = null;
+
+  constructor(on: HTMLElement) {
+    on.addEventListener('pointerdown', (e) => {
+      if (!this.enabled || e.pointerType !== 'mouse') return;
+      this.held = e.pointerId;
+      on.setPointerCapture(e.pointerId);
+      document.body.classList.add('looking');
+    });
+    on.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== this.held || !this.enabled) return;
+      this.x += e.movementX;
+      this.y += e.movementY;
+    });
+    for (const k of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
+      on.addEventListener(k, (e) => {
+        if (e.pointerId !== this.held) return;
+        this.held = null;
+        document.body.classList.remove('looking');
+      });
+    }
+  }
+
+  // The drag since last read, in radians: to the right, and up.
+  look(): { x: number; y: number } {
+    const l = { x: this.x * MOUSE_LOOK, y: -this.y * MOUSE_LOOK };
+    this.x = this.y = 0;
+    return l;
+  }
 }
 
 function el(cls: string, text = ''): HTMLDivElement {
@@ -87,7 +154,9 @@ const SWIPE = 28;
 // race the kart accelerates by itself; round the city it goes while a thumb is on the steering
 // half, and pulls up when it lifts (`waiting`). Brake slows it down, and reverses once stopped, as
 // ↓ does. The rarer
-// actions (back on the street, restart, horn, camera) are buttons in the bar, out of the thumbs' way.
+// actions (back on the street, restart, horn, camera, flying) are buttons in the bar, out of the
+// thumbs' way. Flying ('fly'), the stick on the left half goes forward, back and sideways, a drag
+// anywhere on the right half looks round, and Subir and Descer are where Derrapar and Travar are.
 export class TouchPad {
   readonly el: HTMLElement;
   // Whether the touch controls show: from the start on a touch screen, from the first touch on
@@ -95,11 +164,17 @@ export class TouchPad {
   on = false;
   private driving = false;
   private roam = false;
+  private flying = false;
   private steer = 0;
+  private move = { x: 0, y: 0 }; // flying: the stick, to the right and forward
   private drift = false;
   private brake = false;
+  private rise = false;
+  private sink = false;
   private pending: Action[] = [];
-  private stick: { id: number; x: number } | null = null;
+  private stick: { id: number; x: number; y: number } | null = null;
+  private turn: { id: number; x: number; y: number } | null = null; // flying: the drag on the right half
+  private looked = { x: 0, y: 0 };
   private flick: { id: number; y: number; done: boolean } | null = null; // on the item button
   private base: HTMLElement;
   private knob: HTMLElement;
@@ -112,11 +187,14 @@ export class TouchPad {
     this.base.append(this.knob);
     const zone = el('t-steer');
     zone.append(this.base);
+    const look = el('t-look');
     const drift = el('t-btn t-drift', 'Derrapar');
     const brake = el('t-btn t-brake', 'Travar');
+    const rise = el('t-btn t-rise', '▲\nSubir');
+    const sink = el('t-btn t-sink', '▼\nDescer');
     this.itemBtn = el('t-btn t-item');
     this.el = el('t-pad');
-    this.el.append(zone, drift, brake, this.itemBtn, el('t-rotate', 'Deita o telemóvel para veres mais'));
+    this.el.append(zone, look, drift, brake, rise, sink, this.itemBtn, el('t-rotate', 'Deita o telemóvel para veres mais'));
     document.body.append(this.el);
 
     // A finger keeps whatever it pressed until it lifts, even if it slides off.
@@ -144,6 +222,24 @@ export class TouchPad {
     };
     hold(drift, (on) => (this.drift = on));
     hold(brake, (on) => (this.brake = on));
+    hold(rise, (on) => (this.rise = on));
+    hold(sink, (on) => (this.sink = on));
+
+    // Flying, a drag on the right half looks round, as the mouse does.
+    look.addEventListener('pointerdown', (e) => {
+      if (this.turn) return;
+      grab(e, look);
+      this.turn = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    });
+    look.addEventListener('pointermove', (e) => {
+      const t = this.turn;
+      if (!t || t.id !== e.pointerId) return;
+      this.looked.x += e.clientX - t.x;
+      this.looked.y += e.clientY - t.y;
+      t.x = e.clientX;
+      t.y = e.clientY;
+    });
+    for (const k of ends) look.addEventListener(k, (e) => this.turn?.id === e.pointerId && (this.turn = null));
 
     // The item: tap to use it, or swipe down to throw it backwards. A tap fires as it lifts, as
     // only then is it clear it wasn't a swipe.
@@ -174,7 +270,7 @@ export class TouchPad {
     zone.addEventListener('pointerdown', (e) => {
       if (this.stick) return;
       grab(e, zone);
-      this.stick = { id: e.pointerId, x: e.clientX };
+      this.stick = { id: e.pointerId, x: e.clientX, y: e.clientY };
       this.base.classList.add('live');
       this.base.style.left = `${e.clientX}px`;
       this.base.style.top = `${e.clientY}px`;
@@ -183,6 +279,7 @@ export class TouchPad {
     zone.addEventListener('pointermove', (e) => {
       const s = this.stick;
       if (!s || s.id !== e.pointerId) return;
+      if (this.flying) return this.fly(s, e);
       if (e.clientX - s.x > REACH) s.x = e.clientX - REACH;
       if (e.clientX - s.x < -REACH) s.x = e.clientX + REACH;
       this.base.style.left = `${s.x}px`;
@@ -209,9 +306,29 @@ export class TouchPad {
     document.body.classList.toggle('touch', on);
   }
 
+  // Flying, the stick goes every way, and follows the thumb past its rim as it does steering.
+  private fly(s: { x: number; y: number }, e: PointerEvent): void {
+    let dx = e.clientX - s.x;
+    let dy = e.clientY - s.y;
+    const d = Math.hypot(dx, dy);
+    if (d > REACH) {
+      dx *= REACH / d;
+      dy *= REACH / d;
+      s.x = e.clientX - dx;
+      s.y = e.clientY - dy;
+    }
+    this.base.style.left = `${s.x}px`;
+    this.base.style.top = `${s.y}px`;
+    const r = Math.min(1, d / REACH);
+    const k = r < DEAD ? 0 : (r - DEAD) / (1 - DEAD) / (r * REACH);
+    this.move = { x: dx * k, y: -dy * k };
+    this.knob.style.transform = `translate(${dx}px, ${dy}px)`;
+  }
+
   private centre(): void {
     this.stick = null;
     this.steer = 0;
+    this.move = { x: 0, y: 0 };
     this.base.classList.remove('live');
     this.base.style.left = this.base.style.top = this.knob.style.transform = '';
   }
@@ -219,14 +336,18 @@ export class TouchPad {
   private letGo(): void {
     this.centre();
     this.flick = null;
-    this.drift = this.brake = false;
+    this.turn = null;
+    this.looked = { x: 0, y: 0 };
+    this.drift = this.brake = this.rise = this.sink = false;
     for (const b of this.el.querySelectorAll('.down')) b.classList.remove('down');
   }
 
-  // Shown for driving ('race' has the item button, time attack and free roam don't), or hidden (null).
-  show(mode: 'race' | 'time' | 'roam' | null): void {
+  // Shown for driving ('race' has the item button, time attack and free roam don't) or flying, or
+  // hidden (null).
+  show(mode: 'race' | 'time' | 'roam' | 'fly' | null): void {
     if (mode === (this.el.dataset.mode || null)) return;
-    this.driving = mode !== null;
+    this.flying = mode === 'fly';
+    this.driving = mode !== null && !this.flying;
     this.roam = mode === 'roam';
     this.el.dataset.mode = mode ?? '';
     this.letGo();
@@ -243,6 +364,14 @@ export class TouchPad {
     this.itemBtn.classList.toggle('rolling', rolling);
     this.itemBtn.classList.toggle('full', !rolling && !!icon);
     this.itemBtn.classList.toggle('guarded', guarded);
+  }
+
+  // Flying: the stick, Subir and Descer, and the drags on the right half since last read.
+  flight(): Flight {
+    const look = { x: this.looked.x * TOUCH_LOOK, y: -this.looked.y * TOUCH_LOOK };
+    this.looked = { x: 0, y: 0 };
+    if (!this.on || !this.flying) return { fwd: 0, side: 0, up: 0, turn: 0, look: { x: 0, y: 0 }, fast: false };
+    return { fwd: this.move.y, side: this.move.x, up: (this.rise ? 1 : 0) - (this.sink ? 1 : 0), turn: 0, look, fast: false };
   }
 
   controls(): Held {
@@ -265,6 +394,6 @@ export class TouchPad {
 
   // For the bar's buttons.
   press(act: Action): void {
-    if (this.driving) this.pending.push(act);
+    if (this.driving || this.flying) this.pending.push(act);
   }
 }

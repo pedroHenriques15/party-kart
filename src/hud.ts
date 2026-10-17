@@ -241,9 +241,13 @@ interface MapLine {
   pts: [number, number][];
 }
 
+// The keys, at the bottom: driving round the city, and flying (body.flying hides the speed).
+const DRIVE_KEYS = 'Setas conduzem · Espaço derrapa · Enter volta à rua · H buzina · C câmara · V voa · Esc menu';
+const FLY_KEYS = 'WASD voa · ←→ vira · E sobe · Q desce · Shift mais depressa · arrasta o rato para olhar · V volta ao kart · Esc menu';
+
 // The screen while driving round the city (braga-map's decision 019): the speed, the street's name
 // as you turn into it, a minimap of the area round you with the others on it, what just happened,
-// and speed lines when boosting or in a slipstream.
+// and speed lines when boosting or in a slipstream. Flying, the minimap is round the camera.
 export class RoamHud {
   readonly root: HTMLElement;
   private el: Record<string, HTMLElement> = {};
@@ -261,7 +265,7 @@ export class RoamHud {
     e.feed = h('div', 'feed');
     e.speed = h('div', 'speed');
     e.lines = h('div', 'speedlines');
-    e.keys = h('div', 'keys', 'Setas conduzem · Espaço derrapa · Enter volta à rua · H buzina · C câmara · Esc menu');
+    e.keys = h('div', 'keys', DRIVE_KEYS);
     this.map = h('canvas', 'minimap round');
     this.map.width = this.map.height = SIZE * 2;
     this.edge = m.edge;
@@ -299,6 +303,11 @@ export class RoamHud {
         this.feedItems.splice(this.feedItems.indexOf(f), 1);
       }
     }
+  }
+
+  // The keys for flying, or for driving.
+  fly(on: boolean): void {
+    this.el.keys.textContent = on ? FLY_KEYS : DRIVE_KEYS;
   }
 
   // The street's name, on a blue-and-white plate as Braga's are, for a few seconds.

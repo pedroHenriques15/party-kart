@@ -30,6 +30,12 @@ and driver, the graphics, the help, and
    bots. When it's over the results show over the world, and everyone is back where they were,
    driving.
 3. **↺ Reposicionar**: back on the street nearest.
+4. **🎥 Voar pela cidade**: leave your kart where it is and fly the camera round Braga, down a
+   street, through the buildings, over the rooftops and the hills as far as the horizon, from a metre
+   over the ground to 500 m; the higher, the faster. Your kart waits where you left it, and the
+   others see it parked. **🏎️ Voltar ao kart** (or V) puts it on the street under the camera, to drive
+   on from there. A race the host starts ends the flight, and you're back in your kart where it
+   waited when it's over.
 
 If the host leaves, everyone else drives on, alone.
 
@@ -45,7 +51,17 @@ the ghost of your best. Round the city there are no items.
 | Enter | Back on the street (in a race, back to your last checkpoint) |
 | Backspace | Restart the lap (time attack) |
 | H · C · M | Horn · camera · sound |
+| V | Fly the camera round the city, and back to your kart |
 | Esc | The menu |
+
+| Flying | |
+|---|---|
+| W and S, or ↑ and ↓ | Forward and back, level, the way the camera looks |
+| A and D | Sideways |
+| ← and → | Turn |
+| E and Q | Up and down |
+| Shift | Four times as fast |
+| The mouse, dragged | Look round |
 
 **On a phone or a tablet**, turned sideways: round the city the kart goes while your thumb is on
 the left half, and pulls up when you lift it; in a race it goes by itself.
@@ -56,7 +72,11 @@ the left half, and pulls up when you lift it; in a race it goes by itself.
 | Derrapar | Hold it through a corner, as with Space |
 | Travar | Slows you down, and reverses once you've stopped |
 | Item | In a race: tap to use what it shows; swipe it down to throw backwards |
-| ☰ · ↺ · 📢 · 🎥 · 🔊 (at the top) | The menu · back on the street (in a race, to your last checkpoint) · horn · camera · sound |
+| ☰ · ↺ · Voar · 📢 · 🎥 · 🔊 (at the top) | The menu · back on the street (in a race, to your last checkpoint) · fly the camera · horn · camera · sound |
+
+Flying, the left half of the screen is a stick where your thumb lands, forward, back and sideways; a
+drag anywhere on the right half looks round; **▲ Subir** and **▼ Descer** are where Derrapar and
+Travar were, and **🏎️ Voltar ao kart** at the top lands.
 
 On Android the game goes full screen at the first tap. On an iPhone, add the page to the home screen
 (Share → Add to Home Screen) for the same.
@@ -141,8 +161,8 @@ the game runs slowly, it steps down a level by itself, as far as Low.
   The Volta dos Amigos itself comes from the map of Braga, below.
 - `src/car/`: the handling (drifts, mini-turbos, jumps), and an autopilot.
 - `src/game/`: a race: the arena (clock, cars, items in flight, order), a racer (laps, boxes,
-  items, hits, bumps, slipstreams, catch-up), the items' rules, and the bots; and a car driving round
-  the city (`roamer.ts`).
+  items, hits, bumps, slipstreams, catch-up), the items' rules, and the bots; a car driving round
+  the city (`roamer.ts`); and the flying camera (`flyer.ts`).
 - `src/world/`: the world as the karts' ground: the land, every street and path at its level, the
   steps, and the walls (`ground.ts`).
 - `src/render/`: the look (sky, sun, shadows, quality); the city round the track (`city.ts`,
@@ -171,7 +191,7 @@ The tests run the TypeScript straight in Node, which needs Node 22.18 or later.
 ```sh
 npm install
 npm run dev      # http://localhost:5173; ?autodrive lets the autopilot drive a race, for testing
-npm test         # the track; the world's ground and free roam; the first track's jump; items, catch-up, slipstreams; eight bots
+npm test         # the track; the world's ground and free roam; flying; the first track's jump; items, catch-up, slipstreams; eight bots
 npm run check    # the type check (Node runs the tests without one)
 npm run build
 npm run deploy   # publish to GitHub Pages (the gh-pages branch)

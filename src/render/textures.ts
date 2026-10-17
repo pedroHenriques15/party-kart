@@ -571,16 +571,16 @@ export const alpha = () =>
   );
 
 // The Estádio 1.º de Maio's outer wall (braga-map's task 021), 4 m across and 16 m down from its
-// top: a grey cornice, pale render between granite pilasters with two rows of tall windows, and
-// below them courses of granite blocks, as the stadium's photos show its stands from outside.
+// top: a grey cornice, pale render between pilasters with a tall window 3.6 m under the top, and
+// below 8 m courses of granite blocks, as the stadium's photos show its stands from outside.
 export const stadiumWall = () =>
   canvas(128, 512, (g) => {
     const m = 32; // pixels a metre
     g.fillStyle = '#d9d3c4';
     g.fillRect(0, 0, 128, 512);
     noise(g, 128, 512, 2500, 0.06);
-    // The granite below 7 m down: blocks in courses half a metre deep.
-    for (let y = 7 * m; y < 512; y += 16) {
+    // The granite below 8 m down: blocks in courses half a metre deep.
+    for (let y = 8 * m; y < 512; y += 16) {
       let x = -Math.random() * 30;
       while (x < 128) {
         const w = 30 + Math.random() * 30;
@@ -591,21 +591,18 @@ export const stadiumWall = () =>
         x += w;
       }
     }
-    noise(g, 128, 512 - 7 * m, 2500, 0.12);
     // The cornice, and the pilaster at the bay's edge.
     g.fillStyle = '#9c968a';
     g.fillRect(0, 0, 128, 0.6 * m);
     g.fillStyle = '#c9c2b2';
-    g.fillRect(0, 0.6 * m, 18, 6.4 * m);
+    g.fillRect(0, 0.6 * m, 18, 7.4 * m);
     g.fillStyle = 'rgba(60,55,50,0.25)';
-    g.fillRect(18, 0.6 * m, 3, 6.4 * m);
-    // Two rows of tall windows in the bay, with their sills.
-    for (const top of [1.6, 4.2]) {
-      g.fillStyle = '#3a4048';
-      g.fillRect(52, top * m, 40, 1.7 * m);
-      g.fillStyle = '#b7b0a2';
-      g.fillRect(48, (top + 1.7) * m, 48, 6);
-    }
+    g.fillRect(18, 0.6 * m, 3, 7.4 * m);
+    // The tall window in the bay, and its sill.
+    g.fillStyle = '#3a4048';
+    g.fillRect(50, 3.6 * m, 36, 2.2 * m);
+    g.fillStyle = '#b7b0a2';
+    g.fillRect(46, 5.8 * m, 44, 6);
   });
 
 // A clock's face: cream, its minutes and hours marked, 12 at the top.

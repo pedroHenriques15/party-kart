@@ -115,13 +115,16 @@ export function stadium(s: Stadium, ground: Ground): THREE.Group {
       return { from, steps, roof };
     });
     const r = (from: number, j: number) => (from + j - 0.5) * st.dr;
-    // The outer wall's top, each the middle of the five round it: its parapet runs level, where the
-    // spokes' last steps were measured a little up and down.
-    const tops = drawn.map((q) => (q.roof ? q.roof.y : q.steps.at(-1) ?? 0));
-    const level = tops.map((_, k) => {
-      const near = [-2, -1, 0, 1, 2].map((d) => tops[(k + d + n) % n]).filter((v) => v > 0).sort((p, q) => p - q);
-      return near[near.length >> 1];
-    });
+    // The outer wall: one ring round the stands, its top running level where the spokes' last steps
+    // were measured a little up and down (each the middle of the nine round it, then the mean of five),
+    // and at each boundary between two spokes as far out as the further of their ends and as high as
+    // the two together.
+    const tops = drawn.map((q) => (q.roof ? q.roof.y : q.steps.length ? q.steps[q.steps.length - 1] + PARAPET : 0));
+    const around = (list: number[], d: number[], pick: (v: number[]) => number) => list.map((_, k) => pick(d.map((o) => list[(k + o + n) % n]).filter((v) => v > 0)));
+    const middle = around(tops, [-4, -3, -2, -1, 0, 1, 2, 3, 4], (v) => [...v].sort((p, q) => p - q)[v.length >> 1]);
+    const level = around(middle, [-2, -1, 0, 1, 2], (v) => v.reduce((p, q) => p + q, 0) / v.length);
+    const ends = drawn.map((q) => (q.steps.length ? r(q.from, q.steps.length) : 0));
+    const ring = edge.map((_, k) => ({ R: Math.max(ends[k], ends[(k + 1) % n]), top: (level[k] + level[(k + 1) % n]) / 2 }));
     let u = 0; // along the outer wall, for its texture
     for (let k = 0; k < n; k++) {
       const { from, steps: h, roof } = drawn[k];
@@ -147,28 +150,30 @@ export function stadium(s: Stadium, ground: Ground): THREE.Group {
         if (Math.abs(h[j] - lo) < 0.05) continue;
         steps.quad(at(b, r(from, j), Math.min(h[j], lo)), at(b, r(from, j + 1), Math.min(h[j], lo)), at(b, r(from, j + 1), Math.max(h[j], lo)), at(b, r(from, j), Math.max(h[j], lo)));
       }
-      // The roof over the main stand: a slab from where the jump is to the back, its front edge.
-      const top = Math.max(level[k], roof ? roof.y : h[h.length - 1] - 0.6);
+      // Its stretch of the ring: from the boundary before to the one after.
+      const [A, B] = [ring[(k - 1 + n) % n], ring[k]];
+      const last = h[h.length - 1];
+      // Behind its last step, to the wall, at that step's height: a walkway where it stops short.
+      steps.quad(at(a, end, last), at(b, end, last), at(b, B.R, last), at(a, A.R, last));
       if (roof) {
+        // The roof over the main stand: a slab from where the jump is to the wall, and its front edge.
         const r0 = r(from, roof.j);
-        roofs.quad(at(a, r0, roof.y), at(b, r0, roof.y), at(b, end, roof.y), at(a, end, roof.y));
-        roofs.quad(at(a, r0, roof.y - 0.5), at(a, end, roof.y - 0.5), at(b, end, roof.y - 0.5), at(b, r0, roof.y - 0.5));
-        roofs.quad(at(a, r0, roof.y - 0.5), at(b, r0, roof.y - 0.5), at(b, r0, roof.y), at(a, r0, roof.y));
+        roofs.quad(at(a, r0, A.top), at(b, r0, B.top), at(b, B.R, B.top), at(a, A.R, A.top));
+        roofs.quad(at(a, r0, A.top - 0.5), at(a, A.R, A.top - 0.5), at(b, B.R, B.top - 0.5), at(b, r0, B.top - 0.5));
+        roofs.quad(at(a, r0, A.top - 0.5), at(b, r0, B.top - 0.5), at(b, r0, B.top), at(a, r0, A.top));
+      } else {
+        // The parapet: its inside face from the walkway up, and its top.
+        steps.quad(at(a, A.R - 0.3, last), at(b, B.R - 0.3, last), at(b, B.R - 0.3, B.top), at(a, A.R - 0.3, A.top));
+        steps.quad(at(a, A.R - 0.3, A.top), at(b, B.R - 0.3, B.top), at(b, B.R, B.top), at(a, A.R, A.top));
       }
-      // The outer wall, from the ground outside to its parapet, and the parapet's top and inside.
-      const pa = at(a, end, 0);
-      const pb = at(b, end, 0);
+      // The outer wall, from the ground outside to its top, the texture's top at the wall's.
+      const pa = at(a, A.R, 0);
+      const pb = at(b, B.R, 0);
       const ga = ground(pa[0], pa[2]) - 0.3;
       const gb = ground(pb[0], pb[2]) - 0.3;
-      const wallTop = top + (roof ? 0 : PARAPET);
       const L = Math.hypot(pb[0] - pa[0], pb[2] - pa[2]);
-      const v = (y: number) => 1 - (wallTop - y) / 16;
-      walls.quad([pa[0], ga, pa[2]], [pb[0], gb, pb[2]], [pb[0], wallTop, pb[2]], [pa[0], wallTop, pa[2]], [[u / 4, v(ga)], [(u + L) / 4, v(gb)], [(u + L) / 4, 1], [u / 4, 1]]);
+      walls.quad([pa[0], ga, pa[2]], [pb[0], gb, pb[2]], [pb[0], B.top, pb[2]], [pa[0], A.top, pa[2]], [[u / 4, 1 - (A.top - ga) / 16], [(u + L) / 4, 1 - (B.top - gb) / 16], [(u + L) / 4, 1], [u / 4, 1]]);
       u += L;
-      if (!roof) {
-        steps.quad(at(a, end - 0.3, wallTop), at(a, end, wallTop), at(b, end, wallTop), at(b, end - 0.3, wallTop));
-        steps.quad(at(a, end - 0.3, h[h.length - 1]), at(a, end - 0.3, wallTop), at(b, end - 0.3, wallTop), at(b, end - 0.3, h[h.length - 1]));
-      }
     }
     g.add(steps.mesh(mat('#aba69c', { roughness: 0.95, side: THREE.DoubleSide })));
     g.add(walls.mesh(mat('#ffffff', { map: tex.stadiumWall(), roughness: 0.9, side: THREE.DoubleSide })));

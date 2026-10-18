@@ -29,7 +29,10 @@ function steerLine(r: Racer, b: Brain, a: Arena, dt: number): void {
   const lat = (x: number, z: number) => (x - s.p.x) * s.r.x + (z - s.p.z) * s.r.z;
   const mine = lat(r.car.p.x, r.car.p.z);
   let want = b.home;
-  for (const o of a.cars.values()) {
+  // At a jump, from its run-up to 30 m past its landing, it drives the middle and passes nobody: the
+  // autopilot takes it onto the ramp's axis, and the landing street is narrow.
+  if (jumpAt(a.track, r.car.idx)) want = 0;
+  else for (const o of a.cars.values()) {
     if (o.id === r.id) continue;
     const d = loopDelta(o.P, r.P, N);
     const theirs = lat(o.x, o.z);

@@ -3,7 +3,7 @@ import amigos from 'braga-map/tracks/amigos.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { autopilot } from '../src/car/autopilot.ts';
-import { newCar, speedOf, stepCar, stopInput, trackGround, type Car, type Ground, type Input } from '../src/car/car.ts';
+import { COYOTE, newCar, speedOf, stepCar, stopInput, trackGround, type Car, type Ground, type Input } from '../src/car/car.ts';
 import { advance, newRun, noteSpeed, respawn, startGrid, type RunEvent } from '../src/race.ts';
 import { LAYOUT } from '../src/track/layout.ts';
 import { buildTrack, locate, type Track } from '../src/track/track.ts';
@@ -131,6 +131,39 @@ test("the jump into the dead end lands on the race's road from its speed to flat
   const back = race.place!(respawn(newRun(0), track, 0, car.idx));
   assert.equal(back.idx, (r.lip - 50 + N) % N);
   assert.ok(speedOf(back) > r.v);
+});
+
+// The autopilot flies the jump's flight (braga-map's task 060): from 200 m before the lip, on either side
+// of the road or its middle, flat out or careful, its velocity leaves the lip within 1° of the flight
+// (once the grip has let it go), comes down within 1 m of the flight's line, a little short of the
+// landing street, and turns into the street without touching a wall.
+test("the autopilot flies the jump's flight from any line, and turns into the landing street clean", () => {
+  const r = track.ramps[0], N = track.samples.length;
+  const [lx, , lz] = amigos.ramps[0].lip, [ex, , ez] = amigos.ramps[0].land;
+  const L = Math.hypot(ex - lx, ez - lz), ux = (ex - lx) / L, uz = (ez - lz) / L;
+  const out: string[] = [];
+  for (const caution of [1, 1.27]) {
+    for (const line of [-0.5, 0, 0.5]) {
+      const car = race.place!(newCar(track, (r.lip - 200 + N) % N, 25));
+      let off = NaN, across = NaN, on = NaN, flown = 0, after = 0, hits = 0;
+      for (let i = 0; i < 12 / DT && after < 3; i++) {
+        assert.equal(stepCar(car, autopilot(car, track, caution, line), race, DT), false, `fell at line ${line}, caution ${caution}`);
+        if (!car.grounded && car.air >= COYOTE && isNaN(off)) off = (Math.atan2(car.v.z, car.v.x) - Math.atan2(uz, ux)) * (180 / Math.PI);
+        if (!isNaN(off) && !car.grounded) flown += DT;
+        if (flown > 0.5 && car.grounded && isNaN(across)) {
+          across = (car.p.x - lx) * -uz + (car.p.z - lz) * ux;
+          on = (car.p.x - lx) * ux + (car.p.z - lz) * uz - L;
+        }
+        if (!isNaN(across)) after += DT;
+        if (!isNaN(across) && car.wallHit > 2) hits++;
+      }
+      out.push(`${line}/${caution}: ${off.toFixed(2)}°, ${across.toFixed(2)} m across, ${on.toFixed(1)} m on`);
+      assert.ok(Math.abs(off) < 1, `line ${line}, caution ${caution}: off the flight by ${off.toFixed(2)}°`);
+      assert.ok(Math.abs(across) < 1, `line ${line}, caution ${caution}: down ${across.toFixed(2)} m off the flight's line`);
+      assert.equal(hits, 0, `line ${line}, caution ${caution}: ${hits} wall hits after the landing`);
+    }
+  }
+  console.log(`off the lip (line/caution: off the flight, where it came down): ${out.join('; ')}`);
 });
 
 // Round the jump's landing the race takes in the corner between the flight and the landing street, a

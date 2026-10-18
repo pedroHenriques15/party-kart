@@ -45,8 +45,9 @@ Other things to know:
 - **The tests guard the track.** It must be a 7–10.5 km loop with 5 checkpoints, and the autopilot
   must lap it on the world's ground within the race's walls with no respawns, its second lap taking
   170–310 s. The race must be closed (from its line, nothing off braga-map's `road` is reachable),
-  and every row of barriers must stop a kart driven at it. Eight bots must all finish a lap, within
-  60 s of each other. The race runs on the streets at their real widths (braga-map's decision 019):
+  and every row of barriers must stop a kart driven at it. The autopilot must fly the jump's flight
+  from any line and turn into the landing street with no wall hit. Eight bots must all finish a lap,
+  within 60 s of each other. The race runs on the streets at their real widths (braga-map's decision 019):
   if the autopilot can't get round, the bots and the autopilot change, not the street; the line
   keeps 1.2 m inside the race's road where it rounds a corner (`CLEAR` in braga-map's
   `tools/track.mjs`), or the costs can send the loop another way.
@@ -92,8 +93,10 @@ the rows of houses in `landmarks.ts`), so moving a point there moves those out o
 
 The constants at the top of `src/car/car.ts` set the handling: top speed, acceleration, grip, drift
 grip, gravity, boost, and the mini-turbo thresholds. `turnRate(speed)` is how tightly the car turns.
-The autopilot works out its corner speeds from `turnRate`, so it adapts to changes there. It
-doesn't adapt to grip or gravity.
+The autopilot works out its corner speeds from `turnRate`, so it adapts to changes there; its
+steering onto a ramp follows `GRIP` and `COYOTE` too. It doesn't adapt to gravity, and its speed onto
+the Volta dos Amigos' ramp (`SHORT` in `src/car/autopilot.ts`) is tuned to that jump's landing:
+read the printed line from "the autopilot flies the jump's flight" after a change to the handling.
 
 Run `npm test` and read the printed line from "the autopilot laps the track cleanly". It gives the
 lap times, respawns, longest airtime, top speed and wall hits. The eight-bot race prints finish

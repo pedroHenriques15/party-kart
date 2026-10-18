@@ -208,9 +208,22 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
 **A lap.** `advance` in `race.ts` checks whether the step from sample `from` to `to` crossed the next
 checkpoint, or the line once every checkpoint is done. It returns `cp` or `lap` events with splits
 against the best lap. Respawning puts the car back at the last checkpoint, at the speed it went
-through; or, when it fell at a jump (`jumpAt`), 50 m back on its run-up at `rampSpeed`. The
-autopilot takes a ramp at `rampSpeed` and the bots drink no café near one, or they overshoot its
-landing.
+through; or, when it fell at a jump (`jumpAt`), 50 m back on its run-up at `rampSpeed`. The bots
+drink no café near a jump, or they overshoot its landing.
+
+**The autopilot at a jump** (braga-map's task 060). A kart flies the way its velocity goes, and the
+grip turns the velocity after the nose, a tenth of a second behind (`GRIP`), so a kart still turning
+onto a ramp leaves its lip off the flight. From 18 m before the ramp's foot to 6 m past its lip,
+where the grip still turns it (`COYOTE`), the autopilot steers its velocity onto the ramp's axis:
+state feedback on how far it is off the axis, how far its velocity points off it, and how far its
+nose leads its velocity. It comes to the foot 2.1 m/s under `rampSpeed` and lets the climb take
+what it takes (a slipstream's pull would put back more than a kart's own), so it leaves the lip at
+about 110 km/h and comes down a metre or two short of the landing street, in the corner the race
+takes in, with room to turn. In the air it turns its nose to the landing street, and down it slows
+for the turn its velocity still has to make. The bots drive the middle and pass nobody from a jump's
+run-up to 30 m past its landing. Off any line, at any caution, it flies within 0.2° of the flight
+and comes down within 0.2 m of its line; over 48 races of eight bots, 16 wall hits and 15 respawns
+within 60 m of the landing, where flying 4 m left of the line had 187 and 94.
 
 **A racer.** `Racer.step` works out the input. On the grid it's `stopInput`, which holds the car
 still. After the finish the autopilot drives. While spun out it's a gentle `stopInput`. It sets the `Mods`: gold plating, being shrunk, and

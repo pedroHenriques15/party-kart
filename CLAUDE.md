@@ -236,7 +236,8 @@ How a race runs:
   barriers stopping a kart driven at it flat out, the first track's jump flying over 1 s and landing
   at any speed from 60 to 158 km/h, the Volta dos Amigos' jump landing on the race's road from
   braga-map's speed to flat out (past its 4 m landing street, on the ground beside it the race's road
-  takes in) and short of it respawning on the run-up, every item turning up at
+  takes in) and short of it respawning on the run-up, the autopilot flying that jump's flight from
+  any line and turning into the landing street with no wall hit, every item turning up at
   some place in the race, and eight bots all finishing a lap within 60 s of each other. A change to
   the track, the physics or the item odds has to keep them passing.
 - **A bot stuck against a wall gets itself out.** Still for 3 s in a race, it's put back on the

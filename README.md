@@ -119,7 +119,9 @@ track that isn't in the real Braga, and it's only there in a race.
 
 Every street round it is drawn as it is, at its real width: its lanes painted white, its zebra
 crossings, traffic lights and lamps, calçada pavements behind granite kerbs, central reservations
-and islands where it has them, granite setts where it's cobbled, its bridges and tunnels, and
+and islands where it has them, each roundabout's ring and island as they really are, its island's
+grass and flower beds and the give-way lines and triangles at its entries, granite setts where it's
+cobbled, its bridges and tunnels, and
 road-works barriers where it leaves the Volta dos Amigos' area. So is every footway, path and
 cycleway, the cycle lanes in red, and every flight of steps, each step at its height, with its
 handrails where it has them. The race takes its streets as they
@@ -134,7 +136,8 @@ it, and the avenue crosses the Este there on a granite arch. The Estádio 1.º d
 terraces as they really rise, walled outside, with its four floodlights, and the Altice Forum has
 its α. By the Avenida Doutor António Alves Palha's roundabout stands the Tourigalo, the
 black bull with a rooster's head, on its lawn: five times its real size, and exaggerated in every
-part, on purpose. Each friend's house has its joke on it: a dog, a
+part, on purpose. São João Baptista stands in São João da Ponte's roundabout, in white stone on his
+tall plinth, and the Comendador Santos da Cunha in his. Each friend's house has its joke on it: a dog, a
 dentist, a supermarket, a café, and an alarm clock.
 
 The first track, the cartoon Braga Grand Prix (the Avenida, the Sé, the switchbacks of Bom Jesus

@@ -111,6 +111,29 @@ function groundMaterial(map: THREE.Texture, cover: Cover | null, mask: boolean):
   return m;
 }
 
+// What the ground is and nothing else, as the land has it where the map has classed it (cover.ts): for
+// what a street lays over the ground but is the ground's, a roundabout's island (braga-map's task 014),
+// its grass, its flower beds and its paving at the kerb's height. Grass where the map hasn't classed it.
+// Its grass is LAWN, a watered lawn's green in the orthophoto (the stadium's pitch, the Rua Cidade do
+// Porto's island): the summer of 2025 dried some of the islands' lawns, which every photo of them, and
+// the game's March, has green (the owner's answer, 2026-10-18).
+const GRASS = 3;
+const LAWN = new THREE.Color().setRGB(100 / 255, 118 / 255, 106 / 255, THREE.SRGBColorSpace);
+function coverMaterial(cover: Cover): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ color: '#5b7038', roughness: 0.96 });
+  const cs = coverShader(cover, LAWN);
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, cs.uniforms);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vWorldXZ;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWorldXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vWorldXZ;' + cs.head)
+      .replace('#include <map_fragment>', `#include <map_fragment>\n${cs.body}\ndiffuseColor.rgb = mix(diffuseColor.rgb, coverRgb, coverIn);`);
+  };
+  return m;
+}
+
 // The orthophoto's colours are made bright to look at, the light ones most: its sunlit asphalt is a light
 // grey (134 of 255), where worn asphalt reflects about 15% of the light, while its woods and lawns are
 // about as dark as they are. As it comes, it reads almost white under the game's light (braga-map's
@@ -126,8 +149,10 @@ const CANOPY = new THREE.Color().setHSL(0.27, 0.5, 0.235);
 // kind's edge isn't a staircase); each kind present, its photo tiled at its size (sampled with the
 // fragment's own gradients, taken where every fragment runs, as a texture's are only right there),
 // divided by its mean and times that kind's colour there.
-function coverShader(c: Cover): { uniforms: Record<string, THREE.IUniform>; head: string; body: string } {
+// `lawn`, where it's given, is the colour of every grass there in place of the photo's.
+function coverShader(c: Cover, lawn?: THREE.Color): { uniforms: Record<string, THREE.IUniform>; head: string; body: string } {
   const uniforms: Record<string, THREE.IUniform> = {
+    coverLawn: { value: lawn ?? new THREE.Color() },
     coverSlots: { value: c.slots },
     coverClasses: { value: c.classes },
     coverColour: { value: c.colour },
@@ -143,6 +168,7 @@ uniform sampler2D coverSlots;
 uniform sampler2DArray coverClasses;
 uniform sampler2DArray coverColour;
 uniform vec3 coverGrid;
+uniform vec3 coverLawn;
 uniform float coverCells;
 uniform vec3 surfMean[${c.surfaces.length}];
 uniform float surfScale[${c.surfaces.length}];
@@ -176,7 +202,7 @@ if (slot >= 0) {
     w[v & 7] += wt;
     crown += wt * float(v >> 3);
   }
-${kinds.map((k) => `  if (w[${k}] > 0.0) coverRgb += w[${k}] * texture(coverColour, vec3(cq, float(slot * ${GRIDS} + ${k}))).rgb${k < c.surfaces.length ? ` * textureGrad(surf${k}, vWorldXZ * surfScale[${k}], gx * surfScale[${k}], gy * surfScale[${k}]).rgb / surfMean[${k}]` : ''};`).join('\n')}
+${kinds.map((k) => `  if (w[${k}] > 0.0) coverRgb += w[${k}] * ${lawn && k === GRASS ? 'coverLawn' : `texture(coverColour, vec3(cq, float(slot * ${GRIDS} + ${k}))).rgb`}${k < c.surfaces.length ? ` * textureGrad(surf${k}, vWorldXZ * surfScale[${k}], gx * surfScale[${k}], gy * surfScale[${k}]).rgb / surfMean[${k}]` : ''};`).join('\n')}
   // Under a crown the sky is hidden: its shadow is the sun's (look.ts), this is the rest.
   coverRgb *= 1.0 - 0.15 * crown;
   // The photo's colour as the ground's: the haze over the city taken out (DGT's photo is never darker
@@ -462,7 +488,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   // ---- Every street in the area (streets.ts), and what stands along them. ----
   // The buildings' footprints, where nothing meeting the land shows.
   const houses = new Rings(map.buildings.filter((b) => near(b.pts[0][0], b.pts[0][1]) < 100).map((b) => b.pts));
-  const streets = buildStreets(map, wg, landMesh, (x, z) => houses.has(x, z), quality, course);
+  const streets = buildStreets(map, wg, landMesh, (x, z) => houses.has(x, z), quality, course, cover ? coverMaterial(cover) : null);
   streets.group.name = 'streets';
   group.add(streets.group);
   // The world's walls a race takes down while it runs (braga-map's `cleared`): up round the city,

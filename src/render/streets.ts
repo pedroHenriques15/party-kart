@@ -301,8 +301,11 @@ export interface Built {
   counts: Record<string, number>;
 }
 
-// `housed` says whether (x, z) is in a building, where what meets the land doesn't show.
-export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, housed: (x: number, z: number) => boolean, quality: Quality, course: Course): Built {
+// `housed` says whether (x, z) is in a building, where what meets the land doesn't show. `ground` is
+// the land's own material, what the ground is as the map classes it (city.ts's coverMaterial), for a
+// roundabout's island (braga-map's task 014): null where the map's cover didn't load, and the island is
+// grass.
+export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, housed: (x: number, z: number) => boolean, quality: Quality, course: Course, ground: THREE.Material | null = null): Built {
   const S = world.streets;
   const grain = GRAIN[quality];
   // How far the land has to stand over a street's edge for a retaining wall: less is just the land
@@ -423,7 +426,9 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
     return n;
   };
   const drawn = new Drawn();
-  const lay = (rings: Ring[], h: Height, m: Layer, road: boolean, piece: Piece | null, skip?: (x: number, z: number) => boolean) => {
+  // A roundabout's island, in what the ground is there, all in one batch: there are a few dozen.
+  const islands = new Batch();
+  const lay = (rings: Ring[], h: Height, m: Layer, road: boolean, piece: Piece | null, skip?: (x: number, z: number) => boolean, into?: Batch) => {
     const c = new Float64Array(9);
     let n = 0;
     const scale = SCALE[m] ?? 4;
@@ -438,7 +443,7 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
       const mz = (c[2] + c[5] + c[8]) / 3;
       if (skip?.(mx, mz)) return;
       const f = frameAt(mx, mz);
-      const b = tileOf(mx, mz).surf;
+      const b = into ?? tileOf(mx, mz).surf;
       for (let k = 0; k < 9; k += 3) {
         const [px, py, pz] = [c[k], c[k + 1], c[k + 2]];
         const nn = normal(h, px, py, pz, piece);
@@ -467,7 +472,7 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   const pieceCells = wg.d.pieceCells;
   const yields = (x: number, z: number) => (pieceCells.at(x, z) ?? []).some((p) => p.rings.has(x, z) && Math.abs(p.height(x, z) - firm(x, z) - 0.15) < 0.5);
   for (const c of S.carriageways) if (c.level === 'ground') lay(c.rings, roadY, onCarriageway(c.surface), true, null);
-  for (const p of S.pavements) if (p.level === 'ground') lay(p.rings, paveY, besides(p.kind, p.rings), false, null, yields);
+  for (const p of S.pavements) if (p.level === 'ground') lay(p.rings, paveY, besides(p.kind, p.rings), false, null, yields, p.round && ground ? islands : undefined);
   // The paths on the ground (braga-map's task 050): on the land, flush with a pavement, or a flight's
   // treads, each at its height.
   const flat = groundPaths(S);
@@ -903,8 +908,9 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
     quad([[ax, w.y0, az], [bx, w.y0, bz], [bx + nx * o, w.y0, bz + nz * o], [ax + nx * o, w.y0, az + nz * o]], 0, -1, 0);
   }
 
-  // ---- The lines painted on the carriageways: lanes and the middle, dashed or solid, zebra crossings
-  // and the stop lines at traffic lights, on the road as it's drawn. ----
+  // ---- The lines painted on the carriageways: lanes and the middle, dashed or solid, zebra crossings,
+  // the stop lines at traffic lights, and at a roundabout's entries the give-way line and the
+  // triangles behind it (braga-map's task 014), on the road as it's drawn. ----
   {
     const at = (x: number, z: number, near: number) => (drawn.y(x, z, near) ?? near) + 0.02;
     // A strip w wide from a to b, laid in pieces no longer than `piece`, so it bends where the road
@@ -994,6 +1000,7 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
     }
   }
 
+  if (islands.pos.length && ground) group.add(Object.assign(islands.mesh(ground), { name: 'islands' }));
   for (const t of tiles.values()) {
     if (t.surf.pos.length) group.add(t.surf.mesh(surfaces));
     if (t.paint.pos.length) group.add(t.paint.mesh(paintMat));

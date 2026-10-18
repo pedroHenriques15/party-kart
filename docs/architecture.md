@@ -255,7 +255,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk37-` plus a five-character room code, and the invite link is `?room=<code>`, which
+`partykart-pk38-` plus a five-character room code, and the invite link is `?room=<code>`, which
 opens the game straight into the room. A room is made only when someone invites friends ("Convidar
 amigos") or starts a race; until then the game is alone, with no network at all.
 
@@ -488,7 +488,13 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   depends on that edge alone, so the pieces either side of it meet at the same points, without
   cracks. The carriageways drawn are 3.4 cm off the ground the karts stand on at the median, and
   19 cm at the 90th percentile (`test/streets.test.ts`). Asphalt, setts, calçada, grass on a wide
-  reservation or an island, each texture's rows along the nearest street's line.
+  reservation or an island, each texture's rows along the nearest street's line; but a roundabout's
+  island (braga-map's task 014, `round`) in the land's own material, what the ground is there as the
+  map classes it (`city.ts`'s `coverMaterial`): its grass, flower beds and paving at the kerb's height,
+  all in one mesh, its grass in a watered lawn's green in the orthophoto (`LAWN`), as the game's March
+  has it, where the summer of 2025 dried some (braga-map's decision 050). The markings: the lanes, the middle, the zebras, the stop lines at traffic lights,
+  and at a roundabout's entries the give-way line, dashed half a metre on and off, and the triangles'
+  outlines behind it.
   - Every footway, path, cycleway and flight of steps (braga-map's task 050, `world.streets.paths`):
     in calçada, paving stones, setts, asphalt, concrete, gravel or earth as the map says, a
     cycleway's asphalt red (`textures.ts`'s `paving`, `cycleway` and `gravel` are three more layers

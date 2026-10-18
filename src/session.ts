@@ -6,8 +6,9 @@ import type { ItemEv } from './game/items.ts';
 import { driverById, DRIVERS, repeatOf } from './render/drivers.ts';
 
 // Builds see each other's rooms only while this matches: pk33 is the race that jumps over the Rio
-// Este into the dead end (braga-map's task 039), its samples changed from there on.
-const PREFIX = 'partykart-pk37-';
+// Este into the dead end (braga-map's task 039), its samples changed from there on; pk38 the race round
+// the roundabouts' rings as the LiDAR measured them (braga-map's task 014).
+const PREFIX = 'partykart-pk38-';
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 export const HOST_ID = 'host';
 export const MAX_RACERS = 8;

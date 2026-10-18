@@ -797,6 +797,21 @@ more on Low, the same textures. Over the 34 viewpoints, 85–284 draw calls (med
 0.91–2.95 M triangles on High, 54–252 and 0.46–1.42 M on Low; the city built in 4.8–5.2 s on High,
 3.8–4.1 on Low.
 
+braga-map's trees (its task 019, on 1.23.0; `shots/2026-10-18-after019/`, party-kart `ad143d0`,
+against `after057` on High and Low and `after056` on Medium, the median of the 34 viewpoints): every
+tree in the box, 54,700, where the map's own and the parks' and woods' made-up ones stood; near the
+camera each a trunk and a crown of cards of its leaves (up to 56 on High, 28 on Low; a crown and a
+trunk mesh a kind, 12 at most, and their shadows), further off each its kind's billboard (a mesh a kind). Draw calls 148.5 →
+145.5 on High, 148 → 143.5 on Medium, 106 → 104 on Low (the old trees were a mesh a kind in each
+800 m tile; 25 fewer to 11 more a viewpoint); triangles 1.79 → 2.04 M on High (up to 0.48 M more,
+at `capela-santo-adriao`, `picoto-top` and `falperra`, where the hills' woods are near), 1.51 → 1.56
+M on Medium, 0.82 → 0.91 M on Low; textures 134 → 139 MB on High, 81 → 84 on Medium, 49 → 50 on
+Low (the six kinds' bark and leaves, and their billboards' six small render targets); the city built
+in 5.1 s on High at the median against 5.0, 4.7 against 4.4 on Medium, 4.1 against 3.9 on Low; a
+frame 0.4–2.1 ms. The download on High is 9.30 MB gzipped (16.11 as is), 1.26 MB more: the trees'
+photos 0.90 MB at High (0.32 at Medium, 0.09 at Low, from the files' sizes) and the box's tiles
+0.45 MB more.
+
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),
   where the ground's painted map was 51 MB before task 016; the sun's shadows 16 MB (4 on Medium),

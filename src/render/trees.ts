@@ -154,8 +154,9 @@ export function plantTrees(trees: Tree[], TILE = 300, plain: boolean | 'lean' = 
 // ---- The city's trees (braga-map's task 019) ----
 //
 // Every tree the map has: as tall as DGT's LiDAR measured it, its crown as wide and its foot as high,
-// and of its kind (broadleaf, pine, eucalyptus, cypress or cedar, poplar, palm), each kind in the map's
-// photos of its bark and its leaves. Near the camera a tree is a trunk in its bark and a crown of sprays
+// and of its kind (broadleaf, pine, eucalyptus, cypress or cedar, poplar, palm, and since braga-map's task
+// 061 the plane, the lime and the birch the photos show), each kind in the map's photos of its bark and
+// its leaves. Near the camera a tree is a trunk in its bark and a crown of sprays
 // of its leaves, cards laid round the crown in its kind's shape, each card the same size in metres
 // whatever the crown's (a palm's fronds grow with its crown); further off it's a billboard of its kind,
 // made from the near tree when the city is built; and between the two they fade into each other,
@@ -177,7 +178,7 @@ export interface CityTree {
   foot: number;
   trunk: number;
 }
-const CITY_KINDS: MapTreeKind[] = ['broadleaf', 'pine', 'eucalyptus', 'conifer', 'poplar', 'palm'];
+const CITY_KINDS: MapTreeKind[] = ['broadleaf', 'pine', 'eucalyptus', 'conifer', 'poplar', 'palm', 'plane', 'lime', 'birch'];
 
 interface Shape {
   // Cards on High (Medium has two thirds, Low half); each card's side as a share of the crown's width,
@@ -206,6 +207,14 @@ const SHAPES: Record<MapTreeKind, Shape> = {
   poplar: { cards: 50, card: [0.8, 0.8, 3.2], outline: (v) => round(v) * 0.85 + 0.15, into: 0.6, tilt: 0.15, green: '#b3cc8a' },
   // A palm's fronds (palmCrown), not cards: as many fronds.
   palm: { cards: 14, card: [1, 0, 99], outline: () => 1, into: 0.15, tilt: 0, green: '#a8bf8e' },
+  // braga-map's task 061, the kinds its photos tell apart. A plane's: big and open, its broad leaves in
+  // big sprays, the sky through it.
+  plane: { cards: 48, card: [0.5, 1.1, 5.5], outline: (v) => round(v) * 0.85 + 0.15, into: 0.55, tilt: 0.4, green: '#9db783' },
+  // A lime's: dense and round down to its foot, a ball where it's clipped into one, its leaves small and
+  // many, darker than the avenues' broadleaves, as the Parque da Ponte's are in its photos.
+  lime: { cards: 72, card: [0.45, 0.8, 3.6], outline: (v) => round(v) * 0.95 + 0.05, into: 0.4, tilt: 0.5, green: '#7a9566' },
+  // A birch's: a light oval on a trunk that runs up into it, its sprays hanging.
+  birch: { cards: 44, card: [0.6, 0.6, 2.8], outline: (v) => round(v) * 0.8 + 0.2, into: 0.75, tilt: 0.1, green: '#a9c38b' },
 };
 
 // A seeded random, so the trees are the same every time (the shots compare).

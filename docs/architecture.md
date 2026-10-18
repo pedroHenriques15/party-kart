@@ -878,6 +878,18 @@ median, 2.05 → 2.15, 1.57 → 1.67 and 0.91 → 1.00 M triangles, textures 130
 0.4–2.1 ms. The open world's 53 tiles 3.274 → 3.329 MB gzipped (the lines' names, the stops and the
 plates).
 
+braga-map's roundabouts as they are (its task 014, on 1.28.0, after 045's 1.27.0; `shots/2026-10-18-after014/`
+against 045's `after045`, the 33 viewpoints): the rings and islands where the LiDAR measured them, each
+roundabout's island in the land's own material, one mesh (`streets.ts`'s `islands`), its two statues
+baked with the route's chapels and shrines, and the give-way lines and triangles in the streets' paint.
+Draw calls 149 → 154 on High at the median in the round (+1 to +5 a viewpoint), 107 → 108 on Low, 146 →
+149 on Medium against 042's `after042`; with the statues baked with the chapels since, +4 on High and
++3 on Low at four viewpoints shot A/B (`ab045r1`, `ab014r1`): the islands' mesh and the
+statues' stone and bronze. Triangles about 2,000 more (2.157 → 2.159 M on High at the median);
+textures the same (130, 74 and 41 MB). The round's builds took 2 s longer at the median, but the A/B
+on the same desktop has 045's 7.8–8.7 s on High and 014's 5.4–7.9 s: the desktop's load. The open
+world's 53 tiles 3.329 → 3.330 MB gzipped.
+
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),
   where the ground's painted map was 51 MB before task 016; the sun's shadows 16 MB (4 on Medium),

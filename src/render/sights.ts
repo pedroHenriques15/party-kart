@@ -453,7 +453,6 @@ export function buildSights(list: Sight[], track: Track, ground: Ground, far: Gr
     if (s.kind === 'bomjesus') g = bomJesus({ ...s, y: far(s.x, s.z) }, far);
     if (s.kind === 'sameiro') g = sameiro({ ...s, y: far(s.x, s.z) }, far);
     if (s.kind === 'cruzeiro') g = cruzeiro({ ...s, y: ground(s.x, s.z) });
-    if (s.kind === 'statue') g = statue({ ...s, y: ground(s.x, s.z) });
     if (s.kind === 'tourigalo') {
       g = tourigalo({ ...s, y: ground(s.x, s.z) }, updates);
       if (s.sign) group.add(bake(restaurant(s.sign, ground)));
@@ -469,6 +468,8 @@ export function buildSights(list: Sight[], track: Track, ground: Ground, far: Gr
     if (s.kind === 'chapel') route.add(routeChapel({ ...s, y: front }));
     if (s.kind === 'saolazaro') route.add(saoLazaroTower({ ...s, y: front }));
     if (s.kind === 'shrine') route.add(shrine({ ...s, y: front }));
+    // The roundabouts' statues too, of the same stone and granite.
+    if (s.kind === 'statue') route.add(statue({ ...s, y: ground(s.x, s.z) }));
     if (g) group.add(bake(g));
   }
   if (route.children.length) group.add(bake(route));

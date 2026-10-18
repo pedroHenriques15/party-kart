@@ -61,9 +61,10 @@ start; and goes back to it after a race, where you were before it.
 7. **Drawing and sound**: your kart (its driver the room's, which gives you another if someone has
    yours), the engines and the city round you (`hearRoam`; flying, your engine from where your kart
    waits and the city from under the camera), the eggs (the track's sample you're by,
-   from `locate`, while you're within 8 m of the route's edge), the street's name within 20 m of
-   where the route turns into one of its streets, and the `RoamHud` with its minimap (flying, round
-   the camera, your kart a dot).
+   from `locate`, while you're within 8 m of the route's edge), the street's name as you drive onto
+   it (the nearest named street whose carriageway you're on, braga-map's line names, `world/names.ts`;
+   kept while you're on the one shown last), and the `RoamHud` with its minimap (flying, round the
+   camera, your kart a dot).
 
 The chase camera follows, or with a panel open the camera turns slowly round your kart (`orbit`),
 which stands on the right of the screen, clear of the menu. Flying, the camera is the flyer's
@@ -517,10 +518,17 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     zebras (their bars on one grid of a metre, so crossings the map has side by side line up),
     stop lines.
   - Lamps on every pavement wide enough, half a metre behind the kerb, about one every 30 m down a
-    street; a traffic light at each stop line's kerb end, facing the cars stopping; the route's bus
-    stops and street plates at the kerb nearest them (braga-map's tiles have no names or stops
-    yet: its task 042); and a row of red-and-white road-works barriers with "Estrada cortada"
-    across every street and path where it leaves the area (braga-map's gates, its task 032).
+    street; a traffic light at each stop line's kerb end, facing the cars stopping; every bus stop
+    in the area (braga-map's `stops`, its task 042) at the kerb nearest it, a glass shelter where the
+    map says it has one and the pavement is 2.3 m wide, else the pole; and a row of red-and-white
+    road-works barriers with "Estrada cortada" across every street and path where it leaves the area
+    (braga-map's gates, its task 032).
+  - The streets' name plates (`plates.ts`, braga-map's `plates`, its task 042): blue and white,
+    1.2 × 0.3 m, where braga-map puts them, at every corner where a named street meets a street of
+    another name, on the corner building's wall (one the plinth, an egg or a sight stands in place of
+    takes its plates with it) or on a post off the kerb, a post's plates on both its sides. Each is
+    the same empty plate, its name's letters quads cut from one canvas of every letter the names use,
+    as the shops' signs are: every plate in the area is two meshes, and the posts an instanced third.
   - The surfaces and faces are one mesh a tile (500 m), their textures layers of one array
     texture (`tuv`: each vertex's uv and layer); the paint another.
   - The sights (`sights.ts`): Bom Jesus and its Escadório and the Sameiro on the hills, at twice

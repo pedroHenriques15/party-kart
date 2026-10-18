@@ -26,6 +26,7 @@ import { buildStreets, groundPaths, streetEdges, type Built } from './streets.ts
 import { baysOf, facadeKit, layerOfGround, layerOfType, linearOf, MATERIALS, storeys, Walls, type Kit, type WallLayout } from './facades.ts';
 import * as tex from './textures.ts';
 import { buildSigns } from './signs.ts';
+import { buildPlates } from './plates.ts';
 import { cityTrees, loadTreeLooks, type CityTree } from './trees.ts';
 import type { World } from './world.ts';
 
@@ -461,7 +462,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   // ---- Every street in the area (streets.ts), and what stands along them. ----
   // The buildings' footprints, where nothing meeting the land shows.
   const houses = new Rings(map.buildings.filter((b) => near(b.pts[0][0], b.pts[0][1]) < 100).map((b) => b.pts));
-  const streets = buildStreets(map, wg, landMesh, (x, z) => houses.has(x, z), quality, track, course);
+  const streets = buildStreets(map, wg, landMesh, (x, z) => houses.has(x, z), quality, course);
   streets.group.name = 'streets';
   group.add(streets.group);
   // The world's walls a race takes down while it runs (braga-map's `cleared`): up round the city,
@@ -534,6 +535,14 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   if (photos) group.add(photos.facades);
   // The shops' signs, on the buildings drawn.
   group.add(buildSigns(map.signs.filter((s) => near(s.from[0], s.from[1]) <= 300 && !keepOut.some((k) => Math.hypot(s.from[0] - k.x, s.from[1] - k.z) < k.r)), map.facadeColours));
+  // The streets' name plates (braga-map's task 042, plates.ts): a wall's on a building drawn (one the
+  // plinth, an egg or a sight stands in place of takes its plates with it), a post's on the pavement.
+  {
+    const walls = new Rings(drawn.map((b) => b.pts));
+    const onWall = (p: (typeof map.plates)[number]) => walls.has(p.x - Math.cos(p.face) * 0.3, p.z - Math.sin(p.face) * 0.3);
+    const plates = map.plates.filter((p) => (p.on === 'post' || onWall(p)) && !keepOut.some((k) => Math.hypot(p.x - k.x, p.z - k.z) < k.r));
+    group.add(buildPlates(plates, map.plateSize, streets.paveTop, map.height));
+  }
 
   // ---- Trees: every one the map has in the box, as DGT's LiDAR measured it and of its kind (braga-map's
   // task 019), near the camera in their bark and leaves, further off as their kinds' billboards

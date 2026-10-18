@@ -1077,42 +1077,6 @@ export function grain(): THREE.CanvasTexture {
   return t;
 }
 
-// Every street name on its own blue-and-white azulejo plate, stacked in one texture: plate k
-// spans v from 1 - (k + 1) / n to 1 - k / n.
-export function streetPlates(names: string[]): THREE.CanvasTexture {
-  const W = 512, H = 112;
-  return canvas(
-    W,
-    H * Math.max(1, names.length),
-    (g) => {
-      names.forEach((name, k) => {
-        const y = k * H;
-        g.fillStyle = '#f7f8fb';
-        g.fillRect(0, y, W, H);
-        g.strokeStyle = '#2f5aa8';
-        g.lineWidth = 8;
-        g.strokeRect(10, y + 10, W - 20, H - 20);
-        g.strokeStyle = '#7da1db';
-        g.lineWidth = 2;
-        for (let x = 0; x <= W; x += 64) {
-          g.beginPath();
-          g.moveTo(x, y);
-          g.lineTo(x, y + H);
-          g.stroke();
-        }
-        g.fillStyle = '#1f3f86';
-        let size = 40;
-        g.font = `700 ${size}px Georgia, serif`;
-        while (g.measureText(name).width > W - 60 && size > 18) g.font = `700 ${(size -= 2)}px Georgia, serif`;
-        g.textAlign = 'center';
-        g.textBaseline = 'middle';
-        g.fillText(name, W / 2, y + H / 2 + 2);
-      });
-    },
-    false,
-  );
-}
-
 // A brown tourist sign, as for monuments in Portugal.
 export function brownSign(text: string): THREE.CanvasTexture {
   return canvas(

@@ -3,7 +3,7 @@
 // world, each point worked out the first time a kart comes near it; and where the sounds with a place
 // are, the churches, the rivers, the bus stops and the stadium. No three.js and no DOM, so the tests
 // can load it.
-import type { Track as Course, World } from 'braga-map';
+import type { World } from 'braga-map';
 
 export interface Surround {
   traffic: number;
@@ -93,7 +93,7 @@ const inside = (x: number, z: number, pts: [number, number][]) => {
   return c;
 };
 
-export function ambienceOf(world: World, course: Course): Ambience {
+export function ambienceOf(world: World): Ambience {
   const lines = buckets<{ w: number; pts: [number, number][] }>(100);
   for (const l of world.lines) {
     const w = TRAFFIC[l.kind] ?? 0;
@@ -182,7 +182,7 @@ export function ambienceOf(world: World, course: Course): Ambience {
     node,
     churches,
     water,
-    stops: course.stops.map((s) => ({ x: s.x, y: world.height(s.x, s.z), z: s.z })),
+    stops: world.stops.map((s) => ({ x: s.x, y: world.height(s.x, s.z), z: s.z })),
     stadium: st ? { x: st.x, y: st.y, z: st.z } : null,
   };
 }

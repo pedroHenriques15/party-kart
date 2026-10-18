@@ -25,7 +25,7 @@ const world = await loadWorld(amigosPlan.box);
 const at = (i: number) => track.samples[i].p;
 
 test('the city round the track: busy on the Avenida da Liberdade, quiet and green at the Picoto, the river by São João da Ponte', () => {
-  const a = ambienceOf(world, amigosPlan);
+  const a = ambienceOf(world);
   const l = at(street('Avenida da Liberdade'));
   const liberdade = surroundAt(a, l.x, l.z);
   const p = landmark('Picoto Adventure Park');
@@ -39,7 +39,8 @@ test('the city round the track: busy on the Avenida da Liberdade, quiet and gree
   const river = Math.min(...a.water.map((w) => Math.hypot(w.x - ponte.x, w.z - ponte.z)));
   assert.ok(river < 50, `the river ${river} m from São João da Ponte`);
   assert.ok(a.churches.length >= 100, `${a.churches.length} churches`);
-  assert.equal(a.stops.length, amigosPlan.stops.length);
+  assert.equal(a.stops.length, world.stops.length);
+  assert.ok(a.stops.length > amigosPlan.stops.length, `${a.stops.length} bus stops, the route's ${amigosPlan.stops.length}`);
   const e = landmark('Estádio 1.º de Maio');
   assert.ok(a.stadium && Math.hypot(a.stadium.x - e.x, a.stadium.z - e.z) < 50, 'the stadium where the Estádio 1.º de Maio is');
   console.log(`  the Avenida: traffic ${liberdade.traffic.toFixed(2)}, town ${liberdade.town.toFixed(2)}; the Picoto: traffic ${picoto.traffic.toFixed(2)}, park ${picoto.park.toFixed(2)}, woods ${picoto.woods.toFixed(2)}; the river ${Math.round(river)} m from São João da Ponte`);
@@ -48,7 +49,7 @@ test('the city round the track: busy on the Avenida da Liberdade, quiet and gree
 // Free roam (braga-map's decision 019): the sound follows the kart off the route too, so it has to
 // be worked out anywhere in the area, and quickly enough to do as you drive.
 test('the city round any point of the area, off the route as on it', () => {
-  const a = ambienceOf(world, amigosPlan);
+  const a = ambienceOf(world);
   const pts = world.open.pts;
   const inArea = (x: number, z: number) => {
     let c = false;

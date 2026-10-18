@@ -15,8 +15,10 @@ Fujacal, or where you were when you last played. Drive anywhere in the Volta dos
 every street, over the pavements, across the squares, along the footways and the cycle lanes, up
 and down the city's steps a bump at a time, as far as the road-works barriers where the streets
 and paths leave it. The minimap round you shows the streets, the race's route in gold and the area's
-edge in red, the way you face at the top; a blue-and-white plate names each of the route's streets
-as you turn into it.
+edge in red, the way you face at the top, and the street's name as you drive onto it. At every
+corner a blue-and-white plate names each street that begins there, on the corner building's wall, or
+on a post where no building stands at the corner; and every bus stop stands on its pavement, a
+shelter where the map has one.
 
 **Esc**, or **☰ Menu** at the top, opens the menu over the world, which goes on behind it: your name
 and driver, the graphics, the help, and
@@ -124,8 +126,7 @@ handrails where it has them. The race takes its streets as they
 are, at their real widths: a narrow one is as narrow in a race, its kerbs are the race's walls, and a
 row of the race's barriers closes every side street it passes. Only while it's on do its start line,
 gates, boost pads and barriers stand in them; and where the jump lands, the corner of a walled lot is
-the race's, its walls down and road works' boards round it. A blue-and-white plate names each street as you turn into it, and
-its bus stops stand on the pavement. Bom Jesus and the
+the race's, its walls down and road works' boards round it. Bom Jesus and the
 Sameiro stand on the hills to the east, drawn twice their size so you can find them; on top of the
 Picoto its white steel cross, and the miradouro's boardwalk round it. São João da Ponte's chapel
 stands in its park by the Avenida da Liberdade, its bell gable over its door and its porch before

@@ -8,12 +8,11 @@
 // on (src/world/ground.ts): a carriageway or a path on it, a pavement a kerb over it, a tread or a
 // deck at its height. And the walls, fences, railings, hedges and gates (its task 013), each on that
 // ground, in what it's made of. Along them stand the lamps, the traffic lights at the stop lines, the
-// route's bus stops and street plates, and across every street and path where it leaves the area,
-// road-works barriers. A tile's surfaces and faces are one mesh, their textures layers of one, and its paint
+// bus stops (braga-map's task 042: its plates are plates.ts's), and across every street and path where
+// it leaves the area, road-works barriers. A tile's surfaces and faces are one mesh, their textures layers of one, and its paint
 // another, so whole tiles out of view are skipped.
 import type { Track as Course, Path, Sight, Streets, World as Braga } from 'braga-map';
 import * as THREE from 'three';
-import { distanceToRoad, type Track } from '../track/track.ts';
 import { alongSpan, wallSpan, type Piece, type WorldGround } from '../world/ground.ts';
 import { clearedPieces } from '../world/race.ts';
 import { bake, box, mat } from './kit.ts';
@@ -296,12 +295,14 @@ export interface Built {
   // The nearest raised kerb on the ground to (x, z) within r: the point on it, the way it runs and the
   // way into its pavement.
   kerbNear: (x: number, z: number, r: number) => { x: number; z: number; tx: number; tz: number; nx: number; nz: number; d: number } | null;
+  // The top of the pavement at (x, z), as it's drawn, or the ground's where there's none.
+  paveTop: (x: number, z: number) => number;
   // How many triangles each kind of thing came to, for the docs.
   counts: Record<string, number>;
 }
 
 // `housed` says whether (x, z) is in a building, where what meets the land doesn't show.
-export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, housed: (x: number, z: number) => boolean, quality: Quality, track: Track, course: Course): Built {
+export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, housed: (x: number, z: number) => boolean, quality: Quality, course: Course): Built {
   const S = world.streets;
   const grain = GRAIN[quality];
   // How far the land has to stand over a street's edge for a retaining wall: less is just the land
@@ -1157,15 +1158,33 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
     counts['traffic lights'] = lights.length;
   }
 
-  // The route's bus stops, a shelter of glass under a flat roof or just the pole, on the pavement by
-  // the kerb nearest them.
+  // Every bus stop in the area (braga-map's task 042), a shelter of glass under a flat roof where the
+  // map says it has one and the pavement is wide enough, else just the pole, on the pavement by the
+  // kerb nearest it; where no kerb is within 20 m (a road with no pavement), the pole at the edge of
+  // the carriageway nearest it.
   {
+    // That edge within r: from on the carriageway, the first point off it; from off it, the point
+    // itself; and the way out from the road.
+    const roadEdge = (x: number, z: number, r: number) => {
+      const on = roadsRings.has(x, z);
+      for (let d = 0.25; d <= r; d += 0.25) {
+        for (let a = 0; a < 16; a++) {
+          const ux = Math.cos((a * Math.PI) / 8);
+          const uz = Math.sin((a * Math.PI) / 8);
+          if (roadsRings.has(x + ux * d, z + uz * d) !== on) return on ? { x: x + ux * d, z: z + uz * d, nx: ux, nz: uz } : { x, z, nx: -ux, nz: -uz };
+        }
+      }
+      return null;
+    };
+    let n = 0;
     const metal = mat('#3d4146', { metalness: 0.5, roughness: 0.5 });
     const glass = mat('#9fb7c4', { roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.35 });
     const sign = new THREE.MeshStandardMaterial({ map: tex.sign('PARAGEM', '', '#ffffff', '#1b3f8b', 256, 128, ''), roughness: 0.5 });
-    for (const st of course.stops) {
-      const k = nearestKerb(st.x, st.z, 20);
+    for (const st of world.stops) {
+      if (!world.inOpen(st.x, st.z)) continue;
+      const k = nearestKerb(st.x, st.z, 20) ?? roadEdge(st.x, st.z, 15);
       if (!k) continue;
+      n++;
       const wide = paves.has(k.x + k.nx * 2.3, k.z + k.nz * 2.3);
       const shelter = st.shelter && wide;
       const back = shelter ? 1.3 : 0.4;
@@ -1187,46 +1206,7 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
       stop.rotation.y = -Math.atan2(-k.nz, -k.nx);
       things.add(stop);
     }
-  }
-
-  // The route's street plates, blue and white, each on a post on the pavement as the route turns into
-  // its street, facing the karts coming.
-  {
-    const streets = course.streets;
-    const atlas = streets.length ? tex.streetPlates(streets.map((s) => s.name)) : null;
-    const pos: number[] = [];
-    const uv: number[] = [];
-    const posts: THREE.Matrix4[] = [];
-    streets.forEach((st, n) => {
-      const k = nearestKerb(st.x, st.z, 25);
-      const i = distanceToRoad(track, st.x, st.z).i;
-      if (!k || i < 0) return;
-      const s = track.samples[i];
-      const x = k.x + k.nx * 0.5;
-      const z = k.z + k.nz * 0.5;
-      const y = paveTop(x, z);
-      posts.push(new THREE.Matrix4().makeTranslation(x, y + 1.3, z));
-      // Across the road's way, its face towards the karts coming.
-      const hw = 1.1;
-      const [ax, az, bx, bz] = [x - s.r.x * hw, z - s.r.z * hw, x + s.r.x * hw, z + s.r.z * hw];
-      const lo = y + 2.2;
-      const hi = y + 2.68;
-      const v0 = 1 - (n + 1) / streets.length;
-      const v1 = 1 - n / streets.length;
-      pos.push(ax, lo, az, bx, lo, bz, bx, hi, bz, ax, lo, az, bx, hi, bz, ax, hi, az);
-      uv.push(0, v0, 1, v0, 1, v1, 0, v0, 1, v1, 0, v1);
-    });
-    if (atlas && posts.length) {
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-      geo.computeVertexNormals();
-      things.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: atlas, roughness: 0.4, side: THREE.DoubleSide })));
-      const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 6), mat('#3a3d42', { metalness: 0.5 }), posts.length);
-      posts.forEach((m, k) => post.setMatrixAt(k, m));
-      post.computeBoundingSphere();
-      things.add(post);
-    }
+    counts['bus stops'] = n;
   }
 
   // Road-works barriers across every street where it leaves the area (braga-map's task 032): a row
@@ -1267,5 +1247,5 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
 
   group.add(bake(things));
   if (clearedThings.children.length) cleared.add(bake(clearedThings));
-  return { group, cleared, update: (t) => updates.forEach((u) => u(t)), counts, kerbNear: nearestKerb };
+  return { group, cleared, update: (t) => updates.forEach((u) => u(t)), counts, kerbNear: nearestKerb, paveTop };
 }

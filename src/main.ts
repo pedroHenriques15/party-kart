@@ -26,6 +26,7 @@ import type { EggEvent } from './render/eggs.ts';
 import { ClientRoom, cleanName, HOST_ID, HostRoom, MAX_RACERS, setLapLimit, type Entry, type Room, type Snap } from './session.ts';
 import { Stats, textureBytes } from './stats.ts';
 import { buildTrack, locate } from './track/track.ts';
+import { streetNames } from './world/names.ts';
 
 const DT = 1 / 120;
 // ?autodrive: the autopilot drives your car in a race (for testing the game in a browser), and
@@ -79,7 +80,7 @@ const building = performance.now();
 const world = await buildCity(track, amigos, quality, renderer);
 // What's round every part of the city, for its sound: from the map the karts drive on, once the city
 // is up and the game is running, so it never holds the page.
-if (!SCENERY) setTimeout(() => cityIs(ambienceOf(world.drive.d.world, amigos)), 1500);
+if (!SCENERY) setTimeout(() => cityIs(ambienceOf(world.drive.d.world)), 1500);
 const buildMs = performance.now() - building;
 scene.add(world.group);
 const stats = STATS ? new Stats(renderer, scene, buildMs, performance.now()) : null;
@@ -968,17 +969,17 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
   }
 }
 
-// The route's street plates' names, as you come within 20 m of where the route turns into each
-// street. (braga-map's tiles have no other streets' names yet: its task 042.)
+// The street's name as you drive onto it (braga-map's task 042): the nearest named street whose
+// carriageway you're on, kept while you're on the one shown last, so a junction doesn't flicker
+// between them.
+const namesAt = streetNames(world.drive.d.world.lines);
 function streetName(r: RoamCtx): void {
   const c = r.me.car;
   if (speedOf(c) < 3) return;
-  for (const s of amigos.streets) {
-    if (s.name === r.street || Math.hypot(s.x - c.p.x, s.z - c.p.z) > 20) continue;
-    r.street = s.name;
-    r.hud.street(s.name);
-    return;
-  }
+  const names = namesAt(c.p.x, c.p.z);
+  if (!names.length || names.includes(r.street)) return;
+  r.street = names[0];
+  r.hud.street(names[0]);
 }
 
 // Your engine, tyres and wind, the others' engines, and the city round you. Flying, your engine is heard

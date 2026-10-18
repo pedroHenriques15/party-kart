@@ -59,8 +59,9 @@ Other things to know:
   the race there. `?view=x,y,z,tx,ty,tz` holds the camera anywhere, to look at the scenery, and
   `?scenery&view=…` shows the city alone from there, without starting a race. `?stats` shows what
   the game costs in a corner: the frame rate, draw calls, triangles, textures, load time and download.
-- The city keeps what's in the open world's area and 300 m round it (`nearBuildings` and the trees
-  in `buildCity`): the map has the whole of Braga in it, for the other games. Every street in the
+- The city keeps what's in the open world's area and 300 m round it (`nearBuildings`), and every
+  tree in the box (`cityTrees`, near in their photos and far as billboards): the map has the whole
+  of Braga in it, for the other games. Every street in the
   area is drawn from the map's surfaces (`streets.ts`); beyond the open world's tiles they're
   painted on the land.
 

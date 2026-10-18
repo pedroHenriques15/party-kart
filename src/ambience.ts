@@ -111,7 +111,7 @@ export function ambienceOf(world: World, course: Course): Ambience {
     const zs = a.pts.map((p) => p[1]);
     areas.add(Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs), { k, bed, pts: a.pts, holes: a.holes });
   });
-  const trees = buckets<{ x: number; z: number }>(50);
+  const trees = buckets<{ x: number; z: number; crown: number }>(50);
   for (const t of world.trees) trees.add(t.x, t.z, t.x, t.z, t);
   const houses = buckets<{ x: number; z: number }>(50);
   for (const b of world.buildings) {
@@ -148,10 +148,12 @@ export function ambienceOf(world: World, course: Course): Ambience {
         else s.woods += w * 0.5;
       }
     }
-    // Woods, too, where trees stand thick, as the map draws most of its woods as parks and trees.
-    let n = 0;
-    for (const t of trees.near(x, z, 80)) if (Math.hypot(t.x - x, t.z - z) < 80) n++;
-    return { traffic: 1 - Math.exp(-sum / 4), town: s.town / all, park: s.park / all, woods: Math.max(s.woods / all, Math.min(1, n / 50) * 0.7) };
+    // Woods, too, where trees stand thick, as the map draws most of its woods as parks and trees: as much
+    // as the crowns within 80 m cover of the ground there, all of it from half (an avenue's row of trees
+    // covers a tenth).
+    let crowns = 0;
+    for (const t of trees.near(x, z, 80)) if (Math.hypot(t.x - x, t.z - z) < 80) crowns += (t.crown / 2) ** 2;
+    return { traffic: 1 - Math.exp(-sum / 4), town: s.town / all, park: s.park / all, woods: Math.max(s.woods / all, Math.min(1, crowns / 80 ** 2 / 0.5) * 0.7) };
   };
   // About a quarter of a millisecond a point, so a kart driving at top speed needs one or two a
   // frame at most.

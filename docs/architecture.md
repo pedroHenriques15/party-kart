@@ -153,7 +153,7 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
   task 026), which leaves a passage through one open; a deck's parapets and a tunnel's sides, wherever
   a piece's edge has neither more street nor the land at its own level beside it (a tunnel's
   no higher than 3 m, so a street over it stays clear); the concrete of the tunnels' mouths; the
-  trees' trunks, but those on a carriageway; the steps' handrails, from the treads to their top; a
+  trees' trunks, as thick as the map says, but those on a carriageway; the steps' handrails, from the treads to their top; a
   riser more than a step high, a step short of its tread (a flight the map counts too few steps for:
   59 of 3,091 between treads, and 234 of a tread's 420 edges over a street or a path beside it);
   every wall, fence, railing, hedge and gate braga-map has (its task 013; a gate shut, whatever it
@@ -384,9 +384,9 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   world the karts' ground of it (`worldGround`, `src/world/ground.ts`, kept as the city's `drive`
   for driving on). It keeps what's in the open world's area and 300 m round it: every building, cut
   back at the kerb where it stands on a carriageway as the karts find it (`trimmed`, braga-map's
-  decision 021); in the area every tree the karts can hit (all but those on a carriageway), and
-  round it the map's own and those filled into parks and woods within 230 m, every 2nd on Medium
-  and every 3rd on Low; and the Tourigalo's bull turned to face the road.
+  decision 021); every tree the map has in the box (braga-map's task 019: each one DGT's LiDAR
+  found, at its height, crown and foot, and of its kind), but those on a carriageway; and the
+  Tourigalo's bull turned to face the road.
   - The land is the ground as the karts have it (`land.ts`: braga-map's, from DGT's LiDAR, every
     2 m in the area), with the river's bed cut through it and level under the stadium. Its mesh is
     on a lattice (`lattice.ts`) of cells of 10 m (20 m on Low), each split into cells of 2 m (4 m on
@@ -444,7 +444,17 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     a square kilometre (walls, roofs, railings), so the sun's shadows draw only the squares near the
     camera. The shops' signs (`render/signs.ts`, the map's `world.signs`) are a fascia in the sign's
     colour and the name in letters cut from one canvas of every letter they use: two meshes.
-  - Then the trees (`plantTrees`, plain crowns in 800 m tiles, plainer still on Low), the Rio Este,
+  - Then the trees (`cityTrees` in `trees.ts`): near the camera (260 m on High, 180 on Medium,
+    120 on Low) each a trunk in its kind's bark and a crown of cards of its leaves (the map's photos,
+    braga-map's task 019) laid round the crown in its kind's shape (round, a pine's flat head, a
+    eucalyptus's open one, a cypress's cone, a poplar's column; a palm's fronds), each card the same
+    size in metres whatever the crown's (the shader scales it back), tinted the green of Braga's
+    trees in summer; a crown and a trunk mesh a kind, refilled with the trees round the camera each
+    time it has gone 20 m (a mesh with nothing to draw sees where the camera is; what's written then
+    reaches the graphics card a frame later, so the counts change then). Further off, every tree is
+    a billboard of its kind, baked from a near tree of its kind's usual proportions when the city is
+    built, turned to face the camera and as wide as its crown and as tall as itself; the two fade
+    into each other, dithered, over 25 m. Then the Rio Este,
     the decks' pillars and abutments and the tunnels' mouths (`levels.ts`), brown signs to
     landmarks on the pavement, the granite plinth with Braga's arms at the start (free roam's first
     spot: its top is a block the karts stand on, `stand` in `ground.ts`), and the easter eggs on the friends' houses (`eggs.ts`). Neither buildings nor

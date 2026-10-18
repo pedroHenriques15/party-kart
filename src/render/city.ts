@@ -553,7 +553,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
     for (const t of map.trees) {
       if (near(t.x, t.z) === Infinity || wg.d.roads.has(t.x, t.z) || riverAt(t.x, t.z).d < HW + 3) continue;
       if (keepOut.some((c) => Math.hypot(t.x - c.x, t.z - c.z) < c.r)) continue;
-      trees.push({ kind: t.kind, x: t.x, y: ground(t.x, t.z), z: t.z, h: t.h, crown: t.crown, foot: t.foot, trunk: t.trunk });
+      trees.push({ kind: t.kind, x: t.x, y: ground(t.x, t.z), z: t.z, cx: t.cx, cz: t.cz, h: t.h, crown: t.crown, foot: t.foot, trunk: t.trunk });
     }
     group.add(Object.assign(cityTrees(trees, treeLooks, quality, renderer), { name: 'trees' }));
   }

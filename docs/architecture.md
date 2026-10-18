@@ -222,8 +222,10 @@ about 110 km/h and comes down a metre or two short of the landing street, in the
 takes in, with room to turn. In the air it turns its nose to the landing street, and down it slows
 for the turn its velocity still has to make. The bots drive the middle and pass nobody from a jump's
 run-up to 30 m past its landing. Off any line, at any caution, it flies within 0.2° of the flight
-and comes down within 0.2 m of its line; over 48 races of eight bots, 16 wall hits and 15 respawns
-within 60 m of the landing, where flying 4 m left of the line had 187 and 94.
+and comes down within 0.2 m of its line. Over 48 races of eight bots on braga-map 1.23.0, 21 wall
+hits and 36 respawns within 60 m of the landing, where flying 4 m left of the line had 206 and 98;
+from where they come down on, 2 hits and 1 respawn, where it was 146 and 46. The rest are karts too
+slow off the lip (an item, a bump) falling short, as a jump has it.
 
 **A racer.** `Racer.step` works out the input. On the grid it's `stopInput`, which holds the car
 still. After the finish the autopilot drives. While spun out it's a gentle `stopInput`. It sets the `Mods`: gold plating, being shrunk, and

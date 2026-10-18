@@ -10,7 +10,7 @@ import * as THREE from 'three';
 const CELL = 64; // a letter's cell, in pixels, square
 const FONT = '700 46px Georgia, "Times New Roman", serif';
 const INK: [number, number, number] = [0.013, 0.05, 0.24]; // the names' blue, linear (#1f3f86)
-const POST = 0.04; // a post's radius
+const POST = 0.04; // a post's radius: six sides and no ends, as a thousand of them stand round the area
 
 // The empty plate: white glazed tiles in a blue frame, 512 × 128 for a plate four times as wide as it's high.
 function emptyPlate(): THREE.CanvasTexture {
@@ -144,7 +144,7 @@ export function buildPlates(plates: Plate[], size: [number, number], foot: (x: n
   lm.receiveShadow = true;
   g.add(lm);
   if (posts.size) {
-    const m = new THREE.InstancedMesh(new THREE.CylinderGeometry(POST, POST, 1, 8).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: '#3a3d42', metalness: 0.5, roughness: 0.5 }), posts.size);
+    const m = new THREE.InstancedMesh(new THREE.CylinderGeometry(POST, POST, 1, 6, 1, true).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: '#3a3d42', metalness: 0.5, roughness: 0.5 }), posts.size);
     let i = 0;
     const s = new THREE.Matrix4();
     for (const p of posts.values()) m.setMatrixAt(i++, s.makeScale(1, p.y1 - p.y0, 1).setPosition(p.x, p.y0, p.z));

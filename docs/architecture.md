@@ -857,16 +857,34 @@ viewpoint), 1.57 on Medium and 0.92 → 0.91 on Low; textures the same (139, 84 
 0.7–1.3 ms, the city built in 4.5–7.8 s as before (the desktop's load). The download on High 9.43 →
 9.56 MB gzipped (16.29 → 16.55 as is): the tiles carry two numbers more a tree, its crown's middle.
 
+braga-map's streets' names, bus stops and name plates (its task 042; `shots/2026-10-18-after042` on 1.24.0
+with 042 against `after052`, the 33 viewpoints): the plates at every corner in the area, 1,034 of
+them (`plates.ts`: the empty plate, the names' letters and the posts, three meshes always drawn),
+every bus stop in the area (94, where the route had 32), and the route's 36 plates on posts gone with
+their texture. Draw calls +2 at every viewpoint on High and Medium (147 → 149 and 144 → 146 at the
+median) and +1 on Low (106 → 107); triangles about 119,000 more at every viewpoint (2.06 → 2.18 M on
+High, 1.58 → 1.69 on Medium, 0.92 → 1.02 on Low), cut since to about 90,000 by posts of six open
+sides; textures 9 to 10 MB less on every level (139 → 130 MB on High, 84 → 74 on Medium, 50 → 41 on
+Low). Building the plates takes 30–60 ms of the city's build; the rounds' medians differ by more, the
+desktop busy (main's game and 042's built in the same 7.3 s side by side). Its round on 1.26.0
+(`after042`, after 063's `after063` on 1.25.0): 147 → 149, 144 → 146 and 106 → 107 calls at the
+median, 2.05 → 2.15, 1.57 → 1.67 and 0.91 → 1.00 M triangles, textures 130, 74 and 41 MB, a frame
+0.4–2.1 ms. The open world's 53 tiles 3.274 → 3.329 MB gzipped (the lines' names, the stops and the
+plates).
+
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),
   where the ground's painted map was 51 MB before task 016; the sun's shadows 16 MB (4 on Medium),
-  the street plates 10.5 MB, the sky's reflections 6 MB, and everything else the rest (the
+  the sky's reflections 6 MB, and everything else the rest (the street plates' plate and letters
+  about 1 MB since braga-map's task 042, where the route's 36 names took 10.5 MB; the
   streets' textures among it, as one array). That's counted as the scene holds them (`textureBytes`
   in `src/stats.ts`): its bytes a pixel and a third more for the mipmaps. A canvas texture keeps its
   canvas as well, which Chrome may hold on the graphics card too: the painted map's, where there is
   one, may take as much again; the mask's is let go.
-- **The street plates** are one texture 512 pixels wide and 112 a street, 4032 high for 36 streets.
-  The 37th takes it past 4096, the most some phones take.
+- **The street plates** (braga-map's task 042) are one empty plate, 512 × 128, and one canvas of every
+  letter the area's 205 names use, 64 pixels a letter: a name more costs its letters' quads, not a
+  texture. Until 042, each of the route's 36 names was its own plate in one texture, 4032 pixels high,
+  and the 37th would have taken it past the 4096 some phones take.
 - **The karts cost more draw calls than the city.** Each is about 40 on Low to 60 on High (its parts
   aren't merged, and are drawn again for the shadows), so 8 karts are two or three times the city.
 - **The frame time on the PC** is 0.4–2.6 ms on every level, so it can't tell them apart. Only a

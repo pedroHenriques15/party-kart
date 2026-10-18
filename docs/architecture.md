@@ -254,7 +254,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk36-` plus a five-character room code, and the invite link is `?room=<code>`, which
+`partykart-pk37-` plus a five-character room code, and the invite link is `?room=<code>`, which
 opens the game straight into the room. A room is made only when someone invites friends ("Convidar
 amigos") or starts a race; until then the game is alone, with no network at all.
 
@@ -826,6 +826,16 @@ in 5.1 s on High at the median against 5.0, 4.7 against 4.4 on Medium, 4.1 again
 frame 0.4–2.1 ms. The download on High is 9.30 MB gzipped (16.11 as is), 1.26 MB more: the trees'
 photos 0.90 MB at High (0.32 at Medium, 0.09 at Low, from the files' sizes) and the box's tiles
 0.45 MB more.
+
+braga-map's streets ending at their walls (its task 052, on 1.24.0; `shots/2026-10-18-after052/`
+against `before052` on 1.23.0, both shot here, the 33 viewpoints both have): the pavements stop at
+the walls and the carriageways give way to the map's, so more of the walls stand, and the streets'
+edges have more points. Draw calls the same at every viewpoint (147, 144 and 106 at the median on
+High, Medium and Low, 259 at most); triangles 2.05 → 2.06 M on High at the median (2.96 → 2.99 at
+most, at `robert-smith`; 4,000 to 32,000 more a viewpoint), 1.57 → 1.57 on Medium, 0.91 → 0.92 on
+Low; textures the same (139, 84 and 50 MB). The city built in 6.9 s on High at the median (7.1
+before, on a busier desktop), a frame 0.8–1.2 ms. The open world's 35 tiles 2.717 → 2.758 MB
+gzipped, and with their ground cover 55 kB more in all.
 
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),

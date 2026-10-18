@@ -463,8 +463,11 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     120 on Low) each a trunk in its kind's bark and a crown of cards of its leaves (the map's photos,
     braga-map's task 019) laid round the crown in its kind's shape (round, a pine's flat head, a
     eucalyptus's open one, a cypress's cone, a poplar's column; a palm's fronds), each card the same
-    size in metres whatever the crown's (the shader scales it back), tinted the green of Braga's
-    trees in summer; a crown and a trunk mesh a kind, refilled with the trees round the camera each
+    size in metres whatever the crown's (the shader scales it back, and lifts one that would hang
+    below the crown's foot), tinted the green of Braga's trees in summer; the crown where the map
+    says its leaves are (its middle, braga-map's task 063: off the trunk where it spreads to one side
+    or reaches out over a square or a street), the trunk leaning into it once the middle is further
+    off than half the crown's radius, 25° at most (a shear in its matrix); a crown and a trunk mesh a kind, refilled with the trees round the camera each
     time it has gone 20 m (a mesh with nothing to draw sees where the camera is; what's written then
     reaches the graphics card a frame later, so the counts change then). Further off, every tree is
     a billboard of its kind, baked from a near tree of its kind's usual proportions when the city is
@@ -836,6 +839,15 @@ most, at `robert-smith`; 4,000 to 32,000 more a viewpoint), 1.57 → 1.57 on Med
 Low; textures the same (139, 84 and 50 MB). The city built in 6.9 s on High at the median (7.1
 before, on a busier desktop), a frame 0.8–1.2 ms. The open world's 35 tiles 2.717 → 2.758 MB
 gzipped, and with their ground cover 55 kB more in all.
+
+braga-map's trees with their crowns where their leaves are (its task 063, on 1.25.0;
+`shots/2026-10-18-after063/` against `after052`, the 33 viewpoints): a limb the LiDAR sees no trunk
+under is part of its tree's crown (2% fewer trees), each crown is drawn at its middle with its trunk
+leaning into it, and no card hangs below a crown's foot. Draw calls the same at every viewpoint (147,
+144 and 106 at the median); triangles 2.06 → 2.05 M on High at the median (5,000 to 16,000 fewer a
+viewpoint), 1.57 on Medium and 0.92 → 0.91 on Low; textures the same (139, 84 and 50 MB); a frame
+0.7–1.3 ms, the city built in 4.5–7.8 s as before (the desktop's load). The download on High 9.43 →
+9.56 MB gzipped (16.29 → 16.55 as is): the tiles carry two numbers more a tree, its crown's middle.
 
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),

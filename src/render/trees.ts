@@ -159,15 +159,19 @@ export function plantTrees(trees: Tree[], TILE = 300, plain: boolean | 'lean' = 
 // of its leaves, cards laid round the crown in its kind's shape, each card the same size in metres
 // whatever the crown's (a palm's fronds grow with its crown); further off it's a billboard of its kind,
 // made from the near tree when the city is built; and between the two they fade into each other,
-// dithered. Instanced: near, a crown and a trunk mesh a kind, filled with the trees round the camera
-// each time it has gone STEP metres; far, a mesh a kind holding every tree, which draws none within the
-// near ones' reach.
+// dithered. Its crown is where the map says its leaves are, over its trunk or off it, and no card of
+// leaves hangs below its foot (braga-map's task 063). Instanced: near, a crown and a trunk mesh a kind,
+// filled with the trees round the camera each time it has gone STEP metres; far, a mesh a kind holding
+// every tree, which draws none within the near ones' reach.
 
 export interface CityTree {
   kind: MapTreeKind;
   x: number;
   y: number;
   z: number;
+  // Where its crown's middle is: over its trunk (x, z), or off it.
+  cx: number;
+  cz: number;
   h: number;
   crown: number;
   foot: number;
@@ -305,6 +309,8 @@ function crownVertex(sh: Shader, card: [number, number, number], fixed: number):
   vec3 iS = max(vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz)), vec3(1e-3));
   float cs = clamp(cardSize.x * iS.x, cardSize.y, cardSize.z);
   transformed = mix(aCentre + position, aCentre + position * cs / iS, cardFixed);
+  // No card hangs below the crown's foot: one whose lower edge would is lifted till it's there.
+  transformed.y += cardFixed * max(0.0, abs(position.y) * cs - aCentre.y * iS.y) / iS.y;
   vTreeAt = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 #else
   vTreeAt = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
@@ -352,6 +358,8 @@ const NEAR: Record<Quality, number> = { high: 260, medium: 180, low: 120 };
 const STEP = 20;
 const BAND = 25;
 const CELL_M = 50;
+// How far a trunk leans at most: the tangent of its angle from upright (25°).
+const LEAN = 0.47;
 
 export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, quality: Quality, renderer: THREE.WebGLRenderer): THREE.Group {
   const group = new THREE.Group();
@@ -366,14 +374,19 @@ export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, q
   // Each tree's crown, trunk and billboard matrices and its tint, once: a tree's colour varies a little
   // from its kind's, by where it stands.
   const n = trees.length, crownM = new Float32Array(n * 16), trunkM = new Float32Array(n * 16), farM = new Float32Array(n * 16), tint = new Float32Array(n * 3);
+  const shear = new THREE.Matrix4();
   trees.forEach((t, i) => {
     const r = seeded(1 + Math.abs((Math.floor(t.x * 7.3) * 73856093) ^ (Math.floor(t.z * 3.7) * 19349663)));
     r();
     q.setFromAxisAngle(up, r() * Math.PI * 2);
-    const ch = Math.max(0.6, t.h - t.foot);
-    m.compose(new THREE.Vector3(t.x, t.y + t.foot, t.z), q, new THREE.Vector3(t.crown, ch, t.crown)).toArray(crownM, i * 16);
-    m.compose(new THREE.Vector3(t.x, t.y - 0.3, t.z), q, new THREE.Vector3(t.trunk * 1.1, t.foot + ch * SHAPES[t.kind].into + 0.3, t.trunk * 1.1)).toArray(trunkM, i * 16);
-    m.compose(new THREE.Vector3(t.x, t.y, t.z), new THREE.Quaternion(), new THREE.Vector3(t.crown, t.h, t.crown)).toArray(farM, i * 16);
+    const ch = Math.max(0.6, t.h - t.foot), th = t.foot + ch * SHAPES[t.kind].into + 0.3;
+    m.compose(new THREE.Vector3(t.cx, t.y + t.foot, t.cz), q, new THREE.Vector3(t.crown, ch, t.crown)).toArray(crownM, i * 16);
+    // Its trunk leans into its crown where the crown's middle is further off it than half the crown's
+    // radius (a crown spread to one side stands on an upright trunk), up to LEAN from upright.
+    const dx = t.cx - t.x, dz = t.cz - t.z, d = Math.hypot(dx, dz), k = d > 0 ? Math.min(Math.max(0, d - t.crown / 4), th * LEAN) / d : 0;
+    shear.set(1, (dx * k) / th, 0, 0, 0, 1, 0, 0, 0, (dz * k) / th, 1, 0, 0, 0, 0, 1);
+    m.compose(new THREE.Vector3(), q, new THREE.Vector3(t.trunk * 1.1, th, t.trunk * 1.1)).premultiply(shear).setPosition(t.x, t.y - 0.3, t.z).toArray(trunkM, i * 16);
+    m.compose(new THREE.Vector3(t.cx, t.y, t.cz), new THREE.Quaternion(), new THREE.Vector3(t.crown, t.h, t.crown)).toArray(farM, i * 16);
     col.setRGB(1, 1, 1).multiplyScalar(0.82 + r() * 0.3).offsetHSL((r() - 0.5) * 0.04, 0, 0);
     tint.set([col.r, col.g, col.b], i * 3);
   });

@@ -255,7 +255,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk37-` plus a five-character room code, and the invite link is `?room=<code>`, which
+`partykart-pk38-` plus a five-character room code, and the invite link is `?room=<code>`, which
 opens the game straight into the room. A room is made only when someone invites friends ("Convidar
 amigos") or starts a race; until then the game is alone, with no network at all.
 
@@ -488,7 +488,13 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   depends on that edge alone, so the pieces either side of it meet at the same points, without
   cracks. The carriageways drawn are 3.4 cm off the ground the karts stand on at the median, and
   19 cm at the 90th percentile (`test/streets.test.ts`). Asphalt, setts, calçada, grass on a wide
-  reservation or an island, each texture's rows along the nearest street's line.
+  reservation or an island, each texture's rows along the nearest street's line; but a roundabout's
+  island (braga-map's task 014, `round`) in the land's own material, what the ground is there as the
+  map classes it (`city.ts`'s `coverMaterial`): its grass, flower beds and paving at the kerb's height,
+  all in one mesh, its grass in a watered lawn's green in the orthophoto (`LAWN`), as the game's March
+  has it, where the summer of 2025 dried some (braga-map's decision 050). The markings: the lanes, the middle, the zebras, the stop lines at traffic lights,
+  and at a roundabout's entries the give-way line, dashed half a metre on and off, and the triangles'
+  outlines behind it.
   - Every footway, path, cycleway and flight of steps (braga-map's task 050, `world.streets.paths`):
     in calçada, paving stones, setts, asphalt, concrete, gravel or earth as the map says, a
     cycleway's asphalt red (`textures.ts`'s `paving`, `cycleway` and `gravel` are three more layers
@@ -871,6 +877,18 @@ desktop busy (main's game and 042's built in the same 7.3 s side by side). Its r
 median, 2.05 → 2.15, 1.57 → 1.67 and 0.91 → 1.00 M triangles, textures 130, 74 and 41 MB, a frame
 0.4–2.1 ms. The open world's 53 tiles 3.274 → 3.329 MB gzipped (the lines' names, the stops and the
 plates).
+
+braga-map's roundabouts as they are (its task 014, on 1.28.0, after 045's 1.27.0; `shots/2026-10-18-after014/`
+against 045's `after045`, the 33 viewpoints): the rings and islands where the LiDAR measured them, each
+roundabout's island in the land's own material, one mesh (`streets.ts`'s `islands`), its two statues
+baked with the route's chapels and shrines, and the give-way lines and triangles in the streets' paint.
+Draw calls 149 → 154 on High at the median in the round (+1 to +5 a viewpoint), 107 → 108 on Low, 146 →
+149 on Medium against 042's `after042`; with the statues baked with the chapels since, +4 on High and
++3 on Low at four viewpoints shot A/B (`ab045r1`, `ab014r1`): the islands' mesh and the
+statues' stone and bronze. Triangles about 2,000 more (2.157 → 2.159 M on High at the median);
+textures the same (130, 74 and 41 MB). The round's builds took 2 s longer at the median, but the A/B
+on the same desktop has 045's 7.8–8.7 s on High and 014's 5.4–7.9 s: the desktop's load. The open
+world's 53 tiles 3.329 → 3.330 MB gzipped.
 
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),

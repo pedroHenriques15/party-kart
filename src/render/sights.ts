@@ -2,9 +2,9 @@
 // all over the track, and the hills of the horizon behind them; the cross on top of the Picoto;
 // and along the way São João da Ponte's chapel (chapel.ts), the route's other chapels, São Lázaro's
 // bell tower and two wayside shrines (chapels.ts), the Estádio 1.º de Maio (stadium.ts), the Altice
-// Forum's α, Makro and the Tourigalo. At their real places and sizes from the map
-// (braga-map's tools/world.mjs), but for Bom Jesus and the Sameiro, twice it, and the Tourigalo,
-// five times. Far off, it's their outline against the sky that counts.
+// Forum's α, Makro and the Tourigalo; and the statues in the roundabouts' islands. At their real
+// places and sizes from the map (braga-map's tools/world.mjs), but for Bom Jesus and the Sameiro, twice
+// it, and the Tourigalo, five times. Far off, it's their outline against the sky that counts.
 import type { Grid, Sight } from 'braga-map';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -157,6 +157,38 @@ function cruzeiro(s: { x: number; y: number; z: number }): THREE.Group {
   const ring = mesh(new THREE.TorusGeometry(0.6, 0.045, 6, 28), mat('#6e4a33', { roughness: 0.7, metalness: 0.3 }), 0, 3.7, 0);
   ring.rotation.y = Math.PI / 2;
   g.add(ring);
+  g.position.set(s.x, s.y, s.z);
+  return g;
+}
+
+// ---- A statue in a roundabout's island (braga-map's task 014), as tall as the LiDAR measured it: a
+// figure on a square plinth on a step. In stone where the map says so, white as São João da Ponte's
+// São João Baptista is in its photos (2024, 2026): the saint, robed, his right arm raised, on a plinth
+// two thirds of its height. Otherwise bronze on granite, as the map doesn't say (the Rotunda Santos
+// da Cunha's comendador). ----
+function statue(s: Extract<Sight, { kind: 'statue' }>): THREE.Group {
+  const g = new THREE.Group();
+  const stone = s.material === 'stone';
+  const figure = stone ? WHITE() : mat('#5b4a35', { roughness: 0.45, metalness: 0.55 });
+  const plinth = stone ? WHITE() : GRANITE();
+  const step = 0.3;
+  const high = s.h * 0.62 - step; // the plinth over the step
+  const tall = s.h - step - high; // the figure on it
+  g.add(box(1.5, step, 1.5, GRANITE(), 0, step / 2, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.42, 0.55, high, 4).rotateY(Math.PI / 4), plinth, 0, step + high / 2, 0));
+  g.add(box(1.0, 0.12, 1.0, plinth, 0, step + high - 0.06, 0));
+  // The figure: a robe to the feet, the shoulders, the head; one arm down, one raised.
+  const y0 = step + high;
+  g.add(mesh(new THREE.CylinderGeometry(tall * 0.11, tall * 0.17, tall * 0.62, 10), figure, 0, y0 + tall * 0.31, 0));
+  g.add(mesh(new THREE.CylinderGeometry(tall * 0.13, tall * 0.11, tall * 0.2, 10), figure, 0, y0 + tall * 0.72, 0));
+  g.add(mesh(new THREE.SphereGeometry(tall * 0.085, 10, 8), figure, 0, y0 + tall * 0.9, 0));
+  const arm = (side: number, up: boolean) => {
+    const a = mesh(new THREE.CylinderGeometry(tall * 0.035, tall * 0.045, tall * 0.4, 6), figure, side * tall * 0.15, y0 + tall * (up ? 0.86 : 0.6), 0);
+    a.rotation.z = up ? -side * 0.5 : side * 0.12;
+    g.add(a);
+  };
+  arm(1, true);
+  arm(-1, false);
   g.position.set(s.x, s.y, s.z);
   return g;
 }
@@ -436,6 +468,8 @@ export function buildSights(list: Sight[], track: Track, ground: Ground, far: Gr
     if (s.kind === 'chapel') route.add(routeChapel({ ...s, y: front }));
     if (s.kind === 'saolazaro') route.add(saoLazaroTower({ ...s, y: front }));
     if (s.kind === 'shrine') route.add(shrine({ ...s, y: front }));
+    // The roundabouts' statues too, of the same stone and granite.
+    if (s.kind === 'statue') route.add(statue({ ...s, y: ground(s.x, s.z) }));
     if (g) group.add(bake(g));
   }
   if (route.children.length) group.add(bake(route));

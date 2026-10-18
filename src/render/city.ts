@@ -26,7 +26,7 @@ import { buildStreets, groundPaths, streetEdges, type Built } from './streets.ts
 import { baysOf, facadeKit, layerOfGround, layerOfType, linearOf, MATERIALS, storeys, Walls, type Kit, type WallLayout } from './facades.ts';
 import * as tex from './textures.ts';
 import { buildSigns } from './signs.ts';
-import { plantTrees, type Tree } from './trees.ts';
+import { cityTrees, loadTreeLooks, type CityTree } from './trees.ts';
 import type { World } from './world.ts';
 
 // How far a point is from the open world's area (0 inside it), roughly (to within 40 m), from a grid
@@ -206,6 +206,8 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
     .then((m) => m.loadPhotos(map.photos, map.facadeColours, renderer, quality))
     .catch((e: unknown) => (console.warn('The photo textures failed to load:', e), null));
   const coverLoading = loadCover(map, renderer, quality).catch((e: unknown) => (console.warn('What the ground is failed to load:', e), null));
+  // The trees' bark and leaves (braga-map's task 019); without them, each kind in a colour.
+  const treesLoading = loadTreeLooks(map.treeKinds, renderer, quality).catch((e: unknown) => (console.warn("The trees' photos failed to load:", e), {}));
   const B = course.box;
   const group = new THREE.Group();
   const updates: ((t: number) => void)[] = [];
@@ -319,7 +321,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
     }
   }
   const landMesh = new Surface(lat, land);
-  const [photos, cover] = await Promise.all([photosLoading, coverLoading]);
+  const [photos, cover, treeLooks] = await Promise.all([photosLoading, coverLoading, treesLoading]);
   if (masked && !cover) paint = paintGround(map, B, quality, inOpenTiles, outline, onGround);
   {
     const r = lat.r;
@@ -533,34 +535,18 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   // The shops' signs, on the buildings drawn.
   group.add(buildSigns(map.signs.filter((s) => near(s.from[0], s.from[1]) <= 300 && !keepOut.some((k) => Math.hypot(s.from[0] - k.x, s.from[1] - k.z) < k.r)), map.facadeColours));
 
-  // ---- Trees, from the map and filling its parks and woods. In the area every one the karts can
-  // hit (all but those on a carriageway, ground.ts); round it the map's own anywhere in the box and
-  // those filled in within 230 m, fewer on Medium and Low. ----
+  // ---- Trees: every one the map has in the box, as DGT's LiDAR measured it and of its kind (braga-map's
+  // task 019), near the camera in their bark and leaves, further off as their kinds' billboards
+  // (trees.ts); in the area every one the karts can hit (but those on a carriageway, ground.ts). None on
+  // a carriageway, in the river, on the plinth or in the eggs' ground. ----
   {
-    const trees: Tree[] = [];
-    let seed = 3;
-    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    const every = quality === 'low' ? 3 : quality === 'medium' ? 2 : 1;
-    let k = 0;
-    for (const { x, z, pine, filled } of map.trees) {
-      const r = near(x, z);
-      if (r === Infinity || (filled && r > 230)) continue;
-      if (wg.d.roads.has(x, z)) continue;
-      if (r > 0 && k++ % every) continue;
-      if (riverAt(x, z).d < HW + 3) continue;
-      // None on the plinth or in the eggs' ground.
-      if (keepOut.some((c) => Math.hypot(x - c.x, z - c.z) < c.r)) continue;
-      trees.push({
-        kind: pine ? 'pine' : 'round',
-        x,
-        y: ground(x, z),
-        z,
-        s: 0.75 + rnd() * 0.55,
-        color: pine ? new THREE.Color().setHSL(0.34 + rnd() * 0.04, 0.42, 0.14 + rnd() * 0.05) : new THREE.Color().setHSL(0.22 + rnd() * 0.08, 0.45, 0.19 + rnd() * 0.08),
-      });
+    const trees: CityTree[] = [];
+    for (const t of map.trees) {
+      if (near(t.x, t.z) === Infinity || wg.d.roads.has(t.x, t.z) || riverAt(t.x, t.z).d < HW + 3) continue;
+      if (keepOut.some((c) => Math.hypot(t.x - c.x, t.z - c.z) < c.r)) continue;
+      trees.push({ kind: t.kind, x: t.x, y: ground(t.x, t.z), z: t.z, h: t.h, crown: t.crown, foot: t.foot, trunk: t.trunk });
     }
-    // Big tiles and plain crowns: there are thousands of them.
-    group.add(Object.assign(plantTrees(trees, 800, quality === 'low' ? 'lean' : true), { name: 'trees' }));
+    group.add(Object.assign(cityTrees(trees, treeLooks, quality, renderer), { name: 'trees' }));
   }
 
   // ---- The sights: Bom Jesus and the Sameiro on the hills, the cross on the Picoto, the stadium,

@@ -38,7 +38,7 @@ export const CAR_R = 0.8; // the car's two circles: their radius, and how far ah
 export const CAR_L = 0.95;
 const CLIMB = 0.7; // the steepest land a car climbs off the carriageway (35°)
 const SMOOTH = 1.5; // a surface's normal is taken over this either side
-const TRUNK = 0.3;
+const TRUNK = 0.15; // the thinnest trunk a kart hits
 const PARAPET = 1.0; // over a deck, as levels.ts draws it
 const BORE = 3; // how high a tunnel's sides stand over its road, at most
 const DEEP = 1.2; // a deck's depth, under its road
@@ -1076,8 +1076,9 @@ export function worldGround(world: Braga): WorldGround {
       counts['trees on the road'] = (counts['trees on the road'] ?? 0) + 1;
       continue;
     }
-    const y = H(t.x, t.z);
-    posts.add(t.x - TRUNK, t.z - TRUNK, t.x + TRUNK, t.z + TRUNK, { x: t.x, z: t.z, r: TRUNK, y0: y - 1, y1: y + 4 });
+    // As thick as the map says (braga-map's task 019), up to its crown.
+    const y = H(t.x, t.z), r = Math.max(TRUNK, t.trunk / 2);
+    posts.add(t.x - r, t.z - r, t.x + r, t.z + r, { x: t.x, z: t.z, r, y0: y - 1, y1: y + Math.max(2.5, Math.min(t.foot, 6)) });
     counts.trees = (counts.trees ?? 0) + 1;
   }
 

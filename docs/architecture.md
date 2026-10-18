@@ -890,6 +890,19 @@ textures the same (130, 74 and 41 MB). The round's builds took 2 s longer at the
 on the same desktop has 045's 7.8–8.7 s on High and 014's 5.4–7.9 s: the desktop's load. The open
 world's 53 tiles 3.329 → 3.330 MB gzipped.
 
+braga-map's trees of the species their photos show (its task 061, on 1.29.0, after 014's 1.28.0;
+`shots/2026-10-18-after061/` against 014's `after014`, the 33 viewpoints, both on the same desktop): 129
+trees of another kind near 14 viewpoints, and three kinds more, the plane, the lime and the birch, each
+its bark, its leaves and its shape (`trees.ts`). Draw calls 154 → 161 on High at the median (+2 to +17 a
+viewpoint), 149 → 161 on Medium and 108 → 113 on Low (+2 to +8): each kind is drawn in meshes of its own,
+so a tile with a lime in it draws the limes apart, and the most are round the Parque da Ponte and along
+the Imaculada Conceição, by Fujacal and the Lobato. Triangles 2.159 → 2.167 M on High at the median
+(8,000 more at most at a viewpoint), 1.677 → 1.682 on Medium, 1.007 → 1.009 on Low; textures 130 → 132,
+74 → 75 and 41 MB, the new kinds' bark and leaves, which load with the rest whether a kind is in view or
+not: 0.46 MB more to download on High, 0.17 on Medium, 0.05 on Low. The open world's 53 tiles the same
+3.33 MB gzipped (a tree's kind takes 4 bits of its word, where it took 3). The builds' medians 7.7 → 7.8 s on
+High, 7.3 → 6.9 on Medium, 7.0 → 6.1 on Low: the desktop's load.
+
 - **Textures**, on High (118 MB): what the ground is 60 MB (its classes 24 MB, its kinds' colours
   27, their six photos 8.4 as BC7) and the streets' mask 12.7 MB (a byte a pixel, a metre each),
   where the ground's painted map was 51 MB before task 016; the sun's shadows 16 MB (4 on Medium),

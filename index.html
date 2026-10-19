@@ -75,33 +75,69 @@
         font-weight: 800;
       }
     </style>
-  </head>
-  <body>
-    <div id="loading"><b>Party Kart<span>.</span></b><i></i>A construir Braga…</div>
     <!-- If the game stops before the city is up (no 3D in this browser, a part of the map that
-         didn't come), say so rather than spin forever. -->
+         didn't come, the game's own script that couldn't be downloaded), say so rather than spin
+         forever. In the head, before the game's own tags (the build puts them at its end), so as to
+         hear them fail. -->
     <script>
       (() => {
-        const stop = (e) => {
+        const again = () => {
+          const b = document.createElement('button');
+          b.textContent = 'Tentar outra vez';
+          b.onclick = () => location.reload();
+          return b;
+        };
+        const say = (text) => {
+          const p = document.createElement('p');
+          p.textContent = text;
+          return p;
+        };
+        const stop = (text, why) => {
           const l = document.getElementById('loading');
           if (!l || l.dataset.stopped) return;
           l.dataset.stopped = '1';
-          const why = String((e && (e.reason || e.error || e.message)) || '');
-          const say = document.createElement('p');
-          say.textContent = /WebGL/i.test(why)
-            ? 'Este browser não conseguiu abrir os gráficos 3D. Fecha o browser de todo (também das apps recentes), abre-o de novo e volta a tentar.'
-            : 'Algo correu mal a construir Braga. Verifica a ligação à internet e volta a tentar.';
           const detail = document.createElement('small');
           detail.textContent = why.slice(0, 200);
-          const again = document.createElement('button');
-          again.textContent = 'Tentar outra vez';
-          again.onclick = () => location.reload();
-          l.replaceChildren(l.querySelector('b'), say, again, detail);
+          l.replaceChildren(l.querySelector('b'), say(text), again(), detail);
         };
-        addEventListener('error', stop);
-        addEventListener('unhandledrejection', stop);
+        const fail = (e) => {
+          const why = String((e && (e.reason || e.error || e.message)) || '');
+          stop(
+            /WebGL/i.test(why)
+              ? 'Este browser não conseguiu abrir os gráficos 3D. Fecha o browser de todo (também das apps recentes), abre-o de novo e volta a tentar.'
+              : 'Algo correu mal a construir Braga. Verifica a ligação à internet e volta a tentar.',
+            why,
+          );
+        };
+        addEventListener('error', fail);
+        addEventListener('unhandledrejection', fail);
+        // A script that can't be downloaded, or a module it imports, fires its error on the <script>
+        // element, which doesn't bubble up to window: it's heard on the way down instead. That is
+        // what a page from before a deploy meets, as the deploy takes the old build's files away. A
+        // <link rel="modulepreload"> that fails is only noted, as its <script> fails after it.
+        const name = (url) => new URL(url, location.href).pathname.split('/').pop();
+        const missing = [];
+        addEventListener(
+          'error',
+          (e) => {
+            const t = e.target;
+            if (t instanceof HTMLLinkElement && t.rel === 'modulepreload') missing.push(name(t.href));
+            if (t instanceof HTMLScriptElement && t.src)
+              stop('Não foi possível descarregar o jogo. Verifica a ligação à internet e volta a tentar.', [name(t.src), ...missing].join(', '));
+          },
+          true,
+        );
+        // Anything else that holds the city back: a phone takes 25 s, so past 90 s something is wrong,
+        // but the spinner stays, as a slow computer may still get there.
+        setTimeout(() => {
+          const l = document.getElementById('loading');
+          if (l && !l.dataset.stopped) l.append(say('Está a demorar mais do que devia. Se não avançar, volta a tentar.'), again());
+        }, 90000);
       })();
     </script>
+  </head>
+  <body>
+    <div id="loading"><b>Party Kart<span>.</span></b><i></i>A construir Braga…</div>
     <canvas id="view"></canvas>
     <div id="hud"></div>
     <div id="ui"></div>

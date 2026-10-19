@@ -579,7 +579,11 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   into what the graphics card takes (ETC1 on a phone, BC7 on a PC) in its workers, so they stay
   compressed on the card: half a byte a pixel on a phone, a byte on a PC, where a canvas or a WebP
   takes four. The kinds of ground's photos are drawn always (braga-map's task 016, above), so the
-  loader and Basis's transcoder (0.56 MB, 0.26 MB gzipped) come with the city. The facades are
+  loader and Basis's transcoder (0.56 MB, 0.26 MB gzipped) come with the city. `photos.ts` is
+  imported statically, part of the game's own script: a chunk of its own, and the one it would share
+  with the rest (three.js), would be preloaded (`<link rel="modulepreload">`), and WebKit keeps a
+  preload that failed until the browser closes, so the loading screen's "Tentar outra vez" would fail
+  again at once (braga-map's task 070). The built `index.html` should have no `modulepreload`. The facades are
   drawn always (braga-map's task 017), each as quads 4 cm in front of its wall, a mesh each, in its
   building's colour: the photo times that colour over the wall's colour in the photo (each in linear
   light, as the map gives them), so a photo at dusk or through a tinted windscreen is as bright and

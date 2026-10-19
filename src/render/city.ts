@@ -27,6 +27,7 @@ import { baysOf, facadeKit, layerOfGround, layerOfType, linearOf, MATERIALS, sto
 import * as tex from './textures.ts';
 import { buildSigns } from './signs.ts';
 import { buildPlates } from './plates.ts';
+import { loadPhotos } from './photos.ts';
 import { cityTrees, loadTreeLooks, type CityTree } from './trees.ts';
 import type { World } from './world.ts';
 
@@ -229,9 +230,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   // Fetched, and turned for the graphics card in workers, while the land is worked out. If they can't be
   // had, the city goes without them: the ground painted from the map, as it was before task 016, and the
   // facades in their kits alone.
-  const photosLoading = import('./photos.ts')
-    .then((m) => m.loadPhotos(map.photos, map.facadeColours, renderer, quality))
-    .catch((e: unknown) => (console.warn('The photo textures failed to load:', e), null));
+  const photosLoading = loadPhotos(map.photos, map.facadeColours, renderer, quality).catch((e: unknown) => (console.warn('The photo textures failed to load:', e), null));
   const coverLoading = loadCover(map, renderer, quality).catch((e: unknown) => (console.warn('What the ground is failed to load:', e), null));
   // The trees' bark and leaves (braga-map's task 019); without them, each kind in a colour.
   const treesLoading = loadTreeLooks(map.treeKinds, renderer, quality).catch((e: unknown) => (console.warn("The trees' photos failed to load:", e), {}));

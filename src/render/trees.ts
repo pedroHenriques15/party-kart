@@ -7,6 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RIVER_HALF_W } from '../track/layout.ts';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
 import type { Quality } from './look.ts';
+import { ktx2Loader } from './photos.ts';
 import { LAKE, riverDistance } from './world.ts';
 
 type Ground = (x: number, z: number) => number;
@@ -343,7 +344,6 @@ export interface TreeLooks {
 // Loads each kind's bark and leaves at the graphics level, as the graphics card takes them; a kind the
 // map has no photo for is drawn in a colour alone.
 export async function loadTreeLooks(kinds: TreeKindOf[], renderer: THREE.WebGLRenderer, quality: Quality): Promise<Record<string, TreeLooks>> {
-  const { ktx2Loader } = await import('./photos.ts');
   const loader = ktx2Loader(renderer);
   const out: Record<string, TreeLooks> = {};
   await Promise.all(

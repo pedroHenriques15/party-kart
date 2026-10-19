@@ -38,8 +38,12 @@ Settings → Pages: deploy from a branch, `gh-pages`, `/ (root)`.
    grep -o 'assets/index-[^"]*\.js' dist/index.html
    ```
 
-   GitHub's CDN caches pages for up to 10 minutes (`max-age=600`), so a browser can show the old
-   build for a while. A hard refresh (Ctrl+F5) gets the new one.
+   Pages serves `index.html` with `max-age=600`, so for up to 10 minutes a browser can open the
+   page from before the deploy, and a tab restored from the cache can open it later still. That
+   page can't load the old build: it asks for the old build's files, and the deploy took them away
+   (`gh-pages` holds the new build alone). Its loading screen says the game couldn't be downloaded,
+   naming the file, and "Tentar outra vez" reloads, which fetches the new `index.html`. A hard
+   refresh (Ctrl+F5) does the same.
 
 ## Things to know
 
@@ -48,7 +52,8 @@ Settings → Pages: deploy from a branch, `gh-pages`, `/ (root)`.
   game is always a commit you can find again.
 - **`gh-pages` has no history.** Each deploy replaces it with a single new commit. To roll back,
   check out the last good commit, run `npm run deploy`, then switch back to `main`.
-- **Players keep the old build until they reload.** Old and new builds still share rooms as long
+- **Players keep the old build until they reload**, if the game was already open: a page opened
+  after the deploy, even from the cache, can't load the old one (step 4). Old and new builds still share rooms as long
   as the peer id prefix in `src/session.ts` is unchanged. If the network messages changed so that
   an old client would misbehave, change the prefix too. See
   [making-changes.md](making-changes.md#a-new-network-message).

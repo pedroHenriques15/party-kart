@@ -50,7 +50,10 @@ and driver, the graphics, the help, and
    on foot as a player is: each chooses a kit as it comes back, goes looking round the arena, in and
    out of the buildings and up the stairs, turns to a shot or footsteps it hears, takes cover when
    it's hurt, and sees and shoots only what a player there could. On Fácil they're slow to react and
-   miss a lot; on Difícil they're quick and true.
+   miss a lot; on Difícil they're quick and true. Shot, you see where from: a red arc round the
+   crosshair points at whoever fired, and turns as you turn. Anyone else hit is plain to see from
+   anywhere: a tracer from the shooter's gun to them, a red spray blown out the far side, and their
+   figure jerked away from the shot.
 4. **↺ Reposicionar**: back on the street nearest.
 5. **🎥 Voar pela cidade**: leave your kart where it is and fly the camera round Braga, down a
    street, through the buildings, over the rooftops and the hills as far as the horizon, from a metre
@@ -121,6 +124,16 @@ the head counts more.
 | Tab, held | The scores: kills and deaths |
 | 1 to 4 | The kit you come back with |
 | WASD, Shift, Space | Walk, run, jump, as on foot |
+
+While you drive, fly or walk, no key or mouse button takes you off the game: Alt, F1, F3, F5, F7, /
+and Ctrl with S, D, F, P, R or + do nothing of the browser's, the mouse's side buttons don't go back
+a page, the middle one doesn't scroll, the right one opens no menu, and Ctrl with the wheel doesn't
+zoom (F11 and F12 still work). Back, however it comes, keeps you in the room, and in a room, a race
+or a round, closing or reloading the page asks first. Ctrl+W, Ctrl+T and Ctrl+N a browser never lets
+a page have: on a computer, **⛶ Ecrã inteiro** in the bar puts the game in full screen and, in Chrome
+and Edge, locks the keyboard, so those come to the game too, and Esc is only the menu (held, it leaves
+full screen). On Windows, Shift pressed five times quickly asks whether to turn on Sticky Keys; that
+dialog is Windows', and turned off in Settings › Accessibility › Keyboard.
 **On a phone or a tablet**, turned sideways: round the city the kart goes while your thumb is on
 the left half, and pulls up when you lift it; in a race it goes by itself.
 

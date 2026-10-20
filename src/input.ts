@@ -65,6 +65,13 @@ const TOUCH_LOOK = 0.007;
 
 const GAME_KEYS = new Set([...Object.values(KEYS).flat(), ...Object.keys(ACTIONS)]);
 const inField = (e: Event) => e.target instanceof HTMLElement && !!e.target.closest('input, select, textarea');
+const onLink = (e: Event) => e.target instanceof Element && !!e.target.closest('a');
+// While you play, the keys the browser keeps: full screen and its tools. Every other key does nothing
+// but what the game makes of it, so a slip (Alt, F1, F3, F5, F7, /, Ctrl with S, D, F, P, R or +) never
+// opens a dialog, a menu, a search or another page. Some a browser never lets a page have (Ctrl+W,
+// Ctrl+T, Ctrl+N, Ctrl+Tab), but in full screen the game locks the keyboard (main.ts), and then it
+// has those too.
+const FREE = new Set(['F11', 'F12']);
 
 export class Keyboard {
   private down = new Set<string>();
@@ -75,13 +82,18 @@ export class Keyboard {
   constructor() {
     addEventListener('keydown', (e) => {
       if (!this.enabled || inField(e)) return;
+      if (!FREE.has(e.code)) e.preventDefault();
+      // A button clicked a moment ago still has the focus: Space or Enter would press it again.
+      if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
       if (!GAME_KEYS.has(e.code)) return;
-      e.preventDefault();
       this.down.add(e.code);
       if (!e.repeat && ACTIONS[e.code]) this.pending.push(ACTIONS[e.code]);
       if (!e.repeat && e.code === 'Space') this.hop = true;
     });
-    addEventListener('keyup', (e) => this.down.delete(e.code));
+    addEventListener('keyup', (e) => {
+      this.down.delete(e.code);
+      if (this.enabled && !inField(e) && !FREE.has(e.code)) e.preventDefault();
+    });
     addEventListener('blur', () => this.down.clear());
   }
 
@@ -146,6 +158,8 @@ export class Mouse {
   enabled = false;
   aim = false;
   locked = false;
+  playing = false; // driving, flying or on foot, no menu up
+
   // When the browser last let the pointer go of itself, for Esc's keydown, where a browser sends it.
   lostAt = -Infinity;
   onLost = () => {};
@@ -190,7 +204,24 @@ export class Mouse {
       if (e.button === 0) this.trigger = false;
       if (e.button === 2) this.scope = false;
     });
-    document.addEventListener('contextmenu', (e) => this.locked && e.preventDefault());
+    // The mouse never leaves the game by itself: its side buttons don't go back or forward a page, the
+    // middle one doesn't start scrolling, the right one opens no menu (but on a link or in a field), and
+    // while you play, Ctrl and the wheel don't zoom the page.
+    for (const k of ['mousedown', 'mouseup', 'auxclick'] as const) {
+      document.addEventListener(k, (e) => {
+        if (e.button === 3 || e.button === 4 || (e.button === 1 && !onLink(e))) e.preventDefault();
+      });
+    }
+    document.addEventListener('contextmenu', (e) => {
+      if (this.locked || !(inField(e) || onLink(e))) e.preventDefault();
+    });
+    addEventListener(
+      'wheel',
+      (e) => {
+        if (e.ctrlKey && this.playing) e.preventDefault();
+      },
+      { passive: false },
+    );
     on.addEventListener('pointerdown', (e) => {
       if (!this.enabled || e.pointerType !== 'mouse') return;
       this.held = e.pointerId;

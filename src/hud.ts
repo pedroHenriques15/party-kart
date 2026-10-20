@@ -470,8 +470,8 @@ export interface ScoreRow {
 
 // What's on the screen in a round (braga-map's task 074), over the screen on foot: your health, your
 // kit and its ammunition, the round's clock and where you stand, the crosshair (opening up as your
-// shots would spread) and the mark that says you hit, the screen's edge going red when you're hurt,
-// the scope, the scores (Tab), and the kits to choose from before the start and while you're down.
+// shots would spread) and the mark that says you hit, the screen's edge going red when you're hurt and
+// a red arc round the crosshair the way the shot came from, the scope, the scores (Tab), and the kits to choose from before the start and while you're down.
 export class FightHud {
   readonly el: HTMLElement;
   onPick: (k: KitId) => void = () => {};
@@ -479,12 +479,15 @@ export class FightHud {
   private kits = new Map<KitId, HTMLButtonElement>();
   private marked = 0;
   private shown = '-';
+  private arcs: HTMLElement[] = [];
 
   constructor(root: HTMLElement) {
     const e = this.e;
     e.cross = h('div', 'cross', h('i'), h('i'), h('i'), h('i'));
     e.marker = h('div', 'hitmark');
     e.hurt = h('div', 'hurt');
+    this.arcs = [0, 1, 2, 3].map(() => h('div', 'arc'));
+    e.from = h('div', 'from', ...this.arcs);
     e.scope = h('div', 'scope');
     e.health = h('div', 'health', h('b'), h('span', 'meter', h('i')));
     e.ammo = h('div', 'ammo', h('small'), h('b'));
@@ -511,7 +514,7 @@ export class FightHud {
       ),
       e.wait,
     );
-    this.el = h('div', 'fight', e.hurt, e.scope, e.cross, e.marker, e.round, e.health, e.ammo, e.center, e.scores, e.picker);
+    this.el = h('div', 'fight', e.hurt, e.scope, e.from, e.cross, e.marker, e.round, e.health, e.ammo, e.center, e.scores, e.picker);
     root.append(this.el);
   }
 
@@ -526,6 +529,7 @@ export class FightHud {
     gap: number; // how far the crosshair's lines stand from its middle, in CSS pixels
     scoped: boolean;
     hurt: number; // 0 to 1, how red the edge is
+    from: { angle: number; a: number }[]; // where you were shot from: clockwise from straight ahead, in radians, and how strong
     center: string;
     picking: { title: string; sub: string; kit: KitId; wait: string } | null;
     scores: ScoreRow[] | null;
@@ -544,6 +548,13 @@ export class FightHud {
     e.cross.style.display = o.alive && !o.scoped && !o.picking ? '' : 'none';
     e.scope.style.display = o.alive && o.scoped ? 'block' : 'none';
     e.hurt.style.opacity = String(Math.min(1, o.hurt));
+    this.arcs.forEach((arc, i) => {
+      const f = o.from[i];
+      arc.style.display = f ? '' : 'none';
+      if (!f) return;
+      arc.style.transform = `translate(-50%, -50%) rotate(${f.angle.toFixed(3)}rad)`;
+      arc.style.opacity = String(Math.min(1, f.a).toFixed(2));
+    });
     e.center.textContent = o.center;
     e.marker.classList.toggle('on', performance.now() < this.marked);
     if (o.picking) {

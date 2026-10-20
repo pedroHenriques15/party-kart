@@ -7,7 +7,7 @@ import { autopilot } from './car/autopilot.ts';
 import { carAt, clampSteer, newCar, speedOf, stopInput, type Car, type Input } from './car/car.ts';
 import { Arena, FLAG, type ArenaFx, type CarInfo, type Rules } from './game/arena.ts';
 import { botControls, newBrain, type Brain } from './game/bot.ts';
-import { field, fighterOf, fire, KIT_IDS, KITS, landed, pickSpawn, RESPAWN, seeOn, Soldier, spreadOf, type Body, type DownEv, type Field, type FightEv, type KitId, type ShotEv } from './game/fight.ts';
+import { field, fighterOf, fire, KIT_IDS, KITS, landed, pickSpawn, RESPAWN, seeOn, Soldier, spreadOf, struck, type Body, type DownEv, type Field, type FightEv, type KitId, type ShotEv } from './game/fight.ts';
 import { Flyer, landing, type Bound, type FlyInput } from './game/flyer.ts';
 import { SKILLS, Squad, type FootBot, type Mark } from './game/footbot.ts';
 import { ITEMS } from './game/items.ts';
@@ -16,7 +16,7 @@ import { Roamer } from './game/roamer.ts';
 import { alight, EYE, STAND, type WalkInput, Walker } from './game/walker.ts';
 import { FightHud, fmt, fmtDiff, Hud, ordinal, RoamHud } from './hud.ts';
 import { Keyboard, Mouse, TouchPad } from './input.ts';
-import { clamp, v3, type V } from './math.ts';
+import { addScaled, clamp, v3, type V } from './math.ts';
 import { buildEdge, ShotsView, Viewmodel } from './render/arms.ts';
 import { buildKart, buildWalker, driverById, DRIVERS, type KartModel, type WalkerModel } from './render/drivers.ts';
 import { Particles } from './render/fx.ts';
@@ -110,7 +110,10 @@ function lostGraphics(e: Event): void {
   say.textContent = 'O telemóvel ficou sem memória para os gráficos. ' + (lower !== quality ? 'Ao recarregar, o jogo abre com gráficos mais leves.' : 'Fecha as outras abas e apps, e recarrega.');
   const again = document.createElement('button');
   again.textContent = 'Recarregar';
-  again.onclick = () => location.reload();
+  again.onclick = () => {
+    leaving = true;
+    location.reload();
+  };
   lost.append(say, again);
   document.body.append(lost);
 }
@@ -305,6 +308,7 @@ interface FightCtx {
   by: string; // who put you down last
   fell: number; // performance.now() when you went down
   hurt: number; // how red the screen's edge is, fading
+  from: { id: string; x: number; z: number; at: number }[]; // who shot you lately, from where, when (performance.now())
   center: { text: string; until: number } | null;
   lastBeep: number;
   started: boolean;
@@ -341,6 +345,60 @@ function fullScreen(): void {
   if (!PHONE || !document.fullscreenEnabled || document.fullscreenElement) return;
   document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
 }
+
+// On a computer, the bar's "Ecrã inteiro": in full screen the game locks the keyboard (Chrome and
+// Edge), so the keys a browser keeps for itself, Ctrl+W, Ctrl+T, Ctrl+N, Ctrl+Tab and Esc among them,
+// come to the game instead, and none closes the page or leaves full screen by mistake: Esc is the
+// menu, and held, the browser says, leaves full screen.
+function wholeScreen(): void {
+  if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+  else document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+}
+const keyboardLock = () => (navigator as Navigator & { keyboard?: { lock?: () => Promise<void>; unlock?: () => void } }).keyboard;
+document.addEventListener('fullscreenchange', () => {
+  if (PHONE) return;
+  if (document.fullscreenElement) keyboardLock()?.lock?.().catch(() => {});
+  else keyboardLock()?.unlock?.();
+  render();
+});
+// In full screen, Ctrl and Cmd with a key do nothing of the browser's, menu or no menu.
+addEventListener('keydown', (e) => {
+  if (document.fullscreenElement && (e.ctrlKey || e.metaKey) && !(e.target instanceof HTMLElement && e.target.closest('input, textarea'))) e.preventDefault();
+});
+const wholeBtn = () =>
+  !PHONE &&
+  document.fullscreenEnabled &&
+  h(
+    'button',
+    { class: 'small ghost keys-only', title: 'No ecrã inteiro, Ctrl+W, Ctrl+T e Esc já não te tiram do jogo (Esc premido muito tempo sai do ecrã inteiro)', onclick: wholeScreen },
+    document.fullscreenElement ? '⛶ Sair do ecrã inteiro' : '⛶ Ecrã inteiro',
+  );
+
+// In a room, a race or a round, the page doesn't go by mistake: Back (a mouse's side button,
+// Alt+←, a swipe) only comes back to the game, as the page pushes an entry of its own on the history
+// for it to take, and closing or reloading the page asks first.
+const staying = () => !!(room || race || fight);
+let pushed = false; // the page's own entry is on the history's top
+let here = location.href; // the address there, as the game last left it
+let leaving = false; // on purpose
+function holdPage(): void {
+  if (pushed) here = location.href;
+  else if (staying()) {
+    here = location.href;
+    history.pushState(null, '', here);
+    pushed = true;
+  }
+}
+addEventListener('popstate', () => {
+  pushed = false;
+  history.replaceState(null, '', here);
+  holdPage();
+});
+addEventListener('beforeunload', (e) => {
+  if (!staying() || leaving) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
 
 // Sideways while in full screen, where the browser allows it (Android).
 function sideways(on: boolean): void {
@@ -753,6 +811,7 @@ function bar(): HTMLElement {
       touchBtn('📢', 'Buzina', () => pad.press('horn')),
       touchBtn('🎥', 'Câmara', () => pad.press('camera')),
       sound,
+      wholeBtn(),
       room?.isHost ? h('button', { class: 'small ghost', onclick: () => (room as HostRoom).endNow() }, 'Acabar a corrida') : null,
       h('button', { class: 'small ghost', onclick: leave }, 'Sair'),
     );
@@ -767,6 +826,7 @@ function bar(): HTMLElement {
       h('span', { class: 'room-code' }, 'Sala ', h('b', {}, room?.lobby.code ?? '')),
       touchBtn('Pontuação', 'Pontuação', () => fight && (fight.scores = !fight.scores)),
       sound,
+      wholeBtn(),
       room?.isHost ? h('button', { class: 'small ghost', onclick: () => (room as HostRoom).endNow() }, 'Acabar o tiroteio') : null,
       h('button', { class: 'small ghost', onclick: leave }, 'Sair'),
     );
@@ -784,6 +844,7 @@ function bar(): HTMLElement {
     touchBtn('📢', 'Buzina', () => pad.press('horn')),
     !flying && !walking && touchBtn('🎥', 'Câmara', () => pad.press('camera')),
     sound,
+    wholeBtn(),
   );
 }
 
@@ -793,7 +854,9 @@ function render(): void {
   const flying = !race && !!roam?.fly;
   const walking = !race && !!roam?.walk;
   keys.enabled = driving;
+  mouse.playing = driving;
   mouse.enabled = driving && flying;
+  holdPage();
   // On foot, the mouse looks round with the pointer locked, and lets it go under a menu; in a round,
   // also while the kits are up to choose from, so they can be clicked.
   mouse.aim = driving && walking && !(fight && picking(fight) && !fight.chose);
@@ -1368,7 +1431,7 @@ function startFight(goIn: number, endIn: number, grid: Record<string, number>): 
     squad = new Squad(f, f.paths, rm.lobby.skill / (SKILLS.length - 1));
     for (const m of bots) squad.add(m.id, Math.max(0, -goIn), goIn > 0 ? f.spawns[(grid[m.id] ?? 0) % f.spawns.length] : null, foes());
   }
-  fight = { goAt: now + goIn, endAt: now + endIn, me, hud: new FightHud(hudRoot), kit: lastKit, chose: false, by: '', fell: 0, hurt: 0, center: null, lastBeep: 99, started: goIn <= 0, scores: false, downs: 0, squad };
+  fight = { goAt: now + goIn, endAt: now + endIn, me, hud: new FightHud(hudRoot), kit: lastKit, chose: false, by: '', fell: 0, hurt: 0, from: [], center: null, lastBeep: 99, started: goIn <= 0, scores: false, downs: 0, squad };
   fight.hud.onPick = pickKit;
   if (fight.started) me.arm(lastKit, now - fight.goAt);
   r.hud.keys('fight');
@@ -1494,6 +1557,7 @@ function fightFrame(f: FightCtx, r: RoamCtx, w: Walker, now: number, dt: number)
   }
   if (f.started && !me.alive && now - f.fell >= RESPAWN) respawn(f, w, now);
   f.hurt *= Math.exp(-dt * 2.5);
+  f.from = f.from.filter((s) => now - s.at < FROM_FOR);
   document.body.classList.toggle('picking', picking(f));
 
   const board = room?.board ?? [];
@@ -1513,15 +1577,27 @@ function fightFrame(f: FightCtx, r: RoamCtx, w: Walker, now: number, dt: number)
     gap: 5 + (Math.tan(spreadOf(me, w.speed(), !w.grounded)) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2),
     scoped: me.scoped,
     hurt: me.alive ? Math.max(f.hurt, (1 - me.health / 100) * 0.5) : 0.6,
+    from: f.from.slice(-4).map((s) => {
+      const dx = s.x - w.p.x;
+      const dz = s.z - w.p.z;
+      const c = Math.cos(w.yaw);
+      const sn = Math.sin(w.yaw);
+      return { angle: Math.atan2(dz * c - dx * sn, dx * c + dz * sn), a: (FROM_FOR - (now - s.at)) / 1000 };
+    }),
     center: !f.started && left <= 3 ? String(left) : f.center && now < f.center.until ? f.center.text : '',
     picking: !picking(f) ? null : f.started ? { title: `Eliminado por ${nameOf(f.by)}`, sub: 'A arma com que voltas:', kit: f.kit, wait: `Voltas em ${wait} s` } : { title: 'Escolhe a tua arma', sub: KITS[f.kit].blurb, kit: f.kit, wait: '' },
     scores: keys.scores || f.scores ? board.map((e) => ({ name: e.bot ? `🤖 ${e.name}` : e.name, color: colorOf(e.id), kills: e.kills, deaths: e.deaths, me: e.id === room?.you })) : null,
   });
 }
 
+// How long the arc that says where a shot came from stays (ms), fading over its last second.
+const FROM_FOR = 2500;
+
 // What a shot looks and sounds like, yours or someone else's: the flash at the muzzle, the report
 // from where it was fired, the tracers, and where each pellet no one stopped struck, its mark, a puff
-// of what it struck and a smack.
+// of what it struck and a smack. Where it hit someone, a tracer from the muzzle to them, a red puff
+// and their figure jerked away from it, so it's plain from anywhere who shot whom; a tracer that hit
+// you streaks past a metre short of your eye.
 const DUST: Record<string, string[]> = { ground: ['#b8ad99', '#8d8577'], building: ['#ddd6ca', '#b9b1a4'], roof: ['#a8553f', '#8c8c8c'], wall: ['#cfc8bb', '#9f998d'], hedge: ['#5c7a37', '#3f5a26'], tree: ['#6b5641', '#4d3d2c'], kart: ['#ffe14d', '#ffffff'] };
 function shotFx(ev: ShotEv, mine: boolean): void {
   if (!arms || !arena) return;
@@ -1537,8 +1613,23 @@ function shotFx(ev: ShotEv, mine: boolean): void {
     arms.shots.flash(from);
     fightSfx.shot(ev.kit, { x: ev.x, y: ev.y, z: ev.z });
   }
+  const you = room?.you;
+  const hits = struck(ev, (id) => (id === you ? (roam?.walk?.p ?? null) : (standing.get(id) ?? null)));
+  hits.forEach((s, i) => {
+    const atYou = s.v === you;
+    if (i < 2) arms!.shots.tracer(from, atYou ? addScaled(s.p, s.d, -1.2) : s.p);
+    if (atYou) return;
+    glow.spray(s.p, 2, ['#ff6a55', '#ffd2c4'], 2.2, 1.6, 0.15);
+    for (let k = 0; k < 2; k++) smoke.add(s.p.x, s.p.y, s.p.z, s.d.x * 1.2, s.d.y * 1.2 + 0.3, s.d.z * 1.2, 0.16 + k * 0.08, k ? '#a3150d' : '#e0261a', 0);
+    for (let k = 0; k < 7; k++) fx.add(s.p.x, s.p.y, s.p.z, s.d.x * 3 + (Math.random() - 0.5) * 2, s.d.y * 3 + Math.random() * 1.5, s.d.z * 3 + (Math.random() - 0.5) * 2, 0.25 + Math.random() * 0.2, k % 2 ? '#e0261a' : '#9a140c', -6);
+  });
+  for (const h of ev.hits) {
+    const s = hits.find((x) => x.v === h.v);
+    if (s && h.v !== you) standing.get(h.v)?.model.hit(s.d, h.n / 40);
+  }
+  const traced = Math.min(2, hits.length);
   landed(ev, seeOn(arena, block)).forEach((s, i) => {
-    if (i < 3) arms!.shots.tracer(from, s);
+    if (i + traced < 3) arms!.shots.tracer(from, s);
     if (!s.what) return;
     arms!.shots.mark(s, { x: s.nx, y: s.ny, z: s.nz });
     const c = DUST[s.what] ?? DUST.wall;
@@ -1598,6 +1689,7 @@ function hitMe(f: FightCtx, ev: ShotEv, h: { n: number; head: boolean }): void {
   const down = me.hurt(h.n, now - f.goAt);
   if (me.health === was && !down) return;
   f.hurt = Math.min(1, f.hurt + 0.35 + (was - me.health) / 100);
+  f.from = [...f.from.filter((s) => s.id !== ev.owner), { id: ev.owner, x: ev.x, z: ev.z, at: now }];
   fightSfx.hurt();
   if (roam) roam.shake = Math.max(roam.shake, 0.3);
   if (!down) return;

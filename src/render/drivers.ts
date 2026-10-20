@@ -965,6 +965,8 @@ export interface WalkerModel {
   fall: (down: number, fade: number) => void;
   // Where its gun's muzzle is, in the world, for its shots' flash and tracers.
   muzzle: (out: THREE.Vector3) => THREE.Vector3;
+  // Hit by a shot going the way d (in the world), as hard as k from 0 to 1: it jerks away from it.
+  hit: (d: { x: number; y: number; z: number }, k: number) => void;
 }
 
 // The driver out of their car, standing (braga-map's task 073): the same figure on legs, swinging its
@@ -1009,6 +1011,10 @@ export function buildWalker(d: Driver): WalkerModel {
   const head = fig.getObjectByName('head')!;
   let phase = 0;
   let swing = 0;
+  // A shot's jerk, its lean the way the shot went, about its own x and z, dying away.
+  const kick = new THREE.Vector2();
+  const way = new THREE.Vector3();
+  const inv = new THREE.Quaternion();
   // Its gun, held in front of its chest at a person's size whatever the figure's scale, made the
   // first time it holds that kit.
   const guns = new Map<KitId, ReturnType<typeof buildGun>>();
@@ -1050,6 +1056,13 @@ export function buildWalker(d: Driver): WalkerModel {
       for (const m of own.keys()) (m.material as THREE.Material).opacity = 1 - fade;
       group.visible = fade < 1;
     },
+    hit(d, k) {
+      group.updateMatrixWorld(true);
+      group.getWorldQuaternion(inv).invert();
+      way.set(d.x, 0, d.z).normalize().applyQuaternion(inv);
+      const a = 0.18 + 0.27 * Math.min(1, k);
+      kick.set(kick.x + way.z * a, kick.y - way.x * a).clampLength(0, 0.5);
+    },
     muzzle(out) {
       if (!held) return group.getWorldPosition(out);
       group.updateMatrixWorld(true);
@@ -1065,7 +1078,9 @@ export function buildWalker(d: Driver): WalkerModel {
       legs[1].rotation.z = -a;
       arms[0].rotation.z = -a * 0.8;
       arms[1].rotation.z = a * 0.8;
-      body.rotation.z = -Math.min(0.25, Math.max(0, speed - 2) * 0.08);
+      kick.multiplyScalar(Math.exp(-dt * 9));
+      body.rotation.x = kick.x;
+      body.rotation.z = -Math.min(0.25, Math.max(0, speed - 2) * 0.08) + kick.y;
       body.position.y = speed > 3 ? Math.abs(Math.sin(phase)) * 0.05 : 0;
       head.rotation.z = Math.max(-0.6, Math.min(0.6, pitch * 0.6));
       // Holding a gun: both arms out to it, aimed where it looks, the legs still walking.

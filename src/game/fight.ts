@@ -8,7 +8,7 @@
 // hit. A bullet is instant, so the items' rule (the victim decides) would have shots that hit on the
 // shooter's screen miss on the victim's. Every browser draws the shot from the event: its pellets'
 // directions come from its seed, so the same marks are left on the same walls everywhere.
-import { clamp, cross, norm, v3, type V } from '../math.ts';
+import { addScaled, clamp, cross, dist2, dot, norm, sub, v3, type V } from '../math.ts';
 import { clear, sight, type Blocker, type Sighted } from '../world/sight.ts';
 import { Rings, WorldGround, type Wall } from '../world/ground.ts';
 import { Paths } from '../world/paths.ts';
@@ -345,6 +345,30 @@ export function fire(s: Soldier, eye: V, aim: V, speed: number, air: boolean, t:
 export function landed(ev: ShotEv, see: See): Sighted[] {
   const o = v3(ev.x, ev.y, ev.z);
   return pellets(ev).flatMap((d, p) => (ev.stop & (1 << p) ? [] : [see(o, d, KITS[ev.kit].range)]));
+}
+
+// Where each pellet a fighter stopped struck them, with whom and the way it went, as a browser draws
+// them (`at`, their feet by id, or null for someone it doesn't draw): the point of its way nearest
+// the middle of their body, for its tracer and the puff where it struck. A shot hits by where the
+// shooter's browser drew them, so the victim as drawn here may be a little off its way.
+export function struck(ev: ShotEv, at: (id: string) => V | null): { v: string; p: V; d: V }[] {
+  if (!ev.stop) return [];
+  const o = v3(ev.x, ev.y, ev.z);
+  const out: { v: string; p: V; d: V }[] = [];
+  pellets(ev).forEach((d, k) => {
+    if (!(ev.stop & (1 << k))) return;
+    let best: { v: string; p: V; off: number } | null = null;
+    for (const h of ev.hits) {
+      const b = at(h.v);
+      if (!b) continue;
+      const mid = v3(b.x, b.y + (TORSO.y0 + HEAD.y) / 2, b.z);
+      const p = addScaled(o, d, Math.max(0, dot(sub(mid, o), d)));
+      const off = dist2(p, mid);
+      if (!best || off < best.off) best = { v: h.v, p, off };
+    }
+    if (best) out.push({ v: best.v, p: best.p, d });
+  });
+  return out;
 }
 
 // ---- The scores ----

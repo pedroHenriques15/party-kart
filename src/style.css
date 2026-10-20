@@ -1440,6 +1440,28 @@ body.fighting #hud .dot {
   background: radial-gradient(ellipse at center, transparent 45%, rgba(200, 16, 30, 0.55) 80%, rgba(140, 0, 10, 0.85) 100%);
 }
 
+/* Shot: a red arc round the crosshair for each shooter, the way the shot came from, turning as you
+   turn (hud.ts's FightHud), over the scope too. */
+.from {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.from .arc {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(44vmin, 340px);
+  height: min(44vmin, 340px);
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 16px solid transparent;
+  border-top-color: rgba(255, 40, 30, 0.95);
+  filter: drop-shadow(0 0 6px rgba(255, 0, 0, 0.85));
+}
+
 /* Through the scope: black round a circle, its cross hairs. */
 .scope {
   display: none;

@@ -1,7 +1,7 @@
 import { loadWorld, type World } from 'braga-map';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { byKills, damage, eyeOf, field, fire, fighterOf, hitBody, KIT_IDS, KITS, landed, pickSpawn, RESPAWN, SAFE, seeOn, Soldier, tally, type Body, type DownEv, type KitId, type Score, type See, type ShotEv } from '../src/game/fight.ts';
+import { byKills, damage, eyeOf, field, fire, fighterOf, hitBody, KIT_IDS, KITS, landed, pickSpawn, RESPAWN, SAFE, seeOn, Soldier, struck, tally, type Body, type DownEv, type KitId, type Score, type See, type ShotEv } from '../src/game/fight.ts';
 import { RUN, STAND, Walker } from '../src/game/walker.ts';
 import { norm, v3, type V } from '../src/math.ts';
 import { worldGround } from '../src/world/ground.ts';
@@ -86,6 +86,27 @@ function ttk(kit: KitId, d: number, running: boolean, scoped: boolean, n = 300):
   }
   return sum / n / 1000;
 }
+
+test('where a shot struck someone, for its tracer and the puff, as each browser draws them', () => {
+  // The shotgun at someone 8 m off, two others beside them: every pellet that stopped struck the one
+  // it hit, on its way, at their body; none of those it missed.
+  const s = new Soldier('a', 'shotgun');
+  const b: Body = { id: 'b', x: 8, y: 0, z: 0 };
+  const ev = fire(s, v3(0, 1.65, 0), norm(v3(8, 1 - 1.65, 0)), 0, false, 0, [b, { id: 'c', x: 8, y: 0, z: 3 }], open, 777)!;
+  const n = [...Array(KITS.shotgun.pellets).keys()].filter((k) => ev.stop & (1 << k)).length;
+  assert.ok(n > 3, `${n} pellets stopped`);
+  const at = struck(ev, (id) => (id === 'b' ? v3(b.x, b.y, b.z) : id === 'c' ? v3(8, 0, 3) : null));
+  assert.equal(at.length, n);
+  for (const p of at) {
+    assert.equal(p.v, 'b');
+    assert.ok(Math.abs(p.p.x - 8) < 0.5 && Math.abs(p.p.z) < 0.6 && p.p.y > 0.4 && p.p.y < 1.8, `(${p.p.x.toFixed(2)}, ${p.p.y.toFixed(2)}, ${p.p.z.toFixed(2)})`);
+    assert.ok(p.d.x > 0.9, 'its way, from the shooter');
+  }
+  // Someone this browser doesn't draw: nowhere.
+  assert.deepEqual(struck(ev, () => null), []);
+  // A shot that hit nobody: nothing.
+  assert.deepEqual(struck(fire(new Soldier('a', 'rifle'), v3(0, 1.65, 0), v3(0, 0, 1), 0, false, 0, [b], open, 5)!, () => v3()), []);
+});
 
 test('the kits: their damage at range, and no kit wins every duel', () => {
   for (const id of KIT_IDS) {

@@ -2,32 +2,36 @@ import { map as bragaMap, type Track as Course } from 'braga-map';
 import * as THREE from 'three';
 import './style.css';
 import { ambienceOf } from './ambience.ts';
-import { beep, checkpointSound, cityHeard, cityIs, citySound, engines, horn, isMuted, lapSound, listen, measureAudio, played, readMeter, recordAudio, recordState, resetMeter, sfx, thud, toggleMute, unlockAudio, type Kart } from './audio.ts';
+import { beep, checkpointSound, cityHeard, cityIs, citySound, engines, fightSfx, horn, isMuted, lapSound, listen, measureAudio, played, readMeter, recordAudio, recordState, resetMeter, sfx, thud, toggleMute, unlockAudio, type Kart } from './audio.ts';
 import { autopilot } from './car/autopilot.ts';
 import { carAt, clampSteer, newCar, speedOf, stopInput, type Car, type Input } from './car/car.ts';
 import { Arena, FLAG, type ArenaFx, type CarInfo, type Rules } from './game/arena.ts';
 import { botControls, newBrain, type Brain } from './game/bot.ts';
+import { field, fighterOf, fire, KIT_IDS, KITS, landed, pickSpawn, RESPAWN, seeOn, Soldier, spreadOf, type Body, type DownEv, type Field, type FightEv, type KitId, type ShotEv } from './game/fight.ts';
 import { Flyer, landing, type Bound, type FlyInput } from './game/flyer.ts';
+import { SKILLS, Squad, type FootBot, type Mark } from './game/footbot.ts';
 import { ITEMS } from './game/items.ts';
 import { NO_CONTROLS, Racer, type Controls, type Note } from './game/racer.ts';
 import { Roamer } from './game/roamer.ts';
 import { alight, EYE, STAND, type WalkInput, Walker } from './game/walker.ts';
-import { fmt, fmtDiff, Hud, ordinal, RoamHud } from './hud.ts';
+import { FightHud, fmt, fmtDiff, Hud, ordinal, RoamHud } from './hud.ts';
 import { Keyboard, Mouse, TouchPad } from './input.ts';
 import { clamp, v3, type V } from './math.ts';
+import { buildEdge, ShotsView, Viewmodel } from './render/arms.ts';
 import { buildKart, buildWalker, driverById, DRIVERS, type KartModel, type WalkerModel } from './render/drivers.ts';
 import { Particles } from './render/fx.ts';
 import { ItemsView } from './render/items3d.ts';
-import { Look, type Quality } from './render/look.ts';
+import { Look, SUN_DIR, type Quality } from './render/look.ts';
 import { Skids } from './render/skids.ts';
 import { nameTag } from './render/textures.ts';
 import { buildCity, type RaceWorld } from './render/city.ts';
 import type { EggEvent } from './render/eggs.ts';
-import { ClientRoom, cleanName, HOST_ID, HostRoom, MAX_RACERS, type Entry, type Room, type Snap } from './session.ts';
+import { ClientRoom, cleanName, HOST_ID, HostRoom, MAX_RACERS, type Entry, type GameEv, type Room, type Snap } from './session.ts';
 import { Stats, textureBytes } from './stats.ts';
 import { buildTrack, locate, type Track } from './track/track.ts';
 import { courseById, HOME, km, TRACKS } from './tracks.ts';
 import { streetNames } from './world/names.ts';
+import type { Blocker } from './world/sight.ts';
 
 const DT = 1 / 120;
 // ?autodrive: the autopilot drives your car in a race (for testing the game in a browser), and
@@ -225,9 +229,9 @@ let notice = '';
 // What the menu is waiting on: a room opening, or joining one.
 let busy = '';
 let results: Entry[] | null = null;
-// The menu, over the world; and its page: the main one, or the race's settings.
+// The menu, over the world; and its page: the main one, the race's settings, or the deathmatch's.
 let menu = false;
-let page: 'main' | 'race' = 'main';
+let page: 'main' | 'race' | 'fight' = 'main';
 
 interface RaceCtx {
   course: Course;
@@ -278,6 +282,7 @@ interface RoamCtx {
   vice: number;
   idx: number | null; // the track's sample you're by while you're on the route, for the eggs
   street: string; // the street whose name was shown last
+  stride: number; // on foot, metres since your last footstep
   kept: number; // performance.now() when where you are was last kept
   fly: Flyer | null; // the camera, while you fly and your kart waits (braga-map's task 054)
   walk: Walker | null; // you, on foot, while your kart waits (braga-map's task 073)
@@ -286,6 +291,31 @@ interface RoamCtx {
 }
 
 let roam: RoamCtx | null = null;
+
+// The deathmatch (braga-map's task 074): a round on foot in Fujacal, in free roam, your kart waiting
+// where it was; started by the host as a race is. You, the round's clock, the kit to come back with,
+// and what's on the screen.
+interface FightCtx {
+  goAt: number; // performance.now() of the start: the round's clock is ms since
+  endAt: number;
+  me: Soldier;
+  hud: FightHud;
+  kit: KitId; // to come back with
+  chose: boolean; // chosen while the kits are up, this time
+  by: string; // who put you down last
+  fell: number; // performance.now() when you went down
+  hurt: number; // how red the screen's edge is, fading
+  center: { text: string; until: number } | null;
+  lastBeep: number;
+  started: boolean;
+  scores: boolean; // shown, by the bar's button on a touch screen
+  downs: number;
+  squad: Squad | null; // the bots, if you host (braga-map's task 075)
+}
+
+let fight: FightCtx | null = null;
+// The kit you last chose, for the next round.
+let lastKit: KitId = 'rifle';
 // Where you were when the race started, to go back to when it's over.
 let before: Car | null = null;
 // Whether a friend who has just joined has been put beside the host yet.
@@ -420,6 +450,7 @@ function members(r: Room, bots: boolean): HTMLElement {
 function menuScreen(): HTMLElement {
   const r = room;
   if (page === 'race' && r) return raceScreen(r);
+  if (page === 'fight' && r) return fightScreen(r);
   const taken = new Map(r ? r.lobby.members.filter((m) => m.id !== r.you && !m.bot).map((m) => [m.driver, m.name] as const) : []);
   const name = h('input', {
     maxLength: 16,
@@ -461,10 +492,11 @@ function menuScreen(): HTMLElement {
     h(
       'div',
       { class: 'row wrap' },
-      h('button', { onclick: () => void openRace(), disabled: !!busy }, '🏁 Corrida'),
-      h('button', { onclick: reposition }, '↺ Reposicionar'),
+      h('button', { onclick: () => void openRace(), disabled: !!busy || !!fight }, '🏁 Corrida'),
+      h('button', { onclick: () => void openFight(), disabled: !!busy || !!fight }, '🎯 Tiroteio'),
+      !fight && h('button', { onclick: reposition }, '↺ Reposicionar'),
       roam && !roam.walk && h('button', { onclick: () => (fly(roam!, !roam!.fly), closeMenu()) }, roam.fly ? '🏎️ Voltar ao kart' : '🎥 Voar pela cidade'),
-      roam && !roam.fly && h('button', { onclick: () => (walk(roam!, !roam!.walk), closeMenu()) }, roam.walk ? '🏎️ Voltar ao kart' : '🚶 A pé'),
+      roam && !roam.fly && !fight && h('button', { onclick: () => (walk(roam!, !roam!.walk), closeMenu()) }, roam.walk ? '🏎️ Voltar ao kart' : '🚶 A pé'),
     ),
     h('p', { class: 'err' }, busy || notice),
     h('div', { class: 'row foot' }, qualityPicker()),
@@ -489,6 +521,9 @@ function howTo(): HTMLElement {
       h('li', { class: 'touch-only' }, h('b', {}, 'Voar:'), ' Voar lá em cima, ou 🎥 Voar pela cidade no menu, deixa o kart à espera e leva a câmara por cima da cidade e dos montes, até ao horizonte. O polegar esquerdo anda para onde o arrastares, arrastar na metade direita olha à volta, e ▲ Subir e ▼ Descer. Voltar ao kart põe-no na rua por baixo da câmara.'),
       h('li', {}, h('b', {}, 'Amigos:'), ' Convidar amigos dá-te uma ligação para lhes mandares; quem a abrir aparece ao teu lado, no teu mundo.'),
       h('li', {}, h('b', {}, 'Corrida:'), ` ${TRACKS.length > 1 ? 'numa das pistas' : `a ${HOME.name}`}, com toda a gente da sala e bots nos lugares vazios. O anfitrião escolhe ${TRACKS.length > 1 ? 'a pista, ' : ''}as voltas e os itens e dá a partida; no fim voltas para onde estavas.`),
+      h('li', {}, h('b', {}, 'Tiroteio:'), ' a pé no Fujacal, com toda a gente da sala, cada um por si. Escolhes a arma sempre que voltas: ', KIT_IDS.map((k) => KITS[k].name.toLowerCase()).join(', '), '. Ganha quem abater mais até acabar o tempo; no fim voltas ao kart, onde ficou.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'No tiroteio:'), ' WASD anda, o rato aponta, o clique dispara, o botão direito mira (com a espingarda de precisão), ', h('b', {}, 'R'), ' recarrega, ', h('b', {}, 'Tab'), ' mostra a pontuação, e ', h('b', {}, '1'), ' a ', h('b', {}, '4'), ' escolhem a arma.'),
+      h('li', { class: 'touch-only' }, h('b', {}, 'No tiroteio:'), ' o polegar esquerdo anda, arrastar na metade direita aponta, Fogo dispara (e aponta, se o arrastares), Recarregar, e Mira com a espingarda de precisão. Toca na arma para a escolher.'),
       h('li', { class: 'keys-only' }, h('b', {}, 'Itens, na corrida:'), ' passa pelas caixas ?; ', h('b', {}, 'E'), ' ou ', h('b', {}, 'Shift'), ' usa o que te saiu (com ↓ atiras para trás). Quanto mais atrás fores, melhor o que te sai.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Itens, na corrida:'), ' passa pelas caixas ? e toca no botão do item (arrasta-o para baixo para atirar para trás). Quanto mais atrás fores, melhor o que te sai.'),
       h('li', {}, h('b', {}, 'Cone de aspiração:'), ' cola-te atrás de um carro e ele puxa-te, com mais força quanto mais perto; sai para ultrapassar e a velocidade a mais vai-se em poucos segundos.'),
@@ -596,7 +631,58 @@ function raceScreen(r: Room): HTMLElement {
   );
 }
 
+// The deathmatch's settings, from the menu's "Tiroteio" (braga-map's task 074): the host chooses how
+// long a round lasts and starts it, the others see what's chosen and wait.
+function fightScreen(r: Room): HTMLElement {
+  const L = r.lobby;
+  const host = r.isHost ? (r as HostRoom) : null;
+  const humans = L.members.filter((m) => !m.bot).length;
+  const minutes = h('select', { disabled: !host, onchange: () => host?.configure({ round: Number(minutes.value) }) }, ...[3, 5, 10].map((n) => h('option', { value: String(n), selected: n === L.round }, `${n} min`)));
+  const bots = h('select', { disabled: !host, onchange: () => host?.configure({ bots: Number(bots.value) }) }, ...Array.from({ length: MAX_RACERS - humans + 1 }, (_, n) => h('option', { value: String(n), selected: n === L.bots }, String(n))));
+  const skill = h('select', { disabled: !host || !L.bots, onchange: () => host?.configure({ skill: Number(skill.value) }) }, ...SKILLS.map((s, n) => h('option', { value: String(n), selected: n === L.skill }, s)));
+  const where = h('select', { disabled: !host, onchange: () => host?.configure({ arena: where.value }) }, ...world.drive.d.world.arenas.map((a) => h('option', { value: a.id, selected: a.id === L.arena }, a.name)));
+  return h(
+    'div',
+    { class: 'panel lobby' },
+    h('h2', {}, '🎯 Tiroteio'),
+    h('p', { class: 'tag' }, 'A pé, numa de três arenas pequenas no Fujacal e no Conselheiro Lobato, com portas abertas nos rés-do-chão e um prédio que se sobe até ao telhado: toda a gente da sala, cada um por si, com a arma que escolher sempre que volta, e bots nos lugares vazios. Ganha quem abater mais até acabar o tempo, e no fim cada um volta ao seu kart.'),
+    h('div', { class: 'room' }, h('div', {}, h('span', { class: 'label' }, 'Sala'), h('b', { class: 'code' }, L.code)), inviteButton(L.code)),
+    members(r, true),
+    h('div', { class: 'settings' }, h('label', { class: 'inline' }, 'Arena ', where), h('label', { class: 'inline' }, 'Duração ', minutes), h('label', { class: 'inline' }, 'Bots ', bots), h('label', { class: 'inline' }, 'Nível ', skill)),
+    host
+      ? h(
+          'button',
+          {
+            class: 'primary',
+            onclick: () => {
+              fullScreen();
+              host.configure({ mode: 'fight' });
+              host.start();
+            },
+          },
+          'Começar o tiroteio',
+        )
+      : h('p', { class: 'wait' }, 'À espera que o anfitrião comece…'),
+    h(
+      'div',
+      { class: 'row foot' },
+      h(
+        'button',
+        {
+          class: 'ghost',
+          onclick: () => {
+            page = 'main';
+            render();
+          },
+        },
+        '← Voltar',
+      ),
+    ),
+  );
+}
+
 function resultsScreen(r: Room, list: Entry[]): HTMLElement {
+  if (r.lobby.mode === 'fight') return fightResults(r, list);
   const isRace = r.lobby.mode === 'race';
   const back = () => {
     results = null;
@@ -624,6 +710,34 @@ function resultsScreen(r: Room, list: Entry[]): HTMLElement {
   );
 }
 
+// A round's results: the most kills first, then the fewest deaths.
+function fightResults(r: Room, list: Entry[]): HTMLElement {
+  const back = () => {
+    results = null;
+    render();
+  };
+  return h(
+    'div',
+    { class: 'panel results' },
+    h('h2', {}, 'O tiroteio acabou'),
+    h(
+      'ol',
+      { class: 'podium' },
+      ...list.map((e, k) =>
+        h(
+          'li',
+          { class: e.id === r.you ? 'me' : '' },
+          h('span', { class: 'pos' }, String(k + 1)),
+          h('span', { class: 'swatch', style: `--c:${driverById(e.driver).color};--t:${driverById(e.driver).trim}` }),
+          h('span', { class: 'who' }, e.bot ? `🤖 ${e.name}` : e.name, h('small', {}, `${e.deaths} ${e.deaths === 1 ? 'morte' : 'mortes'}`)),
+          h('span', { class: 'time' }, `${e.kills} ${e.kills === 1 ? 'abate' : 'abates'}`),
+        ),
+      ),
+    ),
+    h('div', { class: 'row' }, r.isHost && h('button', { onclick: () => (fullScreen(), (r as HostRoom).start()) }, 'Outra ronda'), h('button', { class: 'primary', onclick: back }, 'Voltar a conduzir')),
+  );
+}
+
 // The bar at the top while you drive: the menu, the room, and on a touch screen the keys Enter,
 // Backspace, H, C and M as buttons.
 function bar(): HTMLElement {
@@ -644,6 +758,19 @@ function bar(): HTMLElement {
     );
   }
   const humans = room ? room.lobby.members.filter((m) => !m.bot).length : 0;
+  // In a round: the menu, the scores and the sound; the host can end it.
+  if (fight) {
+    return h(
+      'div',
+      { class: 'bar' },
+      h('button', { class: 'small ghost', title: 'Menu (Esc)', onclick: openMenu }, '☰ Menu'),
+      h('span', { class: 'room-code' }, 'Sala ', h('b', {}, room?.lobby.code ?? '')),
+      touchBtn('Pontuação', 'Pontuação', () => fight && (fight.scores = !fight.scores)),
+      sound,
+      room?.isHost ? h('button', { class: 'small ghost', onclick: () => (room as HostRoom).endNow() }, 'Acabar o tiroteio') : null,
+      h('button', { class: 'small ghost', onclick: leave }, 'Sair'),
+    );
+  }
   const flying = !!roam?.fly;
   const walking = !!roam?.walk;
   return h(
@@ -667,12 +794,14 @@ function render(): void {
   const walking = !race && !!roam?.walk;
   keys.enabled = driving;
   mouse.enabled = driving && flying;
-  // On foot, the mouse looks round with the pointer locked, and lets it go under a menu.
-  mouse.aim = driving && walking;
+  // On foot, the mouse looks round with the pointer locked, and lets it go under a menu; in a round,
+  // also while the kits are up to choose from, so they can be clicked.
+  mouse.aim = driving && walking && !(fight && picking(fight) && !fight.chose);
   if (!mouse.aim) mouse.unlock();
-  pad.show(driving ? (race ? race.rules.mode : flying ? 'fly' : walking ? 'walk' : 'roam') : null);
+  pad.show(driving ? (race ? race.rules.mode : flying ? 'fly' : fight ? 'fight' : walking ? 'walk' : 'roam') : null);
   document.body.classList.toggle('flying', flying);
   document.body.classList.toggle('walking', walking);
+  document.body.classList.toggle('fighting', !!fight);
   document.body.classList.toggle('racing', !!race);
   document.body.classList.toggle('driving', driving);
   document.body.classList.toggle('paneled', !!panel);
@@ -743,7 +872,16 @@ async function invite(): Promise<void> {
 async function openRace(): Promise<void> {
   if (!room) await invite();
   if (!room) return;
+  if (room.isHost && room.lobby.mode === 'fight') (room as HostRoom).configure({ mode: 'race' });
   page = 'race';
+  render();
+}
+
+// "Tiroteio": the deathmatch's, the same way.
+async function openFight(): Promise<void> {
+  if (!room) await invite();
+  if (!room) return;
+  page = 'fight';
   render();
 }
 
@@ -780,6 +918,7 @@ function leave(): boolean {
     room.leave();
   }
   room = null;
+  endFight();
   endRace();
   results = null;
   notice = '';
@@ -804,12 +943,13 @@ function wire(r: Room): void {
     known = now;
     if (!race) renderSoon();
   };
-  r.onStart = (goIn, endIn, grid) => startRace(goIn, endIn, grid);
+  r.onStart = (goIn, endIn, grid) => (r.lobby.mode === 'fight' ? startFight(goIn, endIn, grid) : startRace(goIn, endIn, grid));
   r.onEnd = (list) => {
     // Everyone goes back to where they were: none of the race's positions are wanted any more.
     r.cars.clear();
     results = list;
-    endRace();
+    if (fight) endFight();
+    else endRace();
     render();
   };
   r.onHonk = (id) => {
@@ -818,9 +958,10 @@ function wire(r: Room): void {
     if (m) horn(driverById(m.driver).horn, k ? 1 : 0.6, k?.model.group.position);
   };
   r.onBoard = () => {};
-  r.onEv = (ev) => race?.arena.apply(ev);
+  r.onEv = (ev) => (ev.k === 'shot' || ev.k === 'down' ? onFightEv(ev) : race?.arena.apply(ev));
   r.onClose = (why) => {
     room = null;
+    endFight();
     endRace();
     results = null;
     page = 'main';
@@ -853,7 +994,7 @@ function keepWhere(c: Car): void {
 function startRoam(car: Car): void {
   car.v = v3();
   const me = new Roamer(world.drive, room?.you || 'me', myName(), car);
-  roam = { me, kart: showKart(myDriver(), null), karts: new Map(), cars: new Map(), hud: new RoamHud(hudRoot, mapLines), acc: 0, cam: 0, steer: 0, throttle: 0, shake: 0, vice: 0, idx: null, street: '', kept: 0, fly: null, walk: null, eye: 0, hop: false };
+  roam = { me, kart: showKart(myDriver(), null), karts: new Map(), cars: new Map(), hud: new RoamHud(hudRoot, mapLines), acc: 0, cam: 0, steer: 0, throttle: 0, shake: 0, vice: 0, idx: null, street: '', stride: 0, kept: 0, fly: null, walk: null, eye: 0, hop: false };
   slow.frames = slow.time = 0;
 }
 
@@ -882,7 +1023,7 @@ function besideTheHost(r: RoamCtx): void {
     let c = d.spawn(s.x, s.z, s.y, s.yaw);
     if (Math.hypot(c.p.x - s.x, c.p.z - s.z) < 6) c = d.place(carAt(v3(c.p.x - Math.cos(c.yaw) * 7, c.p.y, c.p.z - Math.sin(c.yaw) * 7), c.yaw, c.up), c.p.y + 1.5);
     r.me.car = c;
-    if (r.walk) r.walk = alight(world.drive, c.p, c.yaw);
+    if (r.walk && !fight) r.walk = alight(world.drive, c.p, c.yaw);
   } catch {
     /* no street near the host: stay where you are */
   }
@@ -969,16 +1110,16 @@ function nearPlane(foot: boolean): void {
   camera.updateProjectionMatrix();
 }
 
-// Your keys, mouse and thumbs, on foot.
-function steps(): WalkInput {
+// Your keys, mouse and thumbs, on foot; looking round `fine` times as fast, through a scope.
+function steps(fine = 1): WalkInput {
   const k = keys.steps();
   const p = pad.steps();
-  const m = mouse.look();
+  const m = mouse.look(fine);
   return {
     fwd: clamp(k.fwd + p.fwd, -1, 1),
     side: clamp(k.side + p.side, -1, 1),
     turn: k.turn,
-    look: { x: m.x + p.look.x, y: m.y + p.look.y },
+    look: { x: m.x + p.look.x * fine, y: m.y + p.look.y * fine },
     run: k.run || p.run,
     jump: k.jump || p.jump,
   };
@@ -990,8 +1131,21 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
   syncOthers(r.karts, r.cars, (id) => id === me.id, true, dt);
   besideTheHost(r);
   const open = menu || !!results;
+  // On foot, the karts and the others on foot stop you (and in a round, a bullet); in a round you fire,
+  // as the trigger says, at the others as they're drawn.
+  const f = fight;
+  if (r.walk) {
+    block = [...kartBlocks];
+    kartBlock(block, me.car.p.x, me.car.p.y, me.car.p.z, me.car.yaw);
+    r.walk.blockers = [...block, ...[...standing.values()].filter((a) => !a.downAt).map((a) => ({ x: a.x, z: a.z, r: 0.3, y0: a.y, y1: a.y + 1.75 }))];
+  }
+  const trig = f ? trigger(f) : null;
 
   for (const act of [...keys.actions(), ...pad.actions()]) {
+    if (f) {
+      fightAction(f, act, now);
+      continue;
+    }
     if (act === 'horn') honk(r.kart);
     if (act === 'fly') fly(r, !r.fly);
     if (act === 'walk') walk(r, !r.walk);
@@ -1003,8 +1157,10 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
     if (act === 'respawn') me.respawn();
   }
   // On foot: where you look turns at once, every frame; the rest goes in steps. With the menu open you
-  // stand (or come down).
-  const foot = r.walk && !open ? steps() : STAND;
+  // stand (or come down). In a round, you stand till the start, and while you're down.
+  const scope = f?.me.scoped ? (KITS[f.me.kit].scope?.zoom ?? 1) : 1;
+  let foot = r.walk && !open ? steps(1 / scope) : STAND;
+  if (f && (!f.started || !f.me.alive)) foot = { ...STAND, look: f.me.alive ? foot.look : { x: 0, y: 0 } };
   r.walk?.look(foot.look);
   r.hop ||= foot.jump;
   r.acc += Math.min(0.25, dt);
@@ -1019,17 +1175,33 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
     r.throttle = ctl.throttle;
     me.step(r.cars.values(), ctl, DT);
     if (r.walk) {
-      if (r.walk.step({ ...foot, look: { x: 0, y: 0 }, jump: r.hop }, DT)) r.hud.feed('De volta à rua');
+      if (r.walk.step({ ...foot, look: { x: 0, y: 0 }, jump: r.hop }, DT)) {
+        if (f) respawn(f, r.walk, now);
+        else r.hud.feed('De volta à rua');
+      }
       r.hop = false;
+      if (f && trig) fightStep(f, r.walk, trig, now - f.goAt - r.acc * 1000);
+      if (f?.squad && f.started) stepBots(f, r.walk, now - f.goAt - r.acc * 1000);
     }
   }
+  // Your footsteps.
+  if (r.walk?.grounded && (!f || f.me.alive)) {
+    const v = r.walk.speed();
+    r.stride = v > 0.6 ? r.stride + v * dt : 0;
+    if (r.stride > (v > 3 ? 1.6 : 0.8)) {
+      r.stride = 0;
+      fightSfx.step(v > 3);
+    }
+  }
+  if (f && r.walk) fightFrame(f, r, r.walk, now, dt);
   if (r.fly && !open) r.fly.step(flight(), dt);
   for (const n of me.notes) {
     if (n.k === 'respawn') r.hud.feed('De volta à rua');
     else feel(r, n);
   }
   me.notes = [];
-  room?.sendPos(snapOf(me, r.steer, r.walk));
+  room?.sendPos(snapOf(me, r.steer, r.walk, f ? f.me.flags(now - f.goAt) : 0));
+  for (const b of f?.squad?.bots ?? []) room?.sendPos(botSnap(b, b.s.flags(now - f!.goAt)));
 
   // Your kart, with the driver the room gives you: empty while you're out of it.
   const c = me.car;
@@ -1059,7 +1231,8 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
   // Flying or on foot, round you, your kart a dot where it waits.
   const others = [...r.cars.values()].map((o) => ({ x: o.x, z: o.z, color: colorOf(o.id) }));
   const away = r.walk ? { x: r.walk.p.x, z: r.walk.p.z, yaw: r.walk.yaw } : r.fly ? { x: r.fly.p.x, z: r.fly.p.z, yaw: r.fly.yaw } : null;
-  if (away) r.hud.minimap(away, [...others, { x: c.p.x, z: c.p.z, color: r.kart.model.driver.color }]);
+  // In a round, nobody but you: the minimap gives nobody away.
+  if (away) r.hud.minimap(away, f ? [] : [...others, { x: c.p.x, z: c.p.z, color: r.kart.model.driver.color }]);
   else r.hud.minimap({ x: c.p.x, z: c.p.z, yaw: c.yaw }, others);
 
   if (now - r.kept > 3000) {
@@ -1100,6 +1273,359 @@ function hearRoam(r: RoamCtx, dt: number): void {
   citySound(r.walk?.p ?? r.fly?.p ?? c.p, dt);
 }
 
+// ---- The deathmatch (braga-map's task 074) ----
+
+// The arenas as a round is played in (braga-map's task 079), each made the first time a round starts
+// in it (about 0.1 s): its ground with the edge, the spawns, where the bots walk, where the railings and
+// barriers stand, and its edge drawn; the one the round's in; and what's drawn for any round, the
+// shots' marks and tracers, and your gun.
+const arenas = new Map<string, { field: Field; edge: THREE.Group }>();
+let arena: Field | null = null;
+let arms: { shots: ShotsView; view: Viewmodel } | null = null;
+
+function arenaFor(id: string): { field: Field; edge: THREE.Group } {
+  const w0 = world.drive.d.world;
+  const area = w0.arenas.find((a) => a.id === id) ?? w0.arenas[0];
+  let a = arenas.get(area.id);
+  if (!a) {
+    const f = field(world.drive, area);
+    a = { field: f, edge: buildEdge(f) };
+    a.edge.visible = false;
+    scene.add(a.edge);
+    arenas.set(area.id, a);
+  }
+  return a;
+}
+
+// The others on foot as they're drawn this frame (syncOthers): where they stand, which way they face,
+// whether they're in the round and since when they're down, and their footsteps.
+interface Afoot {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  spd: number;
+  fighting: boolean;
+  downAt: number;
+  stride: number;
+  model: WalkerModel;
+}
+const standing = new Map<string, Afoot>();
+// The karts waiting, the others' (syncOthers) and with yours this frame, as what stops someone on foot
+// and a bullet.
+const kartBlocks: Blocker[] = [];
+let block: Blocker[] = [];
+
+// A kart as someone on foot and a bullet meet it: its two circles, as it bumps, up to its roll bar.
+function kartBlock(out: Blocker[], x: number, y: number, z: number, yaw: number): void {
+  for (const s of [1, -1]) out.push({ x: x + Math.cos(yaw) * 0.95 * s, z: z + Math.sin(yaw) * 0.95 * s, r: 0.8, y0: y - 0.3, y1: y + 1.1 });
+}
+
+// The others in the round who are up, as a shot finds them.
+const foes = (): Body[] => [...standing.entries()].filter(([, a]) => a.fighting && !a.downAt).map(([id, a]) => ({ id, x: a.x, y: a.y, z: a.z }));
+
+// Whether the kits are up to choose from: before the start, and while you're down.
+const picking = (f: FightCtx) => !f.started || !f.me.alive;
+
+const nameOf = (id: string) => (id === room?.you ? 'Tu' : (room?.lobby.members.find((m) => m.id === id)?.name ?? 'Alguém'));
+
+// The host has started a round: everyone on foot at a spawn in Fujacal (the grid says whose), your kart
+// waiting where it was, the kits to choose from until the start.
+function startFight(goIn: number, endIn: number, grid: Record<string, number>): void {
+  const rm = room!;
+  if (race) endRace();
+  if (!roam) startRoam(before ?? startCar());
+  const r = roam!;
+  if (fight) endFight();
+  menu = false;
+  page = 'main';
+  results = null;
+  // Flying, the camera comes down: your kart waits where it was.
+  r.fly = null;
+  const bots = rm.isHost ? rm.lobby.members.filter((m) => m.bot) : [];
+  const here = arenaFor(rm.lobby.arena);
+  const f = (arena = here.field);
+  for (const a of arenas.values()) a.edge.visible = a === here;
+  if (!arms) {
+    arms = { shots: new ShotsView(), view: new Viewmodel(scene.environment) };
+    scene.add(arms.shots.group);
+    look.overlay = arms.view.scene;
+  }
+  arms.shots.clear();
+  const now = performance.now();
+  // Joining a round under way: where none of the others can see.
+  const s = goIn > 0 ? f.spawns[(grid[rm.you] ?? 0) % f.spawns.length] : pickSpawn(f, foes(), kartBlocks);
+  const w = new Walker(f.ground, v3(s.x, s.y, s.z), s.yaw);
+  w.bound = f.inside;
+  r.walk = w;
+  r.eye = w.p.y + EYE;
+  r.hop = false;
+  const me = new Soldier(rm.you, lastKit);
+  mouse.pulls = 0;
+  // The host's bots, each at its spawn on the grid as a player is, as good as the host chose.
+  let squad: Squad | null = null;
+  if (bots.length) {
+    squad = new Squad(f, f.paths, rm.lobby.skill / (SKILLS.length - 1));
+    for (const m of bots) squad.add(m.id, Math.max(0, -goIn), goIn > 0 ? f.spawns[(grid[m.id] ?? 0) % f.spawns.length] : null, foes());
+  }
+  fight = { goAt: now + goIn, endAt: now + endIn, me, hud: new FightHud(hudRoot), kit: lastKit, chose: false, by: '', fell: 0, hurt: 0, center: null, lastBeep: 99, started: goIn <= 0, scores: false, downs: 0, squad };
+  fight.hud.onPick = pickKit;
+  if (fight.started) me.arm(lastKit, now - fight.goAt);
+  r.hud.keys('fight');
+  const where = world.drive.d.world.arenas.find((a) => a.id === rm.lobby.arena) ?? world.drive.d.world.arenas[0];
+  r.hud.setEdge(where.pts);
+  r.hud.feed(pad.on ? `🎯 Tiroteio em ${where.name}: escolhe a arma, e cada um por si` : `🎯 Tiroteio em ${where.name}: escolhe a arma (1 a 4), e cada um por si`, 'big');
+  nearPlane(true);
+  (document.activeElement as HTMLElement | null)?.blur();
+  render();
+}
+
+// The round over (or left): the edge down, and back in your kart where it waited.
+function endFight(): void {
+  const f = fight;
+  if (!f) return;
+  fight = null;
+  f.hud.remove();
+  for (const a of arenas.values()) a.edge.visible = false;
+  if (arms) arms.view.show(null);
+  pad.unscope();
+  document.body.classList.remove('picking');
+  for (const a of standing.values()) {
+    a.model.arm(null);
+    a.model.fall(0, 0);
+    a.fighting = false;
+    a.downAt = 0;
+  }
+  const r = roam;
+  if (!r) return;
+  r.hud.setEdge(mapLines.edge);
+  if (r.walk) walk(r, false);
+  else render();
+}
+
+// The kit to come back with, from the picker or the keys 1 to 4. Chosen while the kits are up, the
+// pointer locks again (the click that chose it allows it).
+function pickKit(k: KitId): void {
+  const f = fight;
+  if (!f) return;
+  f.kit = lastKit = k;
+  if (!picking(f)) return;
+  f.chose = true;
+  render();
+  mouse.lock();
+}
+
+function fightAction(f: FightCtx, act: string, now: number): void {
+  if (act === 'reload' && f.me.reload(now - f.goAt)) {
+    fightSfx.reload(KITS[f.me.kit].reload);
+    pad.unscope();
+  }
+  const k = ['kit1', 'kit2', 'kit3', 'kit4'].indexOf(act);
+  if (k >= 0) pickKit(KIT_IDS[k]);
+}
+
+// The trigger this frame, the mouse's and the thumbs': held, pulled since last read (a semi-automatic
+// fires once a pull, and one pull waits for the gun to be ready), and the scope.
+function trigger(f: FightCtx): { held: boolean; pulls: number; scope: boolean } {
+  const p = pad.fight(!!KITS[f.me.kit].scope);
+  const pulls = Math.min(1, mouse.pulls + p.pulls);
+  mouse.pulls = 0;
+  return { held: mouse.trigger || p.trigger, pulls, scope: mouse.scope || p.scope };
+}
+
+// A step of the round at its ms t: your kit's state, the scope, and a shot if the trigger says so.
+function fightStep(f: FightCtx, w: Walker, trig: { held: boolean; pulls: number; scope: boolean }, t: number): void {
+  const me = f.me;
+  me.step(DT, t);
+  if (!f.started || !me.alive) return;
+  const k = KITS[me.kit];
+  me.scoped = trig.scope && !!k.scope && !me.reloading;
+  if (!trig.pulls && !(k.auto && trig.held)) return;
+  if (me.ammo === 0) {
+    if (trig.pulls) fightSfx.dry();
+    trig.pulls = 0;
+    if (me.reload(t)) fightSfx.reload(k.reload);
+    return;
+  }
+  const ev = fire(me, v3(w.p.x, w.p.y + EYE, w.p.z), w.dir(), w.speed(), !w.grounded, t, foes(), seeOn(arena!, block), (Math.random() * 4294967296) >>> 0);
+  if (!ev) return;
+  trig.pulls = 0;
+  shotFx(ev, true);
+  room?.sendEv(ev);
+  botsShot(f, ev, t);
+  for (const h of ev.hits) {
+    f.hud.hit(h.head);
+    fightSfx.marker(h.head);
+  }
+  if (me.ammo === 0 && me.reload(t)) fightSfx.reload(k.reload);
+}
+
+// Back at the spawn none of the others can see, with the kit chosen, whole and safe for a moment.
+function respawn(f: FightCtx, w: Walker, now: number): void {
+  const s = pickSpawn(arena!, foes(), block);
+  w.p = v3(s.x, s.y, s.z);
+  w.v = v3();
+  w.yaw = s.yaw;
+  w.pitch = 0;
+  w.grounded = true;
+  if (roam) roam.eye = s.y + EYE;
+  f.me.arm(f.kit, now - f.goAt);
+  f.chose = false;
+  pad.unscope();
+  render();
+}
+
+// Once a frame in a round: the start, coming back, and what's on the screen.
+function fightFrame(f: FightCtx, r: RoamCtx, w: Walker, now: number, dt: number): void {
+  const me = f.me;
+  const t = now - f.goAt;
+  // The countdown, and the start.
+  const left = Math.ceil(-t / 1000);
+  if (!f.started && left <= 3 && left !== f.lastBeep) {
+    f.lastBeep = left;
+    beep(false);
+  }
+  if (!f.started && t >= 0) {
+    f.started = true;
+    me.arm(f.kit, t);
+    beep(true);
+    f.center = { text: 'JÁ!', until: now + 900 };
+    render();
+  }
+  if (f.started && !me.alive && now - f.fell >= RESPAWN) respawn(f, w, now);
+  f.hurt *= Math.exp(-dt * 2.5);
+  document.body.classList.toggle('picking', picking(f));
+
+  const board = room?.board ?? [];
+  const mine = board.find((e) => e.id === room?.you);
+  const lead = board[0];
+  const standingText = !mine ? '' : lead && lead.id !== mine.id && lead.kills > mine.kills ? `Tu ${mine.kills} · 1.º ${lead.name} ${lead.kills}` : `Tu ${mine.kills} · vais à frente`;
+  const end = Math.max(0, f.endAt - now);
+  const wait = Math.max(0, Math.ceil((f.started ? f.fell + RESPAWN - now : -t) / 1000));
+  f.hud.set({
+    health: me.health,
+    alive: me.alive && f.started,
+    kit: me.kit,
+    ammo: me.ammo,
+    reloading: me.reloading,
+    clock: f.started ? `${Math.floor(end / 60000)}:${String(Math.floor((end % 60000) / 1000)).padStart(2, '0')}` : `Começa em ${left}`,
+    standing: standingText,
+    gap: 5 + (Math.tan(spreadOf(me, w.speed(), !w.grounded)) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2),
+    scoped: me.scoped,
+    hurt: me.alive ? Math.max(f.hurt, (1 - me.health / 100) * 0.5) : 0.6,
+    center: !f.started && left <= 3 ? String(left) : f.center && now < f.center.until ? f.center.text : '',
+    picking: !picking(f) ? null : f.started ? { title: `Eliminado por ${nameOf(f.by)}`, sub: 'A arma com que voltas:', kit: f.kit, wait: `Voltas em ${wait} s` } : { title: 'Escolhe a tua arma', sub: KITS[f.kit].blurb, kit: f.kit, wait: '' },
+    scores: keys.scores || f.scores ? board.map((e) => ({ name: e.bot ? `🤖 ${e.name}` : e.name, color: colorOf(e.id), kills: e.kills, deaths: e.deaths, me: e.id === room?.you })) : null,
+  });
+}
+
+// What a shot looks and sounds like, yours or someone else's: the flash at the muzzle, the report
+// from where it was fired, the tracers, and where each pellet no one stopped struck, its mark, a puff
+// of what it struck and a smack.
+const DUST: Record<string, string[]> = { ground: ['#b8ad99', '#8d8577'], building: ['#ddd6ca', '#b9b1a4'], roof: ['#a8553f', '#8c8c8c'], wall: ['#cfc8bb', '#9f998d'], hedge: ['#5c7a37', '#3f5a26'], tree: ['#6b5641', '#4d3d2c'], kart: ['#ffe14d', '#ffffff'] };
+function shotFx(ev: ShotEv, mine: boolean): void {
+  if (!arms || !arena) return;
+  const from = new THREE.Vector3();
+  if (mine) {
+    arms.view.fired();
+    arms.view.muzzle(from);
+    fightSfx.shot(ev.kit);
+  } else {
+    const o = standing.get(ev.owner);
+    if (o) o.model.muzzle(from);
+    else from.set(ev.x, ev.y - 0.4, ev.z);
+    arms.shots.flash(from);
+    fightSfx.shot(ev.kit, { x: ev.x, y: ev.y, z: ev.z });
+  }
+  landed(ev, seeOn(arena, block)).forEach((s, i) => {
+    if (i < 3) arms!.shots.tracer(from, s);
+    if (!s.what) return;
+    arms!.shots.mark(s, { x: s.nx, y: s.ny, z: s.nz });
+    const c = DUST[s.what] ?? DUST.wall;
+    for (let k = 0; k < 6; k++) smoke.add(s.x, s.y, s.z, s.nx * 1.5 + (Math.random() - 0.5), s.ny * 1.5 + Math.random(), s.nz * 1.5 + (Math.random() - 0.5), 0.5 + Math.random() * 0.4, c[k % 2], -2);
+    if (s.what !== 'hedge' && s.what !== 'tree') glow.spray(s, 4, ['#ffd98a', '#ffffff'], 3, 2, 0.15);
+    if (i === 0) fightSfx.impact(s);
+  });
+}
+
+// Something from someone else in the round: a shot (and it hit you, by the shooter's say), or someone
+// put down.
+function onFightEv(ev: FightEv): void {
+  const f = fight;
+  if (!f) return;
+  if (ev.k === 'down') return downFx(ev);
+  if (ev.owner === room?.you) return;
+  shotFx(ev, false);
+  for (const h of ev.hits) if (h.v === f.me.id) hitMe(f, ev, h);
+  botsShot(f, ev, performance.now() - f.goAt);
+}
+
+// The host's bots, a step of the round at its ms t (braga-map's task 075): they look for the players as
+// this browser draws them, and for you where you are, and shoot as you do; each shot goes to everyone,
+// as yours does, and what it hit is decided here, as yours is in your browser.
+function stepBots(f: FightCtx, w: Walker, t: number): void {
+  const squad = f.squad!;
+  const players: Mark[] = [...standing.entries()].filter(([id, a]) => a.fighting && !a.downAt && !squad.bots.some((b) => b.id === id)).map(([id, a]) => ({ id, x: a.x, y: a.y, z: a.z, spd: a.spd }));
+  if (f.me.alive) players.push({ id: f.me.id, x: w.p.x, y: w.p.y, z: w.p.z, spd: w.speed() });
+  for (const ev of squad.step(DT, t, players, block)) {
+    shotFx(ev, false);
+    room?.sendEv(ev);
+    for (const h of ev.hits) if (h.v === f.me.id) hitMe(f, ev, h);
+    botsShot(f, ev, t);
+  }
+}
+
+// A shot, anyone's, as the host's bots meet it: heard, and those it hit hurt; one put down, everyone
+// told, as a player's browser tells them.
+function botsShot(f: FightCtx, ev: ShotEv, t: number): void {
+  for (const d of f.squad?.shot(ev, t) ?? []) {
+    room?.sendEv(d);
+    downFx(d);
+  }
+}
+
+// A bot's snapshot on foot: no kart waiting.
+function botSnap(b: FootBot, fl: number): Snap {
+  const p = b.w.p;
+  return { id: b.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +b.w.yaw.toFixed(3), ux: 0, uy: 1, uz: 0, spd: +b.w.speed().toFixed(1), st: 0, P: 0, fl, g: b.w.grounded ? 1 : 0, w: 1, pi: +b.w.pitch.toFixed(3), kx: 0, ky: 0, kz: 0, kw: 0 };
+}
+
+// Shot: hurt, or down, by what the shooter's browser says it hit.
+function hitMe(f: FightCtx, ev: ShotEv, h: { n: number; head: boolean }): void {
+  const me = f.me;
+  const now = performance.now();
+  const was = me.health;
+  const down = me.hurt(h.n, now - f.goAt);
+  if (me.health === was && !down) return;
+  f.hurt = Math.min(1, f.hurt + 0.35 + (was - me.health) / 100);
+  fightSfx.hurt();
+  if (roam) roam.shake = Math.max(roam.shake, 0.3);
+  if (!down) return;
+  const p = roam?.walk?.p ?? v3(ev.x, ev.y, ev.z);
+  const d: DownEv = { k: 'down', id: `${me.id}:d${++f.downs}`, victim: me.id, by: ev.owner, kit: ev.kit, head: h.head, x: p.x, y: p.y, z: p.z };
+  f.fell = now;
+  f.by = ev.owner;
+  f.chose = false;
+  pad.unscope();
+  room?.sendEv(d);
+  downFx(d);
+  render();
+}
+
+// Someone down: in the feed, and for whoever did it, the word.
+function downFx(ev: DownEv): void {
+  const f = fight;
+  if (!f) return;
+  const me = room?.you;
+  const how = `${KITS[ev.kit].article}${ev.head ? ', na cabeça' : ''}`;
+  const line = ev.victim === me ? `${nameOf(ev.by)} eliminou-te com ${how}` : ev.by === me ? `Eliminaste ${nameOf(ev.victim)} com ${how}` : `${nameOf(ev.by)} eliminou ${nameOf(ev.victim)} com ${how}`;
+  roam?.hud.feed(line, ev.by === me || ev.victim === me ? 'big' : '');
+  if (ev.by === me && ev.victim !== me) {
+    fightSfx.down();
+    f.center = { text: `Eliminaste ${nameOf(ev.victim)}`, until: performance.now() + 1600 };
+  }
+}
+
 // ---- The race ----
 
 function startRace(goIn: number, endIn: number, grid: Record<string, number>): void {
@@ -1115,7 +1641,7 @@ function startRace(goIn: number, endIn: number, grid: Record<string, number>): v
   const track = tracks.get(course.id)!;
   const on = races.get(course.id)!;
   const N = track.samples.length;
-  const rules: Rules = { mode: L.mode, laps: L.laps, items: L.mode === 'race' && L.items, catchUp: L.mode === 'race' && L.catchUp };
+  const rules: Rules = { mode: L.mode === 'time' ? 'time' : 'race', laps: L.laps, items: L.mode === 'race' && L.items, catchUp: L.mode === 'race' && L.catchUp };
   const arena = new Arena(track, rules);
   const meMember = L.members.find((m) => m.id === r.you)!;
   // On the world's ground with the race's walls and ramp (braga-map's task 037).
@@ -1419,8 +1945,9 @@ function botNotes(b: Racer): void {
   b.notes = [];
 }
 
-// A car's snapshot; or, its driver out of it, theirs on foot and where it waits.
-function snapOf(x: { id: string; car: Car; info(): CarInfo }, steer: number, foot: Walker | null = null): Snap {
+// A car's snapshot; or, its driver out of it, theirs on foot and where it waits, and in a round their
+// fighter's flags (game/fight.ts's FIGHT) where the car's are.
+function snapOf(x: { id: string; car: Car; info(): CarInfo }, steer: number, foot: Walker | null = null, fighter = 0): Snap {
   const c = x.car;
   const info = x.info();
   const s: Snap = {
@@ -1446,7 +1973,7 @@ function snapOf(x: { id: string; car: Car; info(): CarInfo }, steer: number, foo
   };
   if (!foot) return s;
   const p = foot.p;
-  return { ...s, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +foot.yaw.toFixed(3), spd: +foot.speed().toFixed(1), st: 0, g: foot.grounded ? 1 : 0, w: 1, pi: +foot.pitch.toFixed(3), kx: s.x, ky: s.y, kz: s.z, kw: s.yaw };
+  return { ...s, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +foot.yaw.toFixed(3), spd: +foot.speed().toFixed(1), st: 0, fl: fighter, g: foot.grounded ? 1 : 0, w: 1, pi: +foot.pitch.toFixed(3), kx: s.x, ky: s.y, kz: s.z, kw: s.yaw };
 }
 
 // The others round the city who are on foot, their karts waiting, empty and quiet.
@@ -1454,15 +1981,18 @@ const afoot = new Set<string>();
 
 // The others, where they were a moment ago, smoothly: into `cars` (for positions, bumps and
 // targets) and onto the screen as `karts`. `local` says which cars this browser drives itself; round
-// the city the bots aren't out. One out of their kart (braga-map's task 073) is drawn standing where
-// they are, as the driver they picked, and their kart empty where it waits.
+// the city the bots aren't out but in a round. One out of their kart (braga-map's task 073) is drawn
+// standing where they are, as the driver they picked, and their kart empty where it waits; a bot on
+// foot (braga-map's task 075) as the driver it is, with no kart.
 function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local: (id: string) => boolean, roaming: boolean, dt: number): void {
-  const at = performance.now() - 110;
+  const now = performance.now();
+  const at = now - 110;
   const seen = new Set<string>();
+  kartBlocks.length = 0;
   for (const [id, snaps] of room ? room.cars : []) {
     if (local(id)) continue;
     const m = room!.lobby.members.find((x) => x.id === id);
-    if (!m || snaps.length === 0 || (roaming && m.bot)) continue;
+    if (!m || snaps.length === 0 || (roaming && m.bot && !fight)) continue;
     seen.add(id);
     let i = snaps.length - 1;
     while (i > 0 && snaps[i - 1].at > at) i--;
@@ -1485,11 +2015,15 @@ function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local
       karts.set(id, k);
     }
     k.model.figure.visible = !foot;
+    k.model.group.visible = !(foot && m.bot);
     if (foot) {
       afoot.add(id);
-      cars.set(id, { id, name: m.name, P: 0, x: b.kx, y: b.ky, z: b.kz, vx: 0, vz: 0, flags: 0, fin });
-      pose(k.model.group, b.kx, b.ky, b.kz, b.kw, { x: b.ux, y: b.uy, z: b.uz });
-      k.model.update(0, 0, dt, true, 0);
+      if (!m.bot) {
+        cars.set(id, { id, name: m.name, P: 0, x: b.kx, y: b.ky, z: b.kz, vx: 0, vz: 0, flags: 0, fin });
+        pose(k.model.group, b.kx, b.ky, b.kz, b.kw, { x: b.ux, y: b.uy, z: b.uz });
+        k.model.update(0, 0, dt, true, 0);
+        kartBlock(kartBlocks, b.kx, b.ky, b.kz, b.kw);
+      }
       if (!k.walker) {
         k.walker = buildWalker(driverById(m.driver));
         scene.add(k.walker.group);
@@ -1498,20 +2032,41 @@ function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local
       k.walker.group.position.set(x, y, z);
       k.walker.group.rotation.y = -yaw;
       k.walker.update(b.spd, dt, L(a.pi, b.pi));
+      // In a round: their gun, and down, falling and fading; their footsteps always.
+      const fl = fight ? fighterOf(b.fl) : null;
+      const armed = !!fl?.armed;
+      k.walker.arm(armed ? fl!.kit : null);
+      let s = standing.get(id);
+      if (!s) standing.set(id, (s = { x, y, z, yaw, spd: 0, fighting: false, downAt: 0, stride: 0, model: k.walker }));
+      Object.assign(s, { x, y, z, yaw, spd: b.spd, fighting: armed, model: k.walker });
+      s.downAt = armed && fl!.down ? s.downAt || now : 0;
+      const since = s.downAt ? now - s.downAt : 0;
+      k.walker.fall(s.downAt ? Math.min(1, since / 450) : 0, s.downAt ? clamp((since - 2500) / 800, 0, 1) : 0);
+      if (b.g && b.spd > 0.6 && !s.downAt) {
+        s.stride += b.spd * dt;
+        if (s.stride > (b.spd > 3 ? 1.6 : 0.8)) {
+          s.stride = 0;
+          fightSfx.step(b.spd > 3, { x, y, z });
+        }
+      }
     } else {
       afoot.delete(id);
+      standing.delete(id);
+      kartBlock(kartBlocks, x, y, z, yaw);
       cars.set(id, { id, name: m.name, P: L(a.P, b.P), x, y, z, vx: Math.cos(b.yaw) * b.spd, vz: Math.sin(b.yaw) * b.spd, flags: b.fl, fin });
       pose(k.model.group, x, y, z, yaw, { x: L(a.ux, b.ux), y: L(a.uy, b.uy), z: L(a.uz, b.uz) });
       k.model.update(b.spd, b.st, dt, !!b.g, b.fl);
       kartEffects(id, k, x, y, z, yaw, Math.abs(b.spd), b.fl, !!b.g, dt);
       if (k.walker) k.walker.group.visible = false;
     }
-    // Their name over them, in the kart or on foot.
+    // Their name over them, in the kart or on foot; but in a round, where it would say where they are
+    // through the walls, none.
     const over = foot ? k.walker!.group : k.model.group;
     if (k.tag && k.tag.parent !== over) {
       over.add(k.tag);
       k.tag.position.y = foot ? 2.2 : 3.4;
     }
+    if (k.tag) k.tag.visible = !fight;
   }
   for (const [id, k] of karts) {
     if (local(id) || seen.has(id)) continue;
@@ -1519,6 +2074,7 @@ function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local
     karts.delete(id);
     cars.delete(id);
     afoot.delete(id);
+    standing.delete(id);
   }
 }
 
@@ -1681,12 +2237,12 @@ function holdView(v: number[]): void {
   }
 }
 
-// The field of view eased towards fov, opened up on a phone held upright, or the road is a slot down
-// the middle.
-function widen(fov: number, dt: number): void {
+// The field of view eased towards fov, at `rate` a second, opened up on a phone held upright, or the
+// road is a slot down the middle.
+function widen(fov: number, dt: number, rate = 4): void {
   if (camera.aspect < 1) fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(fov / 2)) / Math.sqrt(camera.aspect)));
-  if (Math.abs(camera.fov - fov) > 0.1) {
-    camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);
+  if (Math.abs(camera.fov - fov) > 0.01) {
+    camera.fov += (fov - camera.fov) * Math.min(1, dt * rate);
     camera.updateProjectionMatrix();
   }
 }
@@ -1745,19 +2301,28 @@ function flyCam(f: Flyer, dt: number): void {
 }
 
 // On foot: the camera at your eyes, looking where you look, its height easing up a kerb or a tread
-// rather than jumping, and never bobbing. ?view= still holds it.
+// rather than jumping, and never bobbing. ?view= still holds it. In a round, through a scope it
+// narrows, and put down, it drops to the ground, rolling over.
 function walkCam(r: RoamCtx, w: Walker, dt: number): void {
   if (VIEW && VIEW.length >= 6) {
     holdView(VIEW);
     return;
   }
-  const want = w.p.y + EYE;
-  r.eye = Math.abs(want - r.eye) > 2 ? want : r.eye + (want - r.eye) * (1 - Math.exp(-dt / 0.07));
+  const f = fight;
+  const down = !!f && f.started && !f.me.alive;
+  const want = w.p.y + (down ? 0.35 : EYE);
+  r.eye = Math.abs(want - r.eye) > 2 && !down ? want : r.eye + (want - r.eye) * (1 - Math.exp(-dt / (down ? 0.15 : 0.07)));
   const d = w.dir();
   camera.position.set(w.p.x, r.eye, w.p.z);
   camera.lookAt(w.p.x + d.x, r.eye + d.y, w.p.z + d.z);
+  if (down) camera.rotateZ(0.7 * Math.min(1, (performance.now() - f.fell) / 500));
+  if (r.shake > 0.01) {
+    camera.rotateX((Math.random() - 0.5) * r.shake * 0.04);
+    r.shake *= Math.exp(-dt * 8);
+  }
   camPos.copy(camera.position);
-  widen(72, dt);
+  const zoom = f?.me.scoped && f.me.alive ? (KITS[f.me.kit].scope?.zoom ?? 1) : 1;
+  widen(72 / zoom, dt, f ? 18 : 4);
 }
 
 // Where the flying camera looks on the ground, at most 100 m ahead, for the sun's shadows to fall
@@ -1828,6 +2393,13 @@ function frame(now: number): void {
     const r = roam;
     stepRoam(r, now, dt);
     if (r.walk) walkCam(r, r.walk, dt);
+    // Your gun, once the camera's set; the shots' tracers and flashes.
+    if (arms) {
+      const f = fight;
+      arms.view.show(f && f.started && f.me.alive && r.walk ? f.me.kit : null);
+      if (f && r.walk) arms.view.update(camera, SUN_DIR, dt, r.walk.speed(), f.me.reloading ? 1 - (f.me.reloadAt - (now - f.goAt)) / KITS[f.me.kit].reload : null, f.me.scoped);
+      arms.shots.update(dt);
+    }
     else if (r.fly) flyCam(r.fly, dt);
     else if (menu || results) orbit(r.me.car, t, dt);
     else chase(r, dt);
@@ -1852,6 +2424,7 @@ function frame(now: number): void {
         members: room?.lobby.members.filter((m) => !m.bot).map((m) => m.name) ?? [],
         others: [...r.cars.values()].map((o) => ({ id: o.id, name: o.name, x: o.x, y: o.y, z: o.z })),
         street: r.street,
+        fight: fight ? { started: fight.started, alive: fight.me.alive, health: fight.me.health, kit: fight.me.kit, ammo: fight.me.ammo, kills: room?.board.find((e) => e.id === room?.you)?.kills ?? 0, deaths: room?.board.find((e) => e.id === room?.you)?.deaths ?? 0, foes: foes(), bots: fight.squad?.bots.map((b) => ({ id: b.id, x: b.w.p.x, y: b.w.p.y, z: b.w.p.z, alive: b.s.alive, health: b.s.health, kit: b.s.kit, shots: b.shots, stuck: b.stuck })) ?? null } : null,
         calls: renderer.info.render.calls,
         tris: renderer.info.render.triangles,
         audio: { city: cityHeard },
@@ -1863,7 +2436,7 @@ function frame(now: number): void {
   glow.update(dt);
   smoke.update(dt);
   look.render(t);
-  stats?.frame(quality, race ? 'race' : roam ? (roam.walk ? 'walk' : 'roam') : null);
+  stats?.frame(quality, race ? 'race' : roam ? (fight ? 'fight' : roam.walk ? 'walk' : 'roam') : null);
   requestAnimationFrame(frame);
 }
 
@@ -1912,6 +2485,17 @@ if (AUTODRIVE) {
   // The sounds themselves, for scripts/listen.mjs to play the loudest of them at once, and the
   // camera they're heard from.
   (window as unknown as { __sound: object }).__sound = { sfx, horn, lapSound, beep, thud, engines, resetMeter, readMeter, camera };
+  // On foot, you put at (x, z) looking at (tx, ty, tz), for checking a round with Playwright.
+  (window as unknown as { __walk: object }).__walk = (x: number, z: number, tx: number, ty: number, tz: number, y?: number): boolean => {
+    const w = roam?.walk;
+    if (!w) return false;
+    w.p = v3(x, w.ground.floor(x, z, (y ?? w.ground.groundAt(x, z)) + 0.5).y, z);
+    w.v = v3();
+    w.yaw = Math.atan2(tz - z, tx - x);
+    w.pitch = Math.atan2(ty - w.p.y - EYE, Math.hypot(tx - x, tz - z));
+    roam!.eye = w.p.y + EYE;
+    return true;
+  };
 }
 
 addEventListener('keydown', (e) => {

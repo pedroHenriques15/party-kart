@@ -3,6 +3,7 @@
 // slipstream. Round the city (RoamHud): the speed, the street's name, a minimap round you, the feed;
 // on foot, a dot in the middle of the screen for the speed.
 import type { CarInfo } from './game/arena.ts';
+import { KIT_IDS, KITS, type KitId } from './game/fight.ts';
 import { ITEMS, type ItemKind } from './game/items.ts';
 import type { Track } from './track/track.ts';
 
@@ -247,6 +248,7 @@ const KEYS = {
   drive: 'Setas conduzem · Espaço derrapa · Enter volta à rua · H buzina · C câmara · V voa · F a pé · Esc menu',
   fly: 'WASD voa · ←→ vira · E sobe · Q desce · Shift mais depressa · arrasta o rato para olhar · V volta ao kart · Esc menu',
   walk: 'WASD anda · o rato olha · Shift corre · Espaço salta · F volta ao kart · Esc menu',
+  fight: 'WASD anda · o rato aponta · clique dispara · botão direito mira · R recarrega · Shift corre · Espaço salta · Tab pontuação · Esc menu',
 };
 
 // The screen while driving round the city (braga-map's decision 019): the speed, the street's name
@@ -310,9 +312,14 @@ export class RoamHud {
     }
   }
 
-  // The keys for driving, flying, or on foot.
+  // The keys for driving, flying, on foot, or in a round.
   keys(mode: keyof typeof KEYS): void {
     this.el.keys.textContent = KEYS[mode];
+  }
+
+  // The area's edge on the minimap: the open world's, or a round's.
+  setEdge(edge: [number, number][]): void {
+    this.edge = edge;
   }
 
   // The street's name, on a blue-and-white plate as Braga's are, for a few seconds.
@@ -449,5 +456,128 @@ export class RoamHud {
     g.lineWidth = 3;
     g.strokeStyle = '#111111';
     g.stroke();
+  }
+}
+
+// A row of a round's scores.
+export interface ScoreRow {
+  name: string;
+  color: string;
+  kills: number;
+  deaths: number;
+  me: boolean;
+}
+
+// What's on the screen in a round (braga-map's task 074), over the screen on foot: your health, your
+// kit and its ammunition, the round's clock and where you stand, the crosshair (opening up as your
+// shots would spread) and the mark that says you hit, the screen's edge going red when you're hurt,
+// the scope, the scores (Tab), and the kits to choose from before the start and while you're down.
+export class FightHud {
+  readonly el: HTMLElement;
+  onPick: (k: KitId) => void = () => {};
+  private e: Record<string, HTMLElement> = {};
+  private kits = new Map<KitId, HTMLButtonElement>();
+  private marked = 0;
+  private shown = '-';
+
+  constructor(root: HTMLElement) {
+    const e = this.e;
+    e.cross = h('div', 'cross', h('i'), h('i'), h('i'), h('i'));
+    e.marker = h('div', 'hitmark');
+    e.hurt = h('div', 'hurt');
+    e.scope = h('div', 'scope');
+    e.health = h('div', 'health', h('b'), h('span', 'meter', h('i')));
+    e.ammo = h('div', 'ammo', h('small'), h('b'));
+    e.round = h('div', 'roundclock', h('b'), h('small'));
+    e.center = h('div', 'center');
+    e.scores = h('div', 'scores');
+    e.title = h('h2');
+    e.sub = h('p', 'sub');
+    e.wait = h('p', 'until');
+    e.picker = h(
+      'div',
+      'picker',
+      e.title,
+      e.sub,
+      h(
+        'div',
+        'kits',
+        ...KIT_IDS.map((k, i) => {
+          const b = h('button', 'kit', h('span', 'key keys-only', String(i + 1)), h('b', '', KITS[k].name), h('small', '', KITS[k].blurb));
+          b.addEventListener('click', () => this.onPick(k));
+          this.kits.set(k, b);
+          return b;
+        }),
+      ),
+      e.wait,
+    );
+    this.el = h('div', 'fight', e.hurt, e.scope, e.cross, e.marker, e.round, e.health, e.ammo, e.center, e.scores, e.picker);
+    root.append(this.el);
+  }
+
+  set(o: {
+    health: number;
+    alive: boolean;
+    kit: KitId;
+    ammo: number;
+    reloading: boolean;
+    clock: string;
+    standing: string; // where you stand: your kills, and the leader's
+    gap: number; // how far the crosshair's lines stand from its middle, in CSS pixels
+    scoped: boolean;
+    hurt: number; // 0 to 1, how red the edge is
+    center: string;
+    picking: { title: string; sub: string; kit: KitId; wait: string } | null;
+    scores: ScoreRow[] | null;
+  }): void {
+    const e = this.e;
+    const k = KITS[o.kit];
+    e.health.querySelector('b')!.textContent = String(Math.ceil(o.health));
+    (e.health.querySelector('.meter i') as HTMLElement).style.width = `${o.health}%`;
+    e.health.classList.toggle('low', o.health < 35);
+    e.ammo.querySelector('small')!.textContent = k.name;
+    e.ammo.querySelector('b')!.textContent = o.reloading ? 'A recarregar…' : `${o.ammo} / ${k.mag}`;
+    e.ammo.classList.toggle('empty', !o.reloading && o.ammo === 0);
+    e.round.querySelector('b')!.textContent = o.clock;
+    e.round.querySelector('small')!.textContent = o.standing;
+    e.cross.style.setProperty('--gap', `${Math.round(o.gap)}px`);
+    e.cross.style.display = o.alive && !o.scoped && !o.picking ? '' : 'none';
+    e.scope.style.display = o.alive && o.scoped ? 'block' : 'none';
+    e.hurt.style.opacity = String(Math.min(1, o.hurt));
+    e.center.textContent = o.center;
+    e.marker.classList.toggle('on', performance.now() < this.marked);
+    if (o.picking) {
+      e.picker.style.display = '';
+      e.title.textContent = o.picking.title;
+      e.sub.textContent = o.picking.sub;
+      e.wait.textContent = o.picking.wait;
+      for (const [id, b] of this.kits) b.classList.toggle('on', id === o.picking.kit);
+    } else e.picker.style.display = 'none';
+    // The scores, only when they change.
+    const key = o.scores ? JSON.stringify(o.scores) : '';
+    if (key !== this.shown) {
+      this.shown = key;
+      e.scores.style.display = o.scores ? '' : 'none';
+      if (o.scores) {
+        e.scores.replaceChildren(
+          h('div', 'row head', h('span', 'who', 'Pontuação'), h('span', '', 'Abates'), h('span', '', 'Mortes')),
+          ...o.scores.map((r) => {
+            const row = h('div', `row${r.me ? ' me' : ''}`, h('span', 'who', r.name), h('span', '', String(r.kills)), h('span', '', String(r.deaths)));
+            row.style.setProperty('--c', r.color);
+            return row;
+          }),
+        );
+      }
+    }
+  }
+
+  // Your shot hit someone: the mark at the crosshair, red for the head.
+  hit(head: boolean): void {
+    this.marked = performance.now() + 160;
+    this.e.marker.classList.toggle('head', head);
+  }
+
+  remove(): void {
+    this.el.remove();
   }
 }

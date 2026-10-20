@@ -31,18 +31,39 @@ and driver, the graphics, the help, and
    and **Começar a corrida** puts everyone in the room on the grid, the empty places filled with
    bots. When it's over the results show over the world, and everyone is back where they were,
    driving.
-3. **↺ Reposicionar**: back on the street nearest.
-4. **🎥 Voar pela cidade**: leave your kart where it is and fly the camera round Braga, down a
+3. **🎯 Tiroteio**: a deathmatch on foot in one of three small arenas in Fujacal and the Conselheiro
+   Lobato, about 80 m across each, everyone for themselves: **Topo do Fujacal**, the Rua do Fujacal
+   by the race's start round a block of flats alone in its street; **Doutor José Vilaça**, the flats'
+   courtyard off the Rua Monsenhor Airosa; and **Santa Justa**, the street by the river and the
+   Ecovia. Most of their buildings open on the ground floor, a room you walk into through its door
+   and shoot out of through its windows; and in Topo do Fujacal and Doutor José Vilaça a block of
+   flats goes up by its stairs, floor by floor, to its roof. The host chooses the arena, how long (3,
+   5 or 10 minutes), how many bots fill the empty places and how good they are (**Fácil**, **Médio**
+   or **Difícil**), and starts it: everyone in the room is put on foot at a spawn there, their kart
+   waiting where it was, and chooses a kit. Alone with bots, it's a round worth playing too. Whoever
+   has the most kills when
+   the time runs out wins; then the results, and everyone is back in their kart. Put down, you fall,
+   choose the kit you come back with, and after four seconds come back where none of the others can
+   see you, unhurt for a moment. Your health comes back by itself once you've been unhurt a while.
+   A railing round the arena, and road-works barriers across the streets and paths that leave it,
+   keep the round in it; they stand only while a round is on. The bots are the drivers nobody picked,
+   on foot as a player is: each chooses a kit as it comes back, goes looking round the arena, in and
+   out of the buildings and up the stairs, turns to a shot or footsteps it hears, takes cover when
+   it's hurt, and sees and shoots only what a player there could. On Fácil they're slow to react and
+   miss a lot; on Difícil they're quick and true.
+4. **↺ Reposicionar**: back on the street nearest.
+5. **🎥 Voar pela cidade**: leave your kart where it is and fly the camera round Braga, down a
    street, through the buildings, over the rooftops and the hills as far as the horizon, from a metre
    over the ground to 500 m; the higher, the faster. Your kart waits where you left it, and the
    others see it parked. **🏎️ Voltar ao kart** (or V) puts it on the street under the camera, to drive
    on from there. A race the host starts ends the flight, and you're back in your kart where it
    waited when it's over.
-5. **🚶 A pé**: get out of your kart and walk Braga in first person, at a person's height: along the
+6. **🚶 A pé**: get out of your kart and walk Braga in first person, at a person's height: along the
    pavements, up kerbs and flights of steps, through passages, stopped by every wall, fence, hedge,
-   gate, building and tree. Your kart waits where it stopped, empty, and the others see you standing
-   beside it as the driver you picked, walking or running. **🏎️ Voltar ao kart** (or F) puts you back
-   in it where it waited. A race the host starts puts you back in it first.
+   gate, building, tree and kart. Your kart waits where it stopped, empty, and the others see you
+   standing beside it as the driver you picked, walking or running, and hear your footsteps.
+   **🏎️ Voltar ao kart** (or F) puts you back in it where it waited. A race the host starts puts you
+   back in it first.
 
 If the host leaves, everyone else drives on, alone.
 
@@ -80,6 +101,26 @@ the ghost of your best. Round the city there are no items.
 | Shift | Run |
 | Space | Jump |
 
+The deathmatch's kits, chosen at each spawn. None is best everywhere: the shotgun up close, the
+carabina at most distances, the sniper's rifle far off and scoped, the pistol on the run. A hit on
+the head counts more.
+
+| Kit | |
+|---|---|
+| Carabina | Automatic, 30 rounds, 24 to the body up to 25 m (14 from 70 m on): about half a second to put someone down |
+| Caçadeira | Ten pellets a shot, 15 each up to 10 m, hardly anything past 35 m: one shot up close |
+| Espingarda de precisão | Bolt action, 5 rounds, 60 to the body at any range, 150 to the head; its scope narrows the view four and a half times |
+| Pistola | 12 rounds, 30 up to 15 m, as true running as standing |
+
+| In a round | |
+|---|---|
+| The mouse | Aim |
+| Click (held, with the carabina) | Fire |
+| Right button, held | The scope, with the sniper's rifle |
+| R | Reload (it reloads by itself when the magazine's empty) |
+| Tab, held | The scores: kills and deaths |
+| 1 to 4 | The kit you come back with |
+| WASD, Shift, Space | Walk, run, jump, as on foot |
 **On a phone or a tablet**, turned sideways: round the city the kart goes while your thumb is on
 the left half, and pulls up when you lift it; in a race it goes by itself.
 
@@ -98,6 +139,10 @@ Travar were, and **🏎️ Voltar ao kart** at the top lands.
 On foot, twin sticks: the left half walks where your thumb lands, and runs when you push it to its
 rim; a drag anywhere on the right half looks round; **Saltar** jumps; and **🏎️ Voltar ao kart** at the
 top puts you back in it.
+
+In a round, the same, with **Fogo** under your right thumb (hold it to fire; drag it to aim as you
+fire), **Recarregar**, and **Mira** for the sniper's scope; tap a kit to choose it, and
+**Pontuação** at the top shows the scores.
 
 On Android the game goes full screen at the first tap. On an iPhone, add the page to the home screen
 (Share → Add to Home Screen) for the same.
@@ -186,10 +231,13 @@ the game runs slowly, it steps down a level by itself, as far as Low.
 - Everyone drives their own car in their own browser, so there's no lag on your own driving.
   Whoever creates the room is the host: their browser relays where everyone is (15 times a second,
   round the city as in a race), and in a race drives the bots, relays what they throw, keeps the
-  order and the clock.
+  order and the clock. In a round its browser runs the bots on foot, and decides their shots.
 - What's thrown is deterministic: a bola is where it started, how fast and when, so every
   browser draws it in the same place without sending positions. A hit is decided by the one
   who gets hit, in their own browser, and told to the others: what you see is what happened.
+- A shot in the deathmatch is the other way round: a bullet is instant, so it's decided by the
+  shooter's browser, against the others as it draws them, and the victim's browser takes the damage.
+  What hit on your screen hit. The host keeps the kills and deaths.
 - Players connect over WebRTC, through [PeerJS](https://peerjs.com/)'s free public server, which
   only introduces them (and relays when a router is strict).
 
@@ -200,13 +248,17 @@ the game runs slowly, it steps down a level by itself, as far as Low.
 - `src/car/`: the handling (drifts, mini-turbos, jumps), and an autopilot.
 - `src/game/`: a race: the arena (clock, cars, items in flight, order), a racer (laps, boxes,
   items, hits, bumps, slipstreams, catch-up), the items' rules, and the bots; a car driving round
-  the city (`roamer.ts`); the flying camera (`flyer.ts`); and you on foot (`walker.ts`).
+  the city (`roamer.ts`); the flying camera (`flyer.ts`); you on foot (`walker.ts`); the
+  deathmatch (`fight.ts`: the kits, health, shots, spawns, scores, an arena's field); and its bots
+  (`footbot.ts`).
 - `src/world/`: the world as the karts' ground: the land, every street and path at its level, the
-  steps, and the walls (`ground.ts`).
+  steps, and the walls (`ground.ts`); the arenas' buildings' insides (`interiors.ts`, laid out by
+  `storeys.ts` as their facades are); line of sight through it (`sight.ts`); and where someone on
+  foot can walk, for the bots (`paths.ts`).
 - `src/render/`: the look (sky, sun, shadows, quality); the city round the track (`city.ts`,
   from the map), every street and path in its area (`streets.ts`), what the race adds to them (`road.ts`),
   the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs (`eggs.ts`); trees, karts and
-  drivers, items, particles, skid marks; and the first track's world (`world.ts`,
+  drivers, items, particles, skid marks; the deathmatch's guns, bullet marks and edge (`arms.ts`); and the first track's world (`world.ts`,
   `landmarks.ts`, `braga.ts`), for reference.
 - The map of Braga is its own repo, [braga-map](https://github.com/pedroHenriques15/braga-map),
   shared with the games to come: the city in sections, and the tracks planned on its streets. The
@@ -229,7 +281,7 @@ The tests run the TypeScript straight in Node, which needs Node 22.18 or later.
 ```sh
 npm install
 npm run dev      # http://localhost:5173; ?autodrive lets the autopilot drive a race, for testing
-npm test         # the track; the world's ground and free roam; flying; on foot; the first track's jump; items, catch-up, slipstreams; eight bots
+npm test         # the track; the world's ground and free roam; flying; on foot; the deathmatch; the first track's jump; items, catch-up, slipstreams; eight bots
 npm run check    # the type check (Node runs the tests without one)
 npm run build
 npm run deploy   # publish to GitHub Pages (the gh-pages branch)

@@ -66,7 +66,10 @@ test('a building the game leaves out, round the plinth or an egg, is no wall eit
   // A block of flats' front on the Alameda do Fujacal, from (129.5, 812.5) to (141, 809): taken
   // away, a car driven at it goes in where it stood.
   const b = world.buildings.find((b) => b.pts.some(([x, z]) => x === 129.5 && z === 812.5) && b.pts.some(([x, z]) => x === 141 && z === 809))!;
-  assert.equal(plinthed.unwall(b.pts), b.pts.length);
+  // It's the tower in the Topo do Fujacal (braga-map's task 079): its room goes with it, as the city
+  // takes it away (render/city.ts), and with it the walls that were its outline's.
+  assert.ok(plinthed.unroom(b.pts), 'a room');
+  assert.equal(plinthed.unwall(b.pts), 0);
   const [mx, mz] = [(129.5 + 141) / 2, (812.5 + 809) / 2];
   const yaw = Math.atan2(809 - 141, 129.5 - 141) - Math.PI / 2; // into it, from the street
   const c = plinthed.place(carAt(v3(mx - Math.cos(yaw) * 9, plinthed.land(mx, mz) + 1, mz - Math.sin(yaw) * 9), yaw, v3(0, 1, 0)));

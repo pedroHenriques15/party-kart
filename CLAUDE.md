@@ -30,7 +30,7 @@ don't add a backend, a build step or a dependency without a strong reason.
 ```sh
 npm install
 npm run dev          # http://localhost:5173
-npm test             # node --test over test/*.test.ts, about a second
+npm test             # node --test over test/*.test.ts, a few seconds (the bots' rounds)
 npm run check        # tsc; the only type check the tests get
 npm run build        # tsc && vite build, into dist/
 npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publishes the game
@@ -76,8 +76,21 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   empty (braga-map's task 073, `src/game/walker.ts`): WASD, the mouse with the pointer locked (Esc
   lets it go and opens the menu; a click on the world takes it back), Shift runs, Space jumps; on a
   touch screen twin sticks and Saltar. F again is back in your kart where it waited. To look at the
-  city at walking distance, as the shooter will be played (braga-map's SHOOTER-AREA.md). Under
-  `?autodrive`, `__kart.walk` says where you are on foot.
+  city at walking distance, as the shooter is played (braga-map's SHOOTER-AREA.md). Under
+  `?autodrive`, `__kart.walk` says where you are on foot, and `__walk(x, z, tx, ty, tz, y)` puts you at
+  (x, z) looking at (tx, ty, tz), on the floor at height y if it's given (a tower's upper floors).
+- The menu's "🎯 Tiroteio" is the deathmatch (braga-map's task 074, `src/game/fight.ts`): the host
+  starts a round, as a race, in the arena it chose (braga-map's task 079: one of three, about 80 m
+  across, `world.arenas`), and everyone in the room is on foot there with a kit, the empty places
+  filled with bots on foot (braga-map's task 075, `src/game/footbot.ts`, run by the host) at the
+  level the host chose. Most of an arena's buildings open on their ground floor, and one in two of
+  them up to its roof (`src/world/interiors.ts`). Alone with no bots it's a round of one, for looking at the edge or the
+  guns. To try shots, two browser contexts in a room (as for a race), each put face to face with
+  `__walk`, or one put facing a bot; under `?autodrive`, `__kart.fight` has your health, kit,
+  ammunition, kills and deaths, the others as you'd shoot at them (`foes`), and if you host, the
+  bots (where, up or down, health, kit, shots, times put back on their paths). With
+  the pointer locked, Playwright's mouse buttons can turn the view (a movement comes with them):
+  dispatch `mousedown`/`mouseup` on the document instead to hold the trigger.
 - `?view=x,y,z,tx,ty,tz` holds the race's camera at (x, y, z), looking at (tx, ty, tz), to look at
   the scenery from anywhere (the sights on the hills, say). A seventh number sets its vertical
   field of view in degrees (the race's own widens with speed). Take positions from braga-map's map
@@ -135,9 +148,20 @@ Outside a race the game is free roam (braga-map's decision 019): your `Roamer`
 (`src/game/roamer.ts`) on the world's ground (`world.drive`), anywhere in the open world's area, the
 room's players drawn where they are from the same snapshots as in a race. Out of it, you fly the camera
 (`Flyer`) or walk (`Walker`, on the same ground, stopped by the same walls through
-`WorldGround.circle`), your kart waiting; the others see you on foot as the driver you picked,
-standing. The race is something the
-host starts from the menu, and everyone goes back to where they were when it's over.
+`WorldGround.circle`, and by the karts and the others on foot), your kart waiting; the others see you
+on foot as the driver you picked, standing. The race is something the
+host starts from the menu, and everyone goes back to where they were when it's over. So is the
+deathmatch (braga-map's task 074): a round on foot in Fujacal, in free roam (`fight` in `main.ts`
+beside `roam`), everyone's kart waiting where it was, its shots decided by the shooter's browser
+against the others as it draws them (the items' rule turned round: a bullet is instant), the
+victim's browser taking the damage, the host keeping the kills and deaths. Its bots (braga-map's
+task 075) are the host's: it steps them with you (`Squad`), finds their ways on the arena's walkable
+ground (`Paths`, `src/world/paths.ts`), decides their shots as a player's browser does theirs, takes
+their hits and says when they're down; everyone draws them from their snapshots, the host too. A
+round is played in an arena (braga-map's task 079, `field` in `fight.ts`), whose buildings have
+insides: made up, by `src/world/interiors.ts`, the world's always (walked round the city too), the
+ground's walls and floors in them (`roomAt`, `roomFloor`), looks through their windows, the city
+cutting their facades' openings and drawing them (`render/interiors.ts`).
 
 How a race runs:
 
@@ -234,11 +258,16 @@ How a race runs:
   animate needs `userData.moves = true` on it or a parent, or it gets frozen into the merged mesh.
 - **`mat()` caches materials by colour and settings**, so changing one changes every mesh that
   uses it. A kart's body paint is its own because gold plating recolours it.
-- **The peer id prefix** `partykart-pk40-` in `src/session.ts` decides which builds can see each
+- **The peer id prefix** `partykart-pk41-` in `src/session.ts` decides which builds can see each
   other's rooms. The deployed game and a dev build share rooms while it matches. Change it when the
   message format changes incompatibly, or a track changes or is added.
 - **Item rolls and bot patience use `Math.random`.** That's fine because only one browser ever
-  simulates a given car. Never have several browsers each re-simulate something that rolls dice.
+  simulates a given car, or a given bot on foot (the host's `Squad`, which takes its dice as a
+  function, so the tests seed them). Never have several browsers each re-simulate something that
+  rolls dice.
+  A shot's spread is drawn from its `seed`, sent with it, so every browser draws the same pellets.
+- **A round's snapshot reuses `fl`.** On foot in a round, a snapshot's `fl` is the fighter's flags
+  (`FIGHT` in `src/game/fight.ts`: down, kit, scoped, reloading, safe, armed), not the kart's.
 - **The eight-bot race test rolls dice.** "eight bots race a lap…" asserts that the lead changes
   at least once. Its item rolls are random, so it could still fail now and then, though since the
   bots spread across the road to pass (`steerLine` in `src/game/bot.ts`) it rarely does. Rerun it

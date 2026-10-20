@@ -25,14 +25,20 @@ change things, read [making-changes.md](making-changes.md).
 | `src/game/bot.ts` | sim | The bots' driving (each on its own line across the road, moving out to pass) and when they use their items |
 | `src/game/roamer.ts` | sim | `Roamer`: your car round the city, outside a race, on the world's ground (bumps and slipstreams, back on the street when lost) |
 | `src/game/flyer.ts` | sim | `Flyer`: the flying camera (braga-map's task 054), its pace by its height, kept 1 to 500 m over the ground it's given and inside its bound; `landing`: where your kart is put when you stop flying; `onGrid`: a grid of heights as its triangles are drawn |
-| `src/game/walker.ts` | sim | `Walker`: you on foot (braga-map's task 073), on the world's ground at a person's height and radius, walking, running and jumping, up kerbs and treads, stopped by the walls and trunks; `alight`: where you get out beside your kart |
+| `src/game/walker.ts` | sim | `Walker`: you on foot (braga-map's task 073), on the world's ground at a person's height and radius, walking, running and jumping, up kerbs and treads, stopped by the walls and trunks, the karts and the others on foot (`blockers`), and kept in a round's area (`bound`); `alight`: where you get out beside your kart |
+| `src/game/fight.ts` | sim | The deathmatch (braga-map's task 074): the kits (`KITS`), a fighter's health, ammunition and spread (`Soldier`), the figures' hitboxes, a shot and what it hits (`fire`, `pellets`, `landed`), the events (`ShotEv`, `DownEv`), the scores (`tally`), and Fujacal as a round is played in (`field`: its ground with the edge, the spawns, where the railings and barriers stand; `pickSpawn`) |
+| `src/game/footbot.ts` | sim | The bots on foot (braga-map's task 075): `FootBot`, one bot's senses, plans, aim and trigger, as good as its level (`skillOf`, `SKILLS`); `Squad`, a round's bots as the host runs them (their steps, their coming back, the shots they fire and meet) |
+| `src/world/sight.ts` | sim | Line of sight: how far a ray goes before the world stops it (`sight`, `clear`), for a shot and a look |
+| `src/world/paths.ts` | sim | `Paths`: where someone on foot can walk in an area, points 2 m apart joined where a walker gets from one to the next (several over each other in a tower, and ways joined by hand through doors and up flights); the way between two (A*), the points round one, whether a straight line is walkable. For the bots |
+| `src/world/interiors.ts` | sim | The arenas' buildings' insides (braga-map's task 079), made up: which buildings get a room (`furnish`), its doors and windows where its facade draws them, a tower's floors, stairwell, parapet and hut; what's underfoot in a room (`roomFloor`), what a look meets there (`roomSolid`), the walls it stands (`roomWalls`) |
+| `src/world/storeys.ts` | sim | How a building's walls are laid out: its storeys, its bays, which walls face a street; for the facades and the rooms' openings |
 | `src/session.ts` | browser | Rooms over PeerJS: `HostRoom` and `ClientRoom` |
 | `src/main.ts` | browser | Free roam, the menu over it, the race and its screens, the loop, the cameras, and the glue between all of it |
-| `src/hud.ts` | browser | What's on the screen while you drive: in a race (`Hud`: place, lap, item slot, clock, minimap, order, feed), and round the city (`RoamHud`: speed, the street's name, a minimap round you, feed; on foot, a dot for the speed) |
+| `src/hud.ts` | browser | What's on the screen while you drive: in a race (`Hud`: place, lap, item slot, clock, minimap, order, feed), round the city (`RoamHud`: speed, the street's name, a minimap round you, feed; on foot, a dot for the speed), and in a round (`FightHud`: health, kit and ammunition, the clock and where you stand, the crosshair and hit marker, the red edge, the scope, the scores, the kits to choose from) |
 | `src/stats.ts` | browser | `?stats`: what the game costs on this screen, in a corner, for measuring it on a phone |
 | `src/audio.ts` | browser | Every sound and the mix it goes through (buses, a limiter, places): synthesized with Web Audio, but the city's, recorded (`src/sounds/`) |
 | `src/ambience.ts` | sim | What's round any point of the city on a grid every 10 m (traffic, town, park, woods), each point worked out the first time it's needed, and where the churches, the rivers, the bus stops and the stadium are, from the map, for the city's sound |
-| `src/input.ts` | browser | The keyboard, the mouse (a drag looks round while flying; on foot it looks round with the pointer locked) and the touch screen (its layouts for driving, flying and on foot): held controls, plus actions counted once per press |
+| `src/input.ts` | browser | The keyboard, the mouse (a drag looks round while flying; on foot it looks round with the pointer locked, and in a round its buttons are the trigger and the scope) and the touch screen (its layouts for driving, flying, on foot and in a round): held controls, plus actions counted once per press |
 | `src/render/` | browser | three.js: the look, the city round the track (`city.ts`, its land on `lattice.ts`, what its ground is from `cover.ts`), every street in the open world's area (`streets.ts`, laid on the ground by `tin.ts`), what the race adds to them (`road.ts`), the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
 
 The **sim** files never import three.js or touch the DOM, so `node --test` can load them. The
@@ -48,7 +54,7 @@ you last played (kept in `localStorage` every 3 s and as the page goes) or on th
 start; and goes back to it after a race, where you were before it.
 
 1. **`syncOthers`**, as in a race (below), but for the room's players only: the bots are out only
-   in a race. A friend who has just joined is put on the street nearest the host once the host's
+   in a race, or on foot in a round. A friend who has just joined is put on the street nearest the host once the host's
    first position comes in (`besideTheHost`).
 2. **Key actions**: horn, camera, back on the street, flying (V, the bar's and the menu's
    buttons: `fly`) and on foot (F, and theirs: `walk`).
@@ -265,7 +271,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk39-` plus a five-character room code, and the invite link is `?room=<code>`, which
+`partykart-pk41-` plus a five-character room code, and the invite link is `?room=<code>`, which
 opens the game straight into the room. A room is made only when someone invites friends ("Convidar
 amigos") or starts a race; until then the game is alone, with no network at all.
 
@@ -281,7 +287,7 @@ To the host (`ToHost` in `session.ts`):
 | `pos` | `Snap` | Where my car is; on foot, where I am and where it waits. Clients send at most 15 a second |
 | `lap` | ms | I finished a lap in this time |
 | `fin` | ms | I finished the race at this race time |
-| `ev` | `ItemEv` | Something I threw or that happened to me |
+| `ev` | `ItemEv`, `FightEv` | Something I threw or that happened to me; in a round, a shot I fired or my going down |
 | `honk` | | |
 | `ping` | | Every second. A client silent for 15 s is dropped |
 
@@ -294,7 +300,7 @@ To the clients (`ToClient`):
 | `board` | `Entry[]` | The leaderboard: best laps, laps, finish times |
 | `start` | goIn, endIn, grid | The race starts in `goIn` ms and ends at the latest in `endIn` ms. `grid` gives each id's slot |
 | `end` | `Entry[]` | The results |
-| `ev` | `ItemEv` | Someone else's item event, relayed |
+| `ev` | `ItemEv`, `FightEv` | Someone else's event, relayed |
 | `honk` | id | |
 | `bye` | why | You're out: the room is full, or the host has closed it |
 
@@ -335,15 +341,49 @@ sequenceDiagram
   H->>T: ev hit (relayed)
 ```
 
+### Shots
+
+A round's events (`FightEv`, `src/game/fight.ts`) travel as the items' do, through `room.sendEv` and
+the host, cleaned by `cleanEv` (the sender is the shot's `owner` and the down's `victim`, at most ten
+hits a shot, none above 400).
+
+| `k` | Made by | What every browser does |
+|---|---|---|
+| `shot` | **the shooter's browser** | Draws it: the flash at the shooter's gun as drawn, the report from where it was fired, the tracers, and a mark where each pellet no fighter stopped strikes (each pellet's way from the shot's aim, cone and `seed`, so the marks are the same everywhere; `stop` says which a fighter stopped). The browser of each fighter in `hits` takes the damage |
+| `down` | the victim's browser | The feed; the host counts a kill and a death (`tally`) and sends the board |
+
+A bullet is instant, and the others are drawn 110 ms behind, so the items' rule (the victim decides)
+would have shots that hit on the shooter's screen miss on the victim's. **The shooter's browser
+decides a hit**, against the others as it draws them (`fire`: each pellet into the world, `sight`,
+and at the first fighter's hitboxes it meets), and the victim's browser applies it: its health is its
+own, and so is its going down. What hit on your screen hit; the cost is that a victim who has just
+stepped behind a corner can still be hit for a tenth of a second, as in most shooters.
+
+```mermaid
+sequenceDiagram
+  participant S as Shooter's browser
+  participant H as Host
+  participant V as Victim's browser
+  S->>S: fire: line of sight, hitboxes as drawn → hits
+  S->>H: ev shot (with its hits)
+  H->>V: ev shot (relayed, cleaned)
+  Note over V: draws it; hurt by its hit, or down
+  V->>H: ev down
+  H->>H: a kill and a death on the board
+  H->>S: ev down, board
+```
+
 ### Who decides what
 
 | | |
 |---|---|
 | Your car's position, laps and finish time | Your browser |
 | Whether your car was hit | Your browser |
-| The bots: driving, items, laps | The host's browser |
+| Whether your shot hit someone in a round | Your browser, against them as it draws them |
+| Your health, and whether you're down | Your browser |
+| The bots: driving, items, laps; on foot, where they go, what they see, their shots and their health | The host's browser |
 | The room: members, names, drivers, the race's settings, bots | The host |
-| The leaderboard and results | The host, from the laps and finishes it's told |
+| The leaderboard and results | The host, from the laps and finishes it's told; in a round, the kills and deaths from the downs |
 | When the race ends | The host: when everyone's finished, 30 s after the first finisher, or at the time limit (for a race, the laps times the lap limit, plus 60 s; the lap limit is the track's length at 60 km/h, `lapLimit` in `tracks.ts`, of the track in the lobby. For time attack, the chosen minutes) |
 
 This is a game for friends, not a competitive one. A client can lie about its own laps. What the
@@ -386,12 +426,113 @@ centimetres the map leaves between some treads of a flight; down a bank, but up 
 and off a retaining wall's top, but never up its face. Every wall, fence, hedge, gate, building and
 tree stops you at your own radius (`WorldGround.circle`, the kart's own test at a walker's size, which
 also stands a thin wall's faces where they're drawn, `half`), and the area's edge keeps you in it.
+Pushed out of a wall, you're put a millimetre clear of it (just clear, a rounding error could leave you
+in it by too little to move you, for ever); and where two push you back and forth (going straight at
+a wall's end), you slide along the first (both found by the bots, braga-map's task 075).
 On a computer the mouse looks round with the pointer locked; the browser lets it go at Esc, which the
 game takes for the menu (`Mouse.onLost`), and a click on the world takes it back. On a touch screen,
 twin sticks. Your kart waits where it stopped, sending its snapshot, empty; F again puts you back in
 it. A race the host starts puts you back in it first. The snapshot (`Snap`) carries `w` (on foot),
 your feet's `x`, `y`, `z`, `yaw` and pace (`spd`), how far you look up (`pi`), and where your kart
 waits (`kx`, `ky`, `kz`, `kw`, its up `ux`, `uy`, `uz`); all of these 0 in the kart.
+
+**The deathmatch** (braga-map's task 074), from the menu's "Tiroteio": a round of 3, 5 or 10 minutes
+on foot in one of three small arenas in Fujacal (braga-map's `world.arenas`, its task 079: Topo do
+Fujacal, Doutor José Vilaça and Santa Justa, about 80 m across each), started by the host as a race
+is (`Settings.mode` `'fight'`, `round` its minutes, `arena` its id). The arena's field (`field`,
+made the first time a round starts in it, 50 to 115 ms) is its ground with its edge, its spawns, the
+bots' paths and where its edge is drawn. Everyone in the room is put on foot at a spawn (its 8: the
+most spread of points every 3 m outdoors, at least 3 m in from the edge, on the ground its paths
+reach from its middle, by the grid), their kart waiting
+where it was, and chooses a kit while it counts down; a race-like countdown, then the round. Your
+walker walks the round's ground, the world's with the area's edge a wall at every level, and keeps
+inside it (`bound`); the karts and the others on foot stop you. Each fixed step steps your
+`Soldier` (its reload, its spread settling, its health coming back after 5 s unhurt) and fires if the
+trigger says so (a semi-automatic once a pull, the carabina while it's held). Hit, the red edge and a
+thud; down, you fall, the kits come up, and after 4 s you're back at the spawn none of the others can
+see, the furthest from them (`pickSpawn`), unhurt for 2 s unless you fire first. Your snapshot carries
+your fighter's flags (`FIGHT`: down, kit, scoped, reloading, safe, armed) in `fl`, and the others are
+drawn holding their kit, falling and fading when down, with no names over them (they'd show through
+the walls), and nobody but you on the minimap. The host keeps the kills and deaths, and ends the
+round at its time (or "Acabar o tiroteio"): the results, and everyone back in their kart where it
+waited. The edge is drawn only during a round (`render/arms.ts`'s `buildEdge`, one for each arena):
+a railing wherever someone on foot could walk up to it, road-works barriers across its gates.
+
+**The arenas' buildings' insides** (braga-map's task 079, `src/world/interiors.ts`), made up and the
+world's always, round the city as in a round. Each building wholly in an arena whose ground floor a
+door can open onto the street at its level gets a room: its floor at its best door's sill, its doors
+(two at most, a metre wide at least) in a wall's middle bay where the ground outside is clear and a
+step from the floor, its windows where its facade draws them on its ground floor (its kind's, a
+shop's, a glazed front or an arcade), not under the ground outside nor facing a wall; a wall another
+building stands against has none. In Topo do Fujacal and Doutor José Vilaça the tallest flat-roofed
+block near the middle is a tower: every storey a floor and the roof one too, a walled stairwell of two
+flights a storey up through them all, every upper storey's bay a window, a parapet round the roof and
+a hut over the stairs. The ground (`worldGround`, last) takes away a room's outline walls (`unwall`)
+and stands its own: the outline's, at its middle 10 cm in and 10 cm either side, with gaps for the
+openings (no sill under a door), the stairwell's, the parapet and the hut's (`roomWalls`); in a room
+the floor is its own (`roomAt`, `roomFloor`: its floors, treads and landings, never the land), a look
+meets its floors (`roomSolid`) and the buildings' roof band isn't over it. The city cuts the openings
+through the facade (each wall with its openings triangulated, the same batches and shader), opens a
+tower's roof over its stairs, and draws the inside in one mesh (`render/interiors.ts`: the walls'
+inside faces and the openings' reveals, floors and ceilings, treads, the stairwell's walls, the
+parapet and the hut: 5,200 triangles, one draw call). A building the city leaves out loses its room too
+(`unroom`). 24 rooms, 31
+doors, 148 windows, 2 towers.
+
+**The bots on foot** (braga-map's task 075, `src/game/footbot.ts`): the round's empty places, the
+drivers no player picked, as many as the host chose, as good as its "Nível" (`Settings.skill`, 0 to
+2: Fácil, Médio, Difícil). The host's browser runs them (`Squad`, made in `startFight`), a step at a
+time with yours (`stepBots`), and sends their snapshots as its own, with no kart (`kx` to `kw` 0);
+everyone draws them on foot as they draw a player, the host too, from those snapshots 110 ms behind
+(`HostRoom.sendPos` keeps them in its `cars` in a round), and shoots at them where it draws them.
+A bot's shot is decided by the host's browser as a player's is by theirs, against the players where
+it draws them and the other bots where they are; the shots anyone fires reach the host, whose bots
+hear them and take their hits (`Squad.shot`), and a bot put down is the host's to tell (`down`, as a
+player's browser tells its own). Each kill and death is on the board as a player's.
+
+What a bot does: at each spawn it chooses a kit (the one it likes, more often than not). It walks the
+arena's walkable ground (`world/paths.ts`, made with its field): points 2 m apart over the round's
+ground, each with room to stand, at the ground's level and on each of a tower's floors, joined to
+their eight neighbours where nothing stands between them and the rise is one a walker climbs (a flight
+a tread at a time, a bank up to 45°; a retaining wall only off its top), and by hand through each door
+and up each flight; only those its middle reaches and that reach it (933 to 1,823 points an arena,
+made in 20 to 40 ms). A way is found with A* (its guess of the way left
+counted half as much again, so it looks at far fewer points), and the bot cuts its corners where the
+straight line is walkable. It looks round 6 or 7 times a second within its field of view (or 3 m
+round it): whoever its look (`world/sight.ts`, to their head or chest) reaches, nearest first, the one
+it's after counting nearer. Seeing someone it turns to them and, after its reaction time, fires when
+its aim is on them as far as it can tell: its aim starts off by an error that settles, trails someone
+moving, and trembles; an automatic in bursts, a semi-automatic with a pause. It fights from where its
+kit likes (a shotgun closes in, a sniper's rifle stands and scopes), stepping across the line of fire,
+not into a wall. It fires only at someone it sees as it fires (looked at again then). Hurt, or
+reloading with someone about, it backs off to the nearest point within 30 m's walk they can't see,
+till it's whole. Seeing nobody, it goes where it last saw someone, or heard them (running footsteps
+within 18 m, a shot anywhere, roughly where), else somewhere 25 m off or more; after 8 s of nothing,
+somewhere 8 to 20 m from someone, as far-off footsteps would tell a player. Now and then (coming back,
+or roaming) it makes for a tower's floor or its roof instead, with the sniper's rifle more often than
+not, and holds there 8 to 16 s, looking round. Pinned by a wall's end, a
+hollow or someone in its way, it steps aside, then back to the last point it passed, then finds a new
+way, and after 5 s is put back on that point, as a race's bot is on its line.
+
+| Level | Reaction | Aim off at first, settling in | Tremble | Turns | Sees to | Backs off under |
+|---|---|---|---|---|---|---|
+| Fácil | 0.85 s | 11°, 1.1 s | 1.6° | 150°/s | 110 m | 25 health |
+| Médio | 0.54 s | 7°, 0.7 s | 0.9° | 315°/s | 185 m | 40 |
+| Difícil | 0.22 s | 3°, 0.3 s | 0.25° | 480°/s | 260 m | 55 |
+
+A bot with the carabina puts down someone standing 20 m off in 6.0 s on Fácil (26% of its shots hit),
+2.3 s on Médio (46%) and 1.1 s on Difícil (58%) (`test/footbot.test.ts`, the mean of 40). Three bots
+alone in an arena for 5 minutes put each other down 34 to 43 times, none put back on its path; over 18
+such rounds a bot was put back once in 270 bot-minutes. The bots cost 0.04 ms a frame for three and 0.09
+ms for seven (a full room with the host) on the desktop, the worst step after the first second under
+1.1 ms: one bot a step may find a way or look for cover, the others wait for the next step.
+
+What a shot passes and what stops it (`world/sight.ts`): a building's walls and roof, a wall, a hedge
+(which hides as much as it stops), a deck's parapet, a tunnel's side, a riser's face, a tree's trunk, a
+waiting kart and the ground stop it; a fence's mesh, a railing's or a gate's bars, the railing on a low
+wall, a handrail, the edge and the barriers, and the trees' crowns let it through. A look costs about
+36 µs between two spawns 300 m apart on the desktop, 72 with every test file running at once (`test/fight.test.ts`), so every shot and every
+bot's look can afford one.
 
 **Race**: 1 to 3 laps from a random starting grid, with positions. Power-ups and catch-up can each
 be turned off in the race's settings.
@@ -667,6 +808,12 @@ Every sound is in `audio.ts`, and plays through one mix. All are synthesized but
   through a `PannerNode` there, and the listener is on the camera (`listen`, every frame), so it's
   heard from the left or the right, and fainter far away: a twelfth as loud at 120 m, and not
   played past 400 m. Your own racer's sounds have no place: they're in your head.
+- **A round's sounds** (braga-map's task 074, `fightSfx`): each kit's report a crack, a burst of noise
+  and a thump, as loud as in your head within 40 m and heard 1.5 km off, duller the further, and sent
+  to the streets' echo (one convolver, its impulse a few slaps off the facades and a darkening tail of
+  1.8 s); a bullet striking, a reload, a dry click, being hit, the hit marker's tick and a kill's two
+  notes; and footsteps, yours in your head and the others' where they walk, on foot round the city as
+  in a round.
 - **Cheap**: one buffer of noise for every sound that needs some, and at most 24 sounds at once
   (a jingle always plays).
 - **Judged by ear**: `?record=60` records the next race's first 60 s, from its countdown, and offers
@@ -976,3 +1123,11 @@ a stack that scales better, or is served from the owner's homelab.
 
 These are the city alone, as the shots measure it. The karts, items and effects come on top: about
 500 draw calls for 8 karts on High, 370 on Medium, 300 on Low.
+
+**A round** (braga-map's task 074), measured on foot at the same place with and without one, the edge
+in view (on the Avenida da Liberdade's pavement): 10 draw calls and 36,000 triangles more on High, 7
+and 18,000 on Low. The edge is 5 meshes and 18,000 triangles (its railing's bars on 1.9 km of quads,
+its posts, the barriers), drawn again for the shadows; your gun is drawn after the world, over it,
+its own few meshes and 900 triangles; the bullets' marks and the tracers a mesh each. Each other
+player's gun in their hands is one or two meshes more; no textures to speak of (two small canvases).
+`?stats` says "tiroteio" in a round.

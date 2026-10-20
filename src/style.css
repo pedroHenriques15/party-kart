@@ -1351,3 +1351,402 @@ body.touch .tc {
     transform: none;
   }
 }
+
+/* The deathmatch (braga-map's task 074): over the screen on foot, the crosshair where the dot was. */
+body.fighting #hud .dot {
+  display: none !important;
+}
+
+.fight {
+  position: absolute;
+  inset: 0;
+}
+
+/* Four lines round the middle, as far out as the shots would spread. */
+.cross {
+  --gap: 8px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+}
+
+.cross i {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.cross i:nth-child(1),
+.cross i:nth-child(2) {
+  width: 2px;
+  height: 9px;
+  left: -1px;
+}
+
+.cross i:nth-child(1) {
+  bottom: var(--gap);
+}
+
+.cross i:nth-child(2) {
+  top: var(--gap);
+}
+
+.cross i:nth-child(3),
+.cross i:nth-child(4) {
+  width: 9px;
+  height: 2px;
+  top: -1px;
+}
+
+.cross i:nth-child(3) {
+  right: var(--gap);
+}
+
+.cross i:nth-child(4) {
+  left: var(--gap);
+}
+
+/* Your shot hit: an X at the crosshair, red for the head. */
+.hitmark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  opacity: 0;
+  background:
+    linear-gradient(45deg, transparent 45%, #fff 45%, #fff 55%, transparent 55%),
+    linear-gradient(-45deg, transparent 45%, #fff 45%, #fff 55%, transparent 55%);
+  -webkit-mask: radial-gradient(circle, transparent 4px, #000 5px);
+  mask: radial-gradient(circle, transparent 4px, #000 5px);
+}
+
+.hitmark.on {
+  opacity: 1;
+}
+
+.hitmark.head {
+  background:
+    linear-gradient(45deg, transparent 42%, #ff4b3e 42%, #ff4b3e 58%, transparent 58%),
+    linear-gradient(-45deg, transparent 42%, #ff4b3e 42%, #ff4b3e 58%, transparent 58%);
+}
+
+/* Hurt: the screen's edge red. */
+.hurt {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(200, 16, 30, 0.55) 80%, rgba(140, 0, 10, 0.85) 100%);
+}
+
+/* Through the scope: black round a circle, its cross hairs. */
+.scope {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(#000, #000) center / 1px 100% no-repeat,
+    linear-gradient(#000, #000) center / 100% 1px no-repeat,
+    radial-gradient(circle at center, transparent 0, transparent min(42vh, 42vw), #000 calc(min(42vh, 42vw) + 2px));
+}
+
+.health,
+.ammo {
+  position: absolute;
+  bottom: calc(18px + var(--sb));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+
+.health {
+  left: calc(20px + var(--sl));
+}
+
+.health b,
+.ammo b {
+  font-size: 38px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.health .meter {
+  display: block;
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(10, 12, 18, 0.55);
+  overflow: hidden;
+}
+
+.health .meter i {
+  display: block;
+  height: 100%;
+  background: #f4f7fb;
+}
+
+.health.low b {
+  color: #ff6b5e;
+}
+
+.health.low .meter i {
+  background: #ff4b3e;
+}
+
+.ammo {
+  right: calc(24px + var(--sr));
+  align-items: flex-end;
+}
+
+.ammo small {
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.ammo.empty b {
+  color: #ff6b5e;
+}
+
+.roundclock {
+  position: absolute;
+  top: calc(14px + var(--st));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.roundclock b {
+  font-size: 30px;
+  font-weight: 900;
+}
+
+.roundclock small {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+body.fighting #hud .tc {
+  top: calc(84px + var(--st));
+}
+
+body.fighting #hud .keys {
+  bottom: calc(86px + var(--sb));
+}
+
+/* The scores, Tab held. */
+.scores {
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 320px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(10, 12, 18, 0.72);
+  text-shadow: none;
+}
+
+.scores .row {
+  display: grid;
+  grid-template-columns: 1fr 70px 70px;
+  gap: 8px;
+  padding: 5px 10px;
+  border-left: 4px solid var(--c, transparent);
+  font-size: 16px;
+  font-weight: 650;
+  text-align: right;
+}
+
+.scores .row .who {
+  text-align: left;
+}
+
+.scores .row.head {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.7;
+}
+
+.scores .row.me {
+  background: rgba(255, 211, 77, 0.18);
+}
+
+/* The kits, before the start and while you're down: above the touch controls, to be tapped. */
+body.picking #hud {
+  z-index: 2;
+}
+
+.picker {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 32px));
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(10, 12, 18, 0.78);
+  pointer-events: auto;
+  text-align: center;
+  text-shadow: none;
+}
+
+.picker h2 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+
+.picker .sub {
+  margin: 0 0 12px;
+  opacity: 0.85;
+}
+
+.picker .until {
+  margin: 12px 0 0;
+  font-weight: 700;
+}
+
+.picker .until:empty {
+  display: none;
+}
+
+.picker .kits {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.picker .kit {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.picker .kit.on {
+  outline: 3px solid #ffd34d;
+}
+
+.picker .kit small {
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.picker .kit .key {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  opacity: 0.6;
+}
+
+/* On a touch screen in a round: Fogo under the right thumb, Saltar below it, Recarregar and Mira
+   beside them. */
+.t-fire,
+.t-reload,
+.t-scope {
+  display: none;
+}
+
+.t-pad[data-mode='fight'] .t-look {
+  display: block;
+  position: absolute;
+  inset: 0 0 0 50%;
+  pointer-events: auto;
+}
+
+.t-pad[data-mode='fight'] .t-drift,
+.t-pad[data-mode='fight'] .t-brake,
+.t-pad[data-mode='fight'] .t-item {
+  display: none;
+}
+
+.t-pad[data-mode='fight'] .t-fire,
+.t-pad[data-mode='fight'] .t-reload,
+.t-pad[data-mode='fight'] .t-scope,
+.t-pad[data-mode='fight'] .t-jump {
+  display: grid;
+}
+
+.t-pad[data-mode='fight'] .t-fire {
+  right: calc(28px + var(--sr));
+  bottom: calc(120px + var(--sb));
+  width: 104px;
+  height: 104px;
+  font-size: 16px;
+  border-color: rgba(255, 90, 79, 0.9);
+}
+
+.t-pad[data-mode='fight'] .t-jump {
+  right: calc(20px + var(--sr));
+  bottom: calc(18px + var(--sb));
+  width: 74px;
+  height: 74px;
+  font-size: 12px;
+  border-color: rgba(127, 212, 255, 0.85);
+}
+
+.t-pad[data-mode='fight'] .t-reload {
+  right: calc(150px + var(--sr));
+  bottom: calc(24px + var(--sb));
+  width: 70px;
+  height: 70px;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.t-pad[data-mode='fight'] .t-scope {
+  right: calc(150px + var(--sr));
+  bottom: calc(150px + var(--sb));
+  width: 66px;
+  height: 66px;
+  font-size: 12px;
+}
+
+.t-scope.on {
+  background: rgba(255, 211, 77, 0.35);
+  border-color: #ffd34d;
+}
+
+/* With the touch controls, the ammunition up out of the buttons' way. */
+body.touch .ammo {
+  bottom: auto;
+  top: calc(60px + var(--st));
+  right: calc(16px + var(--sr));
+}
+
+body.touch .ammo b,
+body.touch .health b {
+  font-size: 26px;
+}
+
+body.touch .health {
+  bottom: auto;
+  top: calc(60px + var(--st));
+  left: auto;
+  right: calc(180px + var(--sr));
+  min-width: 110px;
+}
+
+/* In a round the minimap goes top left, out of the way of your health, and the keys to the middle. */
+body.fighting #hud .minimap.round {
+  bottom: auto;
+  top: calc(14px + var(--st));
+  width: 170px;
+}
+
+body.fighting #hud .keys {
+  left: 50%;
+  bottom: calc(14px + var(--sb));
+  transform: translateX(-50%);
+  white-space: nowrap;
+}

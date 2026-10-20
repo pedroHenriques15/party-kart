@@ -27,6 +27,7 @@ import { bounce, carAt, fly, settle, STICK, WALL_H, type Car, type Ground } from
 import { norm, v3, type V } from '../math.ts';
 import { locate, type Track } from '../track/track.ts';
 import { makeLand, mouthShape, THROAT, type Land } from './land.ts';
+import { furnish, inside as inRoomRing, roomFloor, roomWalls, type Room } from './interiors.ts';
 
 const CELL = 10;
 export const STEP = 0.3; // the highest a car steps up onto: a kerb, not a wall
@@ -41,10 +42,10 @@ const SMOOTH = 1.5; // a surface's normal is taken over this either side
 const TRUNK = 0.15; // the thinnest trunk a kart hits
 const PARAPET = 1.0; // over a deck, as levels.ts draws it
 const BORE = 3; // how high a tunnel's sides stand over its road, at most
-const DEEP = 1.2; // a deck's depth, under its road
+export const DEEP = 1.2; // a deck's depth, under its road
 const BUMP = 0.12; // the share of its speed across a kerb a car loses going up it
 const RAIL = 0.9; // a handrail's height over the steps, as braga-map has it
-const HOLD = 0.6; // how far a retaining wall stands over its top, for the karts
+export const HOLD = 0.6; // how far a retaining wall stands over its top, for the karts
 
 // A wall: from (ax, az) to (bx, bz), standing from y0 to y1. `kind`: one of braga-map's walls, fences,
 // railings, hedges and gates (`world.walls`), what it is; a building's, a deck's and a race's have none.
@@ -59,6 +60,11 @@ export interface Wall {
   // How far its faces stand out from its line either side, where it's drawn thicker than it stands
   // for a kart (one of the map's thinner than a kart is narrow): for someone on foot.
   half?: number;
+  // What a shot and a look pass (world/sight.ts, braga-map's task 074): the area's edge, the barriers
+  // across its streets and the steps' handrails, nothing to hide behind. And how much of a low wall's
+  // top is a railing on it, which they pass over the wall under it.
+  open?: boolean;
+  rail?: number;
 }
 
 // A flight of steps' tread (braga-map's task 050): its outline, its height, and its box.
@@ -69,7 +75,7 @@ export interface Tread {
 }
 
 // A tree's trunk, or anything round: at (x, z), r wide, from y0 to y1.
-interface Post {
+export interface Post {
   x: number;
   z: number;
   r: number;
@@ -81,7 +87,7 @@ const key = (i: number, j: number) => (i + 4096) * 8192 + (j + 4096);
 const cellOf = (v: number) => Math.floor(v / CELL);
 
 // Each cell a set of things whose box overlaps it.
-class Cells<T> {
+export class Cells<T> {
   m = new Map<number, T[]>();
   add(x0: number, z0: number, x1: number, z1: number, t: T): void {
     for (let i = cellOf(x0); i <= cellOf(x1); i++) {
@@ -361,6 +367,11 @@ interface Data {
   sides: Side[];
   inside: Rings; // the open world's area
   blocks: Cells<Block>;
+  // The arenas' buildings with an inside (braga-map's task 079, interiors.ts), and which cells each is
+  // in: inside one, its floors are the ground.
+  rooms: Room[];
+  roomCells: Cells<Room>;
+  roomWalls: Map<Room, Wall[]>;
   counts: Record<string, number>;
 }
 
@@ -416,6 +427,12 @@ export class WorldGround implements Ground {
     return r;
   }
 
+  // The room (x, z) is in, if any: inside a building with an inside.
+  roomAt(x: number, z: number): Room | null {
+    for (const r of this.d.roomCells.at(x, z) ?? []) if (x >= r.box.x0 && x <= r.box.x1 && z >= r.box.z0 && z <= r.box.z1 && inRoomRing(r.pts, x, z)) return r;
+    return null;
+  }
+
   // The tread of a flight of steps at (x, z), if there's one.
   tread(x: number, z: number): Tread | null {
     for (const t of this.d.treads.at(x, z) ?? []) if (x >= t.box.x0 && x <= t.box.x1 && z >= t.box.z0 && z <= t.box.z1 && inRings(t.rings, x, z)) return t;
@@ -425,6 +442,8 @@ export class WorldGround implements Ground {
   // The ground's height at (x, z) as a car finds it: a tread's, or the land's (firm under a street
   // or a path), with a pavement's kerb.
   groundAt = (x: number, z: number): number => {
+    const room = this.roomAt(x, z);
+    if (room) return room.y;
     const t = this.tread(x, z);
     if (t) return t.y;
     const d = this.d;
@@ -436,6 +455,12 @@ export class WorldGround implements Ground {
   // What a car at height y stands on at (x, z): the highest surface no more than a step over it.
   floor(x: number, z: number, y: number): Floor {
     const d = this.d;
+    // In a room: its floors, treads and landings, not the land under it.
+    const room = this.roomAt(x, z);
+    if (room) {
+      const f = roomFloor(room, x, z, y);
+      return { y: f ?? room.y, kind: 'block', raise: 0, piece: null, buried: f === null };
+    }
     let kind: Floor['kind'] = 'land';
     let raise = 0;
     const t = this.tread(x, z);
@@ -740,6 +765,18 @@ export class WorldGround implements Ground {
     return n;
   }
 
+  // Takes away the room of a building the game leaves out (its inside, its walls), as unwall() takes
+  // away a building's walls. Whether there was one.
+  unroom(ring: [number, number][]): boolean {
+    const r = this.d.rooms.find((q) => q.b.pts === ring);
+    if (!r) return false;
+    for (const w of this.d.roomWalls.get(r) ?? []) this.d.walls.remove(Math.min(w.ax, w.bx), Math.min(w.az, w.bz), Math.max(w.ax, w.bx), Math.max(w.az, w.bz), w);
+    this.d.roomCells.remove(r.box.x0, r.box.z0, r.box.x1, r.box.z1, r);
+    this.d.rooms.splice(this.d.rooms.indexOf(r), 1);
+    this.d.roomWalls.delete(r);
+    return true;
+  }
+
   // What the street a car at height y is on at (x, z) is paved with: granite setts or not, for the
   // tyres' rumble. Off a carriageway or a path, null.
   surface(x: number, z: number, y: number): 'asphalt' | 'setts' | 'paving' | 'dirt' | null {
@@ -771,7 +808,7 @@ function cross(ax: number, az: number, bx: number, bz: number, cx: number, cz: n
 }
 
 // Whether (x, z) is in the ring.
-function inRing(r: [number, number][], x: number, z: number): boolean {
+export function inRing(r: [number, number][], x: number, z: number): boolean {
   let odd = false;
   for (let k = 0, j = r.length - 1; k < r.length; j = k++) {
     const [ax, az] = r[k];
@@ -983,6 +1020,7 @@ export function worldGround(world: Braga): WorldGround {
     counts[what] = (counts[what] ?? 0) + 1;
   };
 
+  const trimmedBuildings = new Set<object>();
   // The buildings, from below their lowest corner (a tunnel can pass under) to their top, each
   // trimmed at the kerb where it stands on a carriageway, and at a passage's edge where a path runs
   // under it.
@@ -990,6 +1028,7 @@ export function worldGround(world: Braga): WorldGround {
     if (!near(b.pts)) continue;
     const top = b.y + Math.max(b.h, b.ridge);
     const { segs, cut } = trimmed(b.pts, cuts);
+    if (cut) trimmedBuildings.add(b);
     if (cut) counts['buildings trimmed at the kerb'] = (counts['buildings trimmed at the kerb'] ?? 0) + 1;
     for (const [ax, az, bx, bz] of segs) addWall({ ax, az, bx, bz, y0: b.y - 2, y1: top }, 'building walls');
   }
@@ -1058,13 +1097,13 @@ export function worldGround(world: Braga): WorldGround {
   for (let k = 0; k < open.pts.length; k++) {
     const [ax, az] = open.pts[k];
     const [bx, bz] = open.pts[(k + 1) % open.pts.length];
-    addWall({ ax, az, bx, bz, y0: -1e4, y1: 1e4 }, 'edge');
+    addWall({ ax, az, bx, bz, y0: -1e4, y1: 1e4, open: true }, 'edge');
   }
   for (const g of open.gates) {
     const hw = g.w / 2 + 1;
     const cx = -Math.sin(g.heading);
     const cz = Math.cos(g.heading);
-    addWall({ ax: g.x - cx * hw, az: g.z - cz * hw, bx: g.x + cx * hw, bz: g.z + cz * hw, y0: g.y - 1, y1: g.y + 1.2 }, 'barriers');
+    addWall({ ax: g.x - cx * hw, az: g.z - cz * hw, bx: g.x + cx * hw, bz: g.z + cz * hw, y0: g.y - 1, y1: g.y + 1.2, open: true }, 'barriers');
   }
 
   // The steps' handrails, from the treads to their top.
@@ -1072,7 +1111,7 @@ export function worldGround(world: Braga): WorldGround {
     for (let i = 1; i < h.pts.length; i++) {
       const [ax, az] = h.pts[i - 1];
       const [bx, bz] = h.pts[i];
-      addWall({ ax, az, bx, bz, y0: Math.min(h.ys[i - 1], h.ys[i]) - RAIL - 0.1, y1: Math.max(h.ys[i - 1], h.ys[i]) }, 'handrails');
+      addWall({ ax, az, bx, bz, y0: Math.min(h.ys[i - 1], h.ys[i]) - RAIL - 0.1, y1: Math.max(h.ys[i - 1], h.ys[i]), open: true }, 'handrails');
     }
   }
 
@@ -1150,7 +1189,7 @@ export function worldGround(world: Braga): WorldGround {
   counts.pieces = pieces.length;
   counts.paths = flat.length;
   counts.treads = treadList.length;
-  const g = new WorldGround({ world, land, roads, paves, setts, paths, raised, pathSetts, treads, cuts, pieces, pieceCells, walls, posts, dropped, kerbs, lines, sides, inside, blocks: new Cells<Block>(), counts });
+  const g = new WorldGround({ world, land, roads, paves, setts, paths, raised, pathSetts, treads, cuts, pieces, pieceCells, walls, posts, dropped, kerbs, lines, sides, inside, blocks: new Cells<Block>(), rooms: [], roomCells: new Cells<Room>(), roomWalls: new Map(), counts });
 
   // The walls, fences, railings, hedges and gates (braga-map's task 013), each from under the ground
   // to its top, a gate shut whatever the map says (it's for someone on foot); one thicker than a car
@@ -1161,11 +1200,32 @@ export function worldGround(world: Braga): WorldGround {
     if (!near(w.pts)) continue;
     const span = wallSpan(g, w);
     const lines = w.w >= 0.5 ? [w.w / 2, -w.w / 2] : [0];
+    // A low wall's railing, as streets.ts draws it: its top half, up to 1.2 m of it.
+    const rail = w.on === 'railing' ? Math.max(0, Math.min(1.2, w.h / 2, w.h - 0.5)) : 0;
     for (let k = 1; k < span.length; k++) {
       const a = span[k - 1];
       const b = span[k];
-      for (const o of lines) addWall({ ax: a.x + a.nx * o, az: a.z + a.nz * o, bx: b.x + b.nx * o, bz: b.z + b.nz * o, y0: Math.min(a.y0, b.y0) - 0.7, y1: Math.max(a.y1, b.y1) + (w.kind === 'retaining' ? HOLD : 0), kind: w.kind, ...(lines.length === 1 && w.w > 0 ? { half: w.w / 2 } : {}) }, w.kind === 'gate' || w.kind === 'bar' ? 'gates' : w.kind === 'hedge' ? 'hedges' : w.kind === 'retaining' ? 'retaining walls' : w.kind === 'wall' ? 'walls' : 'fences and railings');
+      for (const o of lines) addWall({ ax: a.x + a.nx * o, az: a.z + a.nz * o, bx: b.x + b.nx * o, bz: b.z + b.nz * o, y0: Math.min(a.y0, b.y0) - 0.7, y1: Math.max(a.y1, b.y1) + (w.kind === 'retaining' ? HOLD : 0), kind: w.kind, ...(lines.length === 1 && w.w > 0 ? { half: w.w / 2 } : {}), ...(rail > 0 ? { rail } : {}) }, w.kind === 'gate' || w.kind === 'bar' ? 'gates' : w.kind === 'hedge' ? 'hedges' : w.kind === 'retaining' ? 'retaining walls' : w.kind === 'wall' ? 'walls' : 'fences and railings');
     }
   }
+
+  // The arenas' buildings with an inside (braga-map's task 079): each made on the ground as it is (a
+  // door where the ground outside is clear and at a step's height), then its outline's walls given way
+  // to its own, with their doors and windows.
+  const rooms = furnish(world, {
+    floor: (x, z, y) => g.floor(x, z, y),
+    blocked: (x, z, y) => !!g.circle(x, z, x, z, y, 0.3, 1.75, true) || world.buildings.some((b) => Math.abs(b.pts[0][0] - x) < 80 && Math.abs(b.pts[0][1] - z) < 80 && inRoomRing(b.pts, x, z)),
+    whole: (b) => !trimmedBuildings.has(b),
+  });
+  for (const r of rooms) {
+    g.unwall(r.pts);
+    const ws = roomWalls(r);
+    for (const w of ws) addWall(w, r.tower ? "a tower's walls" : "rooms' walls");
+    g.d.roomWalls.set(r, ws);
+    g.d.roomCells.add(r.box.x0, r.box.z0, r.box.x1, r.box.z1, r);
+  }
+  g.d.rooms.push(...rooms);
+  counts.rooms = rooms.length;
+  counts.towers = rooms.filter((r) => r.tower).length;
   return g;
 }

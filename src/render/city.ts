@@ -24,6 +24,9 @@ import { raceMarks } from './road.ts';
 import { clipConvex, convexPieces, faces, shapeOf, wallTop } from './roofs.ts';
 import { buildStreets, groundPaths, streetEdges, type Built } from './streets.ts';
 import { baysOf, facadeKit, layerOfGround, layerOfType, linearOf, MATERIALS, storeys, Walls, type Kit, type WallLayout } from './facades.ts';
+import { buildInteriors } from './interiors.ts';
+import type { Room } from '../world/interiors.ts';
+import { streetFront } from '../world/storeys.ts';
 import * as tex from './textures.ts';
 import { buildSigns } from './signs.ts';
 import { buildPlates } from './plates.ts';
@@ -538,14 +541,21 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   // ---- Buildings, clear of the plinth, the eggs and the Tourigalo. ----
   const keepOut = [plinth.clear, ...spots.map((s) => s.clear), ...map.sights.filter((s) => s.kind === 'tourigalo').map((s) => ({ x: s.x, z: s.z, r: TOURIGALO_CLEAR }))];
   const list = all.filter((b) => !keepOut.some((k) => b.pts.some(([x, z]) => Math.hypot(x - k.x, z - k.z) < k.r) || Math.hypot(b.cx - k.x, b.cz - k.z) < k.r));
-  // Those left out aren't walls for the karts either.
+  // Those left out aren't walls for the karts either, nor rooms (braga-map's task 079).
   const kept = new Set(list);
-  for (const b of all) if (!kept.has(b)) wg.unwall(b.pts);
+  for (const b of all) {
+    if (kept.has(b)) continue;
+    wg.unroom(b.pts);
+    wg.unwall(b.pts);
+  }
   // A sight drawn in a building's place (São João da Ponte's chapel, the route's other chapels, São
   // Lázaro's bell tower) stands for it: the building is a wall to the karts still, but isn't drawn.
   const covers = map.sights.flatMap((s) => ('covers' in s ? [s.covers] : []));
   const drawn = list.filter((b) => !covers.some((r) => inside(r, b.cx, b.cz)));
-  group.add(Object.assign(buildBuildings(drawn, map, facadeKit(map.facadeTypes, quality), quality), { name: 'buildings' }));
+  const rooms = new Map(wg.d.rooms.map((r) => [r.b.pts, r] as const));
+  group.add(Object.assign(buildBuildings(drawn, map, facadeKit(map.facadeTypes, quality), quality, rooms), { name: 'buildings' }));
+  // The rooms' insides: the walls' inside faces, the floors, the stairs, the roof's parapet and hut.
+  group.add(Object.assign(buildInteriors(wg.d.rooms, map), { name: 'interiors' }));
   if (photos) group.add(photos.facades);
   // The shops' signs, on the buildings drawn.
   group.add(buildSigns(map.signs.filter((s) => near(s.from[0], s.from[1]) <= 300 && !keepOut.some((k) => Math.hypot(s.from[0] - k.x, s.from[1] - k.z) < k.r)), map.facadeColours));
@@ -1014,37 +1024,6 @@ function seenUpClose([r, g, b]: [number, number, number]): [number, number, numb
   return [r, g, b].map((c) => Math.max(0, Math.min(255, 0.85 * (l + (c - l) * k))) / 255) as [number, number, number];
 }
 
-// Whether the wall from a to b, facing out (nx, nz), faces a street: one of the map's streets within 7 m
-// of the point 4 m in front of its middle, past the street's half width.
-function streetFront(map: Braga): (ax: number, az: number, bx: number, bz: number, nx: number, nz: number) => boolean {
-  const C = 40;
-  const cells = new Map<string, [number, number, number, number, number][]>();
-  for (const l of map.lines) {
-    if (l.level === 'tunnel' || l.kind > 7) continue;
-    for (let k = 1; k < l.pts.length; k++) {
-      const [ax, az] = l.pts[k - 1];
-      const [bx, bz] = l.pts[k];
-      const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / C));
-      const seen = new Set<string>();
-      for (let f = 0; f <= n; f++) {
-        const key = `${Math.floor((ax + ((bx - ax) * f) / n) / C)},${Math.floor((az + ((bz - az) * f) / n) / C)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        if (!cells.has(key)) cells.set(key, []);
-        cells.get(key)!.push([ax, az, bx, bz, l.w / 2]);
-      }
-    }
-  }
-  return (ax, az, bx, bz, nx, nz) => {
-    const x = (ax + bx) / 2 + nx * 4;
-    const z = (az + bz) / 2 + nz * 4;
-    const i = Math.floor(x / C);
-    const j = Math.floor(z / C);
-    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const [sx, sz, ex, ez, hw] of cells.get(`${i + a},${j + b}`) ?? []) if (segDist(x, z, sx, sz, ex, ez) - hw < 7) return true;
-    return false;
-  };
-}
-
 // A quad into a batch, facing n whichever way round its corners come.
 function faceQuad(batch: Batch, p: THREE.Vector3[], uv: [number, number][], n: [number, number, number], color: THREE.Color): void {
   const c = new THREE.Vector3().subVectors(p[1], p[0]).cross(new THREE.Vector3().subVectors(p[2], p[0]));
@@ -1121,10 +1100,10 @@ function balconiesOn(f: MapBuilding['facade'], P: FacadeProportions, w: WallLayo
 // facade as the map says it is (facades.ts, braga-map's task 017): its kind's windows, in its storeys,
 // its material and colours, and along a street its ground floor as it is. A wall another building
 // stands against, as high as it or higher, isn't drawn.
-function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality): THREE.Group {
+function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality, rooms: Map<[number, number][], Room>): THREE.Group {
   // Balconies on the buildings in the open world or by it (High: within 60 m of its edge; Medium: in it).
   const balconyReach = quality === 'high' ? 60 : quality === 'medium' ? 0 : -1;
-  const front = streetFront(map);
+  const front = streetFront(map.lines);
   // The batches a kilometre square at a time, so whole squares out of view are skipped, and the sun's
   // shadows (drawn only 70 m round the camera) draw only those near it.
   const batches = () => ({ walls: new Walls(), tiles: new Batch(), flat: new Batch(), rails: new Batch() });
@@ -1174,9 +1153,11 @@ function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality
     const wallMat = MATERIALS.indexOf(f.material);
     const baseMat = f.base ? MATERIALS.indexOf(f.base.material) : wallMat;
     const homes = f.type === 'house' || f.type === 'old-house' || f.type.startsWith('block');
+    // A room's doors and windows, open (braga-map's task 079, world/interiors.ts).
+    const room = rooms.get(b.pts);
     // Its front door: in the middle of its longest wall along a street, where its ground floor is homes.
     let doorWall = -1;
-    if (homes && f.ground === 'housing') {
+    if (homes && f.ground === 'housing' && !room) {
       let best = 0;
       for (let k = 0; k < pts.length; k++) {
         const [ax, az] = pts[k];
@@ -1206,25 +1187,46 @@ function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality
         const onStreet = front(x0, z0, x1, z1, nx, nz);
         const groundLayer = onStreet ? (f.ground === 'housing' ? storeyLayer : layerOfGround(f.ground)) : homes && (f.ground === 'housing' || f.type === 'house' || f.type === 'old-house') ? storeyLayer : -1;
         const bays = baysOf(P, L, f.type);
-        const layout: WallLayout = { G, S, floors, ...bays, s0: u, kit: [storeyLayer, groundLayer, wallMat, baseMat], wall: wallRgb, base: baseRgb, shut: shutRgb, door: k === doorWall && bays.bays ? Math.floor(bays.bays / 2) : -1 };
+        const side = room?.sides[k];
+        const door = side ? side.door : k === doorWall && bays.bays ? Math.floor(bays.bays / 2) : -1;
+        const layout: WallLayout = { G, S, floors, ...bays, s0: u, kit: [storeyLayer, groundLayer, wallMat, baseMat], wall: wallRgb, base: baseRgb, shut: shutRgb, door };
         const at = (x: number, z: number, y: number) => [x, y, z, Math.hypot(x - x0, z - z0), y - foot];
-        const foot0 = at(x0, z0, base);
-        const corners = top.map(([x, z, h]) => at(x, z, foot + h));
-        corners.push(at(x1, z1, base));
-        for (let q = 0; q + 1 < corners.length; q++) walls.tri(foot0, corners[q], corners[q + 1], layout);
+        if (side?.open.length) {
+          // With its openings: the wall's outline along it and up it (s, h) with a hole for each.
+          const V2 = (s: number, h: number) => new THREE.Vector2(s, h);
+          const contour = [V2(0, base - foot), V2(L, base - foot), ...top.slice().reverse().map(([x, z, h]) => V2(Math.hypot(x - x0, z - z0), h))];
+          const holes = side.open.map((o) => [V2(o.s0, o.y0 - foot), V2(o.s0, o.y1 - foot), V2(o.s1, o.y1 - foot), V2(o.s1, o.y0 - foot)]);
+          const pts2 = [...contour, ...holes.flat()];
+          const P3 = (v: THREE.Vector2) => at(x0 + ((x1 - x0) * v.x) / L, z0 + ((z1 - z0) * v.x) / L, foot + v.y);
+          for (const [i, j, q] of THREE.ShapeUtils.triangulateShape(contour, holes)) {
+            const [a, c, d] = [P3(pts2[i]), P3(pts2[j]), P3(pts2[q])];
+            // Facing out, whichever way round the triangulation gave it: its normal's x and z.
+            const ex = (c[1] - a[1]) * (d[2] - a[2]) - (c[2] - a[2]) * (d[1] - a[1]);
+            const ez = (c[0] - a[0]) * (d[1] - a[1]) - (c[1] - a[1]) * (d[0] - a[0]);
+            if (ex * nx + ez * nz < 0) walls.tri(a, d, c, layout);
+            else walls.tri(a, c, d, layout);
+          }
+        } else {
+          const foot0 = at(x0, z0, base);
+          const corners = top.map(([x, z, h]) => at(x, z, foot + h));
+          corners.push(at(x1, z1, base));
+          for (let q = 0; q + 1 < corners.length; q++) walls.tri(foot0, corners[q], corners[q + 1], layout);
+        }
         // Its balconies, along a street, in the open world or by it.
         if (onStreet && b.road <= balconyReach && floors > 1) balconiesOn(f, P, layout, [x0, z0], [(x1 - x0) / L, (z1 - z0) / L], [nx, nz], L, foot, { flat, rails }, map.facadeColours[f.colour]);
       }
       u += L;
     }
 
-    // The roof. Flat: the footprint at the eaves.
+    // The roof. Flat: the footprint at the eaves; a tower's open over its stairs.
     if (b.roof === 0) {
       const contour = pts.map(([x, z]) => new THREE.Vector2(x, z));
+      const hole = room?.stair ? [room.stair.hole.map(([x, z]) => new THREE.Vector2(x, z))] : [];
+      const ring = [...pts, ...(room?.stair ? room.stair.hole : [])];
       const top = foot + b.h;
-      for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(contour, [])) {
-        const P = (n: number) => V(pts[n][0], top, pts[n][1]);
-        const U = (n: number): [number, number] => [pts[n][0] / 6, pts[n][1] / 6];
+      for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(contour, hole)) {
+        const P = (n: number) => V(ring[n][0], top, ring[n][1]);
+        const U = (n: number): [number, number] => [ring[n][0] / 6, ring[n][1] / 6];
         flat.up(P(i), P(j), P(k), U(i), U(j), U(k), roofCol);
       }
     } else {

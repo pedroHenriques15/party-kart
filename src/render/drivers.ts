@@ -2,6 +2,8 @@
 // car that's a joke about them. Every face is the same friendly cartoon face.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import type { KitId } from '../game/fight.ts';
+import { buildGun } from './arms.ts';
 import * as tex from './textures.ts';
 import { windStreak } from './textures.ts';
 
@@ -957,6 +959,12 @@ export interface WalkerModel {
   driver: Driver;
   // Walking or running at speed m/s, looking up by pitch.
   update: (speed: number, dt: number, pitch: number) => void;
+  // In a round (braga-map's task 074): the gun in its hands, or none; and how far it has fallen, from
+  // 0 standing to 1 down, and faded, from 0 to gone.
+  arm: (kit: KitId | null) => void;
+  fall: (down: number, fade: number) => void;
+  // Where its gun's muzzle is, in the world, for its shots' flash and tracers.
+  muzzle: (out: THREE.Vector3) => THREE.Vector3;
 }
 
 // The driver out of their car, standing (braga-map's task 073): the same figure on legs, swinging its
@@ -1001,9 +1009,52 @@ export function buildWalker(d: Driver): WalkerModel {
   const head = fig.getObjectByName('head')!;
   let phase = 0;
   let swing = 0;
+  // Its gun, held in front of its chest at a person's size whatever the figure's scale, made the
+  // first time it holds that kit.
+  const guns = new Map<KitId, ReturnType<typeof buildGun>>();
+  let held: ReturnType<typeof buildGun> | null = null;
+  // Faded, its meshes wear their own copies of their materials, the shared ones kept to put back.
+  const own = new Map<THREE.Mesh, THREE.Material>();
   return {
     group,
     driver: d,
+    arm(kit) {
+      if (held) held.group.visible = false;
+      held = null;
+      if (!kit) return;
+      let g = guns.get(kit);
+      if (!g) {
+        g = buildGun(kit);
+        g.group.scale.setScalar(1 / STANDING);
+        g.group.position.set(0.42, LEG + 0.62, 0.16);
+        guns.set(kit, g);
+        body.add(g.group);
+      }
+      g.group.visible = true;
+      held = g;
+    },
+    fall(down, fade) {
+      group.rotation.z = (Math.PI / 2) * down * down;
+      if (fade > 0 && !own.size) {
+        group.traverse((o) => {
+          if (!(o instanceof THREE.Mesh)) return;
+          own.set(o, o.material as THREE.Material);
+          o.material = (o.material as THREE.Material).clone();
+          Object.assign(o.material, { transparent: true, depthWrite: false });
+        });
+      }
+      if (fade <= 0 && own.size) {
+        for (const [m, mat] of own) m.material = mat;
+        own.clear();
+      }
+      for (const m of own.keys()) (m.material as THREE.Material).opacity = 1 - fade;
+      group.visible = fade < 1;
+    },
+    muzzle(out) {
+      if (!held) return group.getWorldPosition(out);
+      group.updateMatrixWorld(true);
+      return out.copy(held.muzzle).applyMatrix4(held.group.matrixWorld);
+    },
     update(speed, dt, pitch) {
       // A stride every 1.4 m walking, longer running; the legs swing further the faster it goes.
       phase += (dt * speed * Math.PI) / (speed > 3 ? 1.1 : 0.7);
@@ -1017,6 +1068,16 @@ export function buildWalker(d: Driver): WalkerModel {
       body.rotation.z = -Math.min(0.25, Math.max(0, speed - 2) * 0.08);
       body.position.y = speed > 3 ? Math.abs(Math.sin(phase)) * 0.05 : 0;
       head.rotation.z = Math.max(-0.6, Math.min(0.6, pitch * 0.6));
+      // Holding a gun: both arms out to it, aimed where it looks, the legs still walking.
+      if (held) {
+        const up = Math.max(-0.9, Math.min(0.9, pitch));
+        arms[1].rotation.set(0, 0.35, 1.2 + up);
+        arms[0].rotation.set(0, -0.65, 1.45 + up);
+        held.group.rotation.z = up;
+        held.group.position.y = LEG + 0.62 + Math.sin(up) * 0.25;
+      } else {
+        arms[0].rotation.x = arms[1].rotation.x = arms[0].rotation.y = arms[1].rotation.y = 0;
+      }
     },
   };
 }

@@ -145,14 +145,16 @@ function place(p: PannerNode, at: Place, t: number, jump: boolean): void {
 export const played: Record<string, number> = {};
 
 // Where a sound plays into: its bus, through a panner at its place if it has one. Null when it
-// isn't to be played: no sound yet, too many at once, or too far away to hear.
-function out(b: Bus, what: string, dur: number, at?: Place): AudioNode | null {
+// isn't to be played: no sound yet, too many at once, or too far away to hear. A loud one (a gunshot)
+// is as loud as in your head within `ref` metres, and heard as far as `heard`.
+function out(b: Bus, what: string, dur: number, at?: Place, ref = REF, heard = HEARD): AudioNode | null {
   if (!ctx || !bus) return null;
   if (b !== 'jingle' && playing >= MAX_PLAYING) return null;
   let node: AudioNode = bus[b];
   if (at) {
-    if (Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z) > HEARD) return null;
+    if (Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z) > heard) return null;
     const p = panner(ctx);
+    p.refDistance = ref;
     place(p, at, ctx.currentTime, true);
     p.connect(node);
     node = p;
@@ -1044,6 +1046,127 @@ export const sfx = {
     const o = out('fx', 'chime', 1.1, at);
     if (!o) return;
     [880, 698.46].forEach((f, i) => bell(o, f, now() + i * 0.34, 0.75, 0.22));
+  },
+};
+
+// ---- The deathmatch (braga-map's task 074) ----
+
+// The streets' echo: a gunshot comes back off the buildings, a few slaps in the first fifth of a
+// second and a tail that dies away over a second and a half, darker as it goes. One convolver every
+// shot sends a share of itself to, made the first time it's needed.
+let echo: GainNode | null = null;
+function echoes(): GainNode | null {
+  if (!ctx || !bus) return null;
+  if (echo) return echo;
+  const c = ctx;
+  const n = Math.round(c.sampleRate * 1.8);
+  const ir = c.createBuffer(2, n, c.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    let lp = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / c.sampleRate;
+      // Darker as it goes: a low-pass whose cutoff falls with the time.
+      const k = Math.max(0.04, 0.6 * Math.exp(-t / 0.5));
+      lp += (Math.random() * 2 - 1 - lp) * k;
+      d[i] = lp * Math.exp(-t / 0.42) * Math.min(1, t / 0.03) * 0.5;
+    }
+    // The slaps off the facades across the street and down it.
+    for (const at of [0.045, 0.07, 0.11, 0.16, 0.23, 0.31]) {
+      const i = Math.round((at + (Math.random() - 0.5) * 0.02 + ch * 0.006) * c.sampleRate);
+      const g = 0.9 * Math.exp(-at / 0.25);
+      for (let j = 0; j < 200 && i + j < n; j++) d[i + j] += (Math.random() * 2 - 1) * g * Math.exp(-j / 40);
+    }
+  }
+  const conv = c.createConvolver();
+  conv.buffer = ir;
+  const send = c.createGain();
+  send.gain.value = 0.55;
+  send.connect(conv).connect(bus.fx);
+  return (echo = send);
+}
+
+// Each kit's report: the crack's pitch and length, the body's, the thump's, and how loud.
+const REPORT: Record<string, { crack: number; snap: number; body: number; len: number; thump: number; gain: number }> = {
+  rifle: { crack: 3200, snap: 0.05, body: 2600, len: 0.22, thump: 95, gain: 0.55 },
+  shotgun: { crack: 1900, snap: 0.07, body: 1500, len: 0.4, thump: 70, gain: 0.7 },
+  sniper: { crack: 2600, snap: 0.08, body: 2000, len: 0.5, thump: 60, gain: 0.8 },
+  pistol: { crack: 3600, snap: 0.04, body: 3000, len: 0.16, thump: 120, gain: 0.45 },
+};
+// A gunshot is as loud as in your head within 40 m, and heard across the whole area and further.
+const SHOT_REF = 40;
+const SHOT_HEARD = 1500;
+
+export const fightSfx = {
+  // A shot: a crack, a burst of noise falling away and a thump, from where it's fired (yours in your
+  // head), duller the further off, and echoing in the streets.
+  shot: (kit: string, at?: Place) => {
+    const r = REPORT[kit] ?? REPORT.rifle;
+    const o = out('fx', 'shot', r.len + 0.1, at, SHOT_REF, SHOT_HEARD);
+    if (!o || !ctx) return;
+    const t = now();
+    const far = at ? Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z) : 0;
+    const dull = ctx.createBiquadFilter();
+    dull.type = 'lowpass';
+    dull.frequency.value = 16000 / (1 + far / 60);
+    dull.connect(o);
+    const send = echoes();
+    if (send) {
+      const g = ctx.createGain();
+      g.gain.value = Math.min(1, 0.4 + far / 200);
+      dull.connect(g).connect(send);
+      setTimeout(() => g.disconnect(), 2500);
+    }
+    noise(dull, t, r.snap, r.gain * 0.9, r.crack * 1.6, r.crack, 'bandpass', 0.9, 0.001);
+    noise(dull, t, r.len, r.gain, r.body, 180, 'lowpass', 0.7, 0.002);
+    note(dull, r.thump, t, r.len * 0.8, r.gain * 0.7, { to: r.thump * 0.45, attack: 0.002 });
+  },
+  // An empty magazine: a dry click.
+  dry: () => {
+    const o = out('fx', 'dry', 0.05);
+    if (o) noise(o, now(), 0.03, 0.12, 4000, 2500, 'bandpass', 3, 0.001);
+  },
+  // A reload: the magazine out, in, and the bolt; spread over its time.
+  reload: (ms: number, at?: Place) => {
+    const o = out('fx', 'reload', ms / 1000, at);
+    if (!o) return;
+    const t = now();
+    for (const [f, k] of [[0.15, 1800], [0.55, 1300], [0.85, 2600]] as const) {
+      noise(o, t + (f * ms) / 1000, 0.05, 0.16, k, k * 0.6, 'bandpass', 4, 0.001);
+      note(o, k / 4, t + (f * ms) / 1000, 0.04, 0.05, { type: 'triangle', attack: 0.001 });
+    }
+  },
+  // A bullet striking a wall or the ground: a short smack.
+  impact: (at: Place) => {
+    const o = out('fx', 'impact', 0.12, at);
+    if (o) noise(o, now(), 0.08, 0.16, 2500, 600, 'bandpass', 1.5, 0.001);
+  },
+  // Hit: a thud in your head.
+  hurt: () => {
+    const o = out('fx', 'hurt', 0.25);
+    if (!o) return;
+    note(o, 70, now(), 0.22, 0.4, { to: 40, attack: 0.003 });
+    noise(o, now(), 0.15, 0.2, 900, 200, 'lowpass', 1, 0.002);
+  },
+  // Your shot hit someone: a tick, higher for the head.
+  marker: (head: boolean) => {
+    const o = out('fx', 'marker', 0.08);
+    if (o) note(o, head ? 2600 : 1900, now(), 0.06, 0.12, { type: 'triangle', cutoff: 6000, attack: 0.001 });
+  },
+  // You put someone down: two notes going up.
+  down: () => {
+    const o = out('fx', 'down', 0.4);
+    if (!o) return;
+    bell(o, E5, now(), 0.3, 0.14);
+    bell(o, C6, now() + 0.08, 0.36, 0.14);
+  },
+  // A footstep on the paving, from wherever it is; running, harder. Yours quieter, in your head.
+  step: (run: boolean, at?: Place) => {
+    const o = out('fx', 'step', 0.12, at, 6, 60);
+    if (!o) return;
+    const g = (run ? 0.16 : 0.09) * (at ? 1 : 0.6);
+    noise(o, now(), 0.07, g, run ? 1400 : 1000, 250, 'lowpass', 1.2, 0.003);
+    noise(o, now() + 0.015, 0.05, g * 0.5, 3500, 1800, 'bandpass', 2, 0.002);
   },
 };
 // ---- Listening to it: what the speakers get, measured and recorded, to judge the sound by ----

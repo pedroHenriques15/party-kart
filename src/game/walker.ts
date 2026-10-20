@@ -5,6 +5,7 @@
 // (WorldGround.circle). Pure, like the karts' physics, so the tests walk it.
 import { angleDiff, clamp, v3, type V } from '../math.ts';
 import { STEP, type Floor, type WorldGround } from '../world/ground.ts';
+import type { Blocker } from '../world/sight.ts';
 
 export const HEIGHT = 1.75;
 export const EYE = 1.65; // the eye's height over the feet
@@ -43,7 +44,11 @@ export class Walker {
   yaw: number; // as a car's: it faces (cos yaw, 0, sin yaw)
   pitch: number; // up from level
   grounded = true;
-  readonly ground: WorldGround;
+  ground: WorldGround;
+  // What else stops it, for a while (braga-map's task 074): the karts waiting and the others on foot,
+  // as upright circles; and an area it keeps in, a round's.
+  blockers: readonly Blocker[] = [];
+  bound: ((x: number, z: number) => boolean) | null = null;
 
   constructor(ground: WorldGround, p: V, yaw: number, pitch = 0) {
     this.ground = ground;
@@ -150,23 +155,46 @@ export class Walker {
   }
 
   // Where a walker moving from (x0, z0) to (x, z) ends up, pushed out of the walls and trunks round it;
-  // where it was if it's still in one.
+  // else, where two of them push it back and forth (at a wall's end, going straight at it), along the
+  // first it met, sliding round the end; else where it was.
   private clear(x0: number, z0: number, x: number, z: number): [number, number] {
-    const g = this.ground;
+    const first = this.deepest(x, z, x0, z0);
+    if (!first) return [x, z];
+    const [mx, mz] = [x - x0, z - z0];
+    // Out by a millimetre more than it's in: just out, the next look could find it in by a rounding
+    // error too small to move it, for ever.
     for (let pass = 0; pass < 4; pass++) {
-      const hit = g.circle(x, z, x0, z0, this.p.y, RADIUS, HEIGHT, true);
+      const hit = pass ? this.deepest(x, z, x0, z0) : first;
       if (!hit) return [x, z];
-      x += hit.nx * hit.d;
-      z += hit.nz * hit.d;
+      x += hit.nx * (hit.d + 1e-3);
+      z += hit.nz * (hit.d + 1e-3);
     }
-    return g.circle(x, z, x0, z0, this.p.y, RADIUS, HEIGHT, true) ? [x0, z0] : [x, z];
+    if (!this.deepest(x, z, x0, z0)) return [x, z];
+    const along = mx * -first.nz + mz * first.nx;
+    const sx = x0 - first.nz * along;
+    const sz = z0 + first.nx * along;
+    return this.deepest(sx, sz, x0, z0) ? [x0, z0] : [sx, sz];
+  }
+
+  // The wall, trunk or blocker a walker at (x, z) is deepest into, coming from (x0, z0).
+  private deepest(x: number, z: number, x0: number, z0: number): { nx: number; nz: number; d: number } | null {
+    let best = this.ground.circle(x, z, x0, z0, this.p.y, RADIUS, HEIGHT, true);
+    for (const b of this.blockers) {
+      if (this.p.y >= b.y1 || this.p.y + HEIGHT <= b.y0) continue;
+      const dx = x - b.x;
+      const dz = z - b.z;
+      const q = Math.hypot(dx, dz);
+      const d = RADIUS + b.r - q;
+      if (d > 0 && (!best || d > best.d)) best = q > 1e-6 ? { nx: dx / q, nz: dz / q, d } : { nx: 1, nz: 0, d };
+    }
+    return best;
   }
 
   // Whether the ground lets it stand at (x, z), coming from where it is.
   private can(x: number, z: number): boolean {
     const g = this.ground;
     const d = g.d;
-    if (!d.inside.has(x, z)) return false;
+    if (!d.inside.has(x, z) || (this.bound && !this.bound(x, z))) return false;
     const f = this.footing(x, z, this.p.y);
     if (f.buried) return false;
     // In the river.

@@ -9,6 +9,9 @@ import type { Facade, FacadeMaterial, FacadeProportions, FacadeType } from 'brag
 import * as THREE from 'three';
 import type { Quality } from './look.ts';
 
+// How a building's walls are laid out, shared with the simulation (the rooms' openings).
+export { baysOf, storeys } from '../world/storeys.ts';
+
 export const TYPES: FacadeType[] = ['old-house', 'house', 'block-1950s', 'block-1970s-90s', 'block-2000s', 'glass-office', 'civic', 'church', 'commercial', 'warehouse', 'annex'];
 export const MATERIALS: FacadeMaterial[] = ['render', 'tiles', 'mosaic', 'azulejo', 'granite', 'stone', 'brick', 'concrete', 'block', 'glass', 'metal', 'panels'];
 // The ground floors drawn as their own (the rest are their kind's storeys, or plain wall).
@@ -432,28 +435,6 @@ export interface WallLayout {
   base: Rgb;
   shut: Rgb;
   door: number;
-}
-
-// A building's storeys: its ground floor's height and the others', from its eaves (h, over its foot)
-// and its storeys, in its kind's proportions; a flat roof's parapet over the last.
-export function storeys(p: FacadeProportions, h: number, floors: number, flat: boolean): { G: number; S: number; floors: number } {
-  const top = h - (flat ? 0.6 : 0.15);
-  if (floors <= 1 || top < p.ground + 2.2) return { G: Math.max(2.2, top), S: Math.max(2.2, top), floors: 1 };
-  let G = p.ground;
-  let S = (top - G) / (floors - 1);
-  if (S < 2.4) {
-    S = 2.4;
-    G = Math.max(2.4, top - S * (floors - 1));
-  }
-  return { G, S, floors };
-}
-
-// A wall's bays: as many of its kind's as fit between its ends, stretched to fill it (none on a wall
-// too short for one), and a glass office's from end to end.
-export function baysOf(p: FacadeProportions, L: number, type: FacadeType): { bays: number; bayW: number; margin: number } {
-  const margin = type === 'glass-office' ? 0 : Math.min(0.4, L / 8);
-  const bays = L - 2 * margin >= p.bay * 0.7 ? Math.max(1, Math.round((L - 2 * margin) / p.bay)) : 0;
-  return { bays, bayW: bays ? (L - 2 * margin) / bays : 1, margin };
 }
 
 export interface Kit {

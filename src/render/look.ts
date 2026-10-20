@@ -163,6 +163,9 @@ export class Look {
   private sky: Sky;
   private rain: THREE.LineSegments | null = null;
   quality: Quality = 'high';
+  // Drawn over the world once it's drawn, its depth cleared: your gun in first person (render/arms.ts,
+  // braga-map's task 074), which never goes into a wall however close you stand to it.
+  overlay: THREE.Scene | null = null;
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     this.renderer = renderer;
@@ -240,6 +243,16 @@ export class Look {
       u.time.value = t;
       u.eye.value.copy(this.camera.position);
     }
-    this.renderer.render(this.scene, this.camera);
+    // What a frame costs counts both, the world and what's over it (?stats, ?scenery's __kart).
+    const r = this.renderer;
+    r.info.autoReset = false;
+    r.info.reset();
+    r.render(this.scene, this.camera);
+    if (this.overlay?.visible) {
+      r.autoClear = false;
+      r.clearDepth();
+      r.render(this.overlay, this.camera);
+      r.autoClear = true;
+    }
   }
 }

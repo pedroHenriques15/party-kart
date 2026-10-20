@@ -56,6 +56,9 @@ export interface Wall {
   y0: number;
   y1: number;
   kind?: string;
+  // How far its faces stand out from its line either side, where it's drawn thicker than it stands
+  // for a kart (one of the map's thinner than a kart is narrow): for someone on foot.
+  half?: number;
 }
 
 // A flight of steps' tread (braga-map's task 050): its outline, its height, and its box.
@@ -621,7 +624,7 @@ export class WorldGround implements Ground {
         const qz = c.p.z + fz * side;
         const q0x = from.x + fx * side;
         const q0z = from.z + fz * side;
-        const hit = this.deepest(qx, qz, q0x, q0z, c.p.y);
+        const hit = this.circle(qx, qz, q0x, q0z, c.p.y);
         if (!hit) continue;
         deep = Math.max(deep, hit.d);
         bounce(c, v3(hit.nx, 0, hit.nz), hit.d);
@@ -631,28 +634,34 @@ export class WorldGround implements Ground {
     return deep > 0.3;
   }
 
-  // The wall or trunk the circle at (qx, qz), at (q0x, q0z) before the move, is deepest into: which
-  // way out, and how far.
-  private deepest(qx: number, qz: number, q0x: number, q0z: number, y: number): { nx: number; nz: number; d: number } | null {
-    const x0 = Math.min(qx, q0x) - CAR_R - 0.1;
-    const z0 = Math.min(qz, q0z) - CAR_R - 0.1;
-    const x1 = Math.max(qx, q0x) + CAR_R + 0.1;
-    const z1 = Math.max(qz, q0z) + CAR_R + 0.1;
+  // The wall or trunk a circle r wide at (qx, qz), at (q0x, q0z) before the move, is deepest into: which
+  // way out, and how far. It stands from y and is h high: a kart's two circles (walls()) by default, or
+  // a walker (game/walker.ts, braga-map's task 073), who also drops off a retaining wall from its top
+  // (it's no parapet for someone on foot) and stands as high as it is, not HOLD over it.
+  circle(qx: number, qz: number, q0x: number, q0z: number, y: number, r = CAR_R, h = WALL_H, onFoot = false): { nx: number; nz: number; d: number } | null {
+    const x0 = Math.min(qx, q0x) - r - 0.1;
+    const z0 = Math.min(qz, q0z) - r - 0.1;
+    const x1 = Math.max(qx, q0x) + r + 0.1;
+    const z1 = Math.max(qz, q0z) + r + 0.1;
     let best: { nx: number; nz: number; d: number } | null = null;
     for (const cells of [this.d.walls, this.extra]) {
       for (const w of cells.near(x0, z0, x1, z1, this.seen)) {
-        if (y >= w.y1 || y + WALL_H <= w.y0 || this.down.has(w)) continue;
-        const t = touch(w, qx, qz, q0x, q0z);
+        const top = onFoot && w.kind === 'retaining' ? w.y1 - HOLD : w.y1;
+        if (y >= top || y + h <= w.y0 || this.down.has(w)) continue;
+        // A retaining wall's lower side is on the right of its line (braga-map's walls): from its upper
+        // side, on foot, it's a drop.
+        if (onFoot && w.kind === 'retaining' && (w.bx - w.ax) * (q0z - w.az) - (w.bz - w.az) * (q0x - w.ax) < 0) continue;
+        const t = touch(w, qx, qz, q0x, q0z, onFoot ? r + (w.half ?? 0) : r);
         if (t && (!best || t.d > best.d)) best = t;
       }
     }
     for (const p of this.d.posts.near(x0, z0, x1, z1, this.seenPosts)) {
-      if (y >= p.y1 || y + WALL_H <= p.y0) continue;
+      if (y >= p.y1 || y + h <= p.y0) continue;
       const dx = qx - p.x;
       const dz = qz - p.z;
-      const r = Math.hypot(dx, dz);
-      const d = CAR_R + p.r - r;
-      if (d > 0 && (!best || d > best.d)) best = r > 1e-6 ? { nx: dx / r, nz: dz / r, d } : { nx: 1, nz: 0, d };
+      const q = Math.hypot(dx, dz);
+      const d = r + p.r - q;
+      if (d > 0 && (!best || d > best.d)) best = q > 1e-6 ? { nx: dx / q, nz: dz / q, d } : { nx: 1, nz: 0, d };
     }
     return best;
   }
@@ -888,9 +897,9 @@ export function trimmed(pts: [number, number][], roads: Rings): { segs: [number,
   return { segs: out, cut: out.length > onRoad || all - kept > 1e-6 };
 }
 
-// How deep the circle at (qx, qz), at (q0x, q0z) before the move, is into a wall, and which way is
-// out: back the way it came if it went through it in one step.
-function touch(w: Wall, qx: number, qz: number, q0x: number, q0z: number): { nx: number; nz: number; d: number } | null {
+// How deep the circle r wide at (qx, qz), at (q0x, q0z) before the move, is into a wall, and which way
+// is out: back the way it came if it went through it in one step.
+function touch(w: Wall, qx: number, qz: number, q0x: number, q0z: number, r: number): { nx: number; nz: number; d: number } | null {
   const ex = w.bx - w.ax;
   const ez = w.bz - w.az;
   const L = Math.hypot(ex, ez);
@@ -904,16 +913,16 @@ function touch(w: Wall, qx: number, qz: number, q0x: number, q0z: number): { nx:
     const t = ((px - w.ax) * ex + (pz - w.az) * ez) / (L * L);
     if (t >= 0 && t <= 1) {
       const side = Math.sign(s0);
-      return { nx: (-ez / L) * side, nz: (ex / L) * side, d: CAR_R + Math.abs(s1) / L };
+      return { nx: (-ez / L) * side, nz: (ex / L) * side, d: r + Math.abs(s1) / L };
     }
   }
   const { d, t } = toSegment(qx, qz, w.ax, w.az, w.bx, w.bz);
-  if (d >= CAR_R) return null;
+  if (d >= r) return null;
   if (d < 1e-6) {
     const side = Math.sign(s0) || 1;
-    return { nx: (-ez / L) * side, nz: (ex / L) * side, d: CAR_R };
+    return { nx: (-ez / L) * side, nz: (ex / L) * side, d: r };
   }
-  return { nx: (qx - (w.ax + ex * t)) / d, nz: (qz - (w.az + ez * t)) / d, d: CAR_R - d };
+  return { nx: (qx - (w.ax + ex * t)) / d, nz: (qz - (w.az + ez * t)) / d, d: r - d };
 }
 
 // The world's ground, from braga-map's world (loadWorld({ open: true }) loads all it needs): its
@@ -1155,7 +1164,7 @@ export function worldGround(world: Braga): WorldGround {
     for (let k = 1; k < span.length; k++) {
       const a = span[k - 1];
       const b = span[k];
-      for (const o of lines) addWall({ ax: a.x + a.nx * o, az: a.z + a.nz * o, bx: b.x + b.nx * o, bz: b.z + b.nz * o, y0: Math.min(a.y0, b.y0) - 0.7, y1: Math.max(a.y1, b.y1) + (w.kind === 'retaining' ? HOLD : 0), kind: w.kind }, w.kind === 'gate' || w.kind === 'bar' ? 'gates' : w.kind === 'hedge' ? 'hedges' : w.kind === 'retaining' ? 'retaining walls' : w.kind === 'wall' ? 'walls' : 'fences and railings');
+      for (const o of lines) addWall({ ax: a.x + a.nx * o, az: a.z + a.nz * o, bx: b.x + b.nx * o, bz: b.z + b.nz * o, y0: Math.min(a.y0, b.y0) - 0.7, y1: Math.max(a.y1, b.y1) + (w.kind === 'retaining' ? HOLD : 0), kind: w.kind, ...(lines.length === 1 && w.w > 0 ? { half: w.w / 2 } : {}) }, w.kind === 'gate' || w.kind === 'bar' ? 'gates' : w.kind === 'hedge' ? 'hedges' : w.kind === 'retaining' ? 'retaining walls' : w.kind === 'wall' ? 'walls' : 'fences and railings');
     }
   }
   return g;

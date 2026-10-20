@@ -78,7 +78,7 @@ export class Stats {
   private worst = Infinity;
   private skip = 0;
   private from: Quality | null = null;
-  private what: 'roam' | 'race' | null = null;
+  private what: 'roam' | 'walk' | 'race' | null = null;
 
   // buildMs: how long the city took to build; readyMs: from opening the page until it was built.
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, buildMs: number, readyMs: number) {
@@ -91,9 +91,9 @@ export class Stats {
     document.body.append(this.el);
   }
 
-  // Once a frame, after it's drawn, with what you're doing: driving round the city, racing, or
-  // neither.
-  frame(quality: Quality, what: 'roam' | 'race' | null): void {
+  // Once a frame, after it's drawn, with what you're doing: driving round the city, on foot, racing,
+  // or neither.
+  frame(quality: Quality, what: 'roam' | 'walk' | 'race' | null): void {
     if (what !== this.what) {
       this.what = what;
       this.from = what ? quality : null;
@@ -112,7 +112,7 @@ export class Stats {
     const r = this.renderer.info.render;
     const px = this.renderer.getDrawingBufferSize(new THREE.Vector2());
     this.el.textContent = [
-      `${Math.round(this.fps)} fps · pior ${Number.isFinite(this.worst) ? Math.round(this.worst) : '–'} · ${LEVEL[quality]}${this.from && this.from !== quality ? ` (era ${LEVEL[this.from]})` : ''}`,
+      `${what === 'walk' ? 'a pé · ' : ''}${Math.round(this.fps)} fps · pior ${Number.isFinite(this.worst) ? Math.round(this.worst) : '–'} · ${LEVEL[quality]}${this.from && this.from !== quality ? ` (era ${LEVEL[this.from]})` : ''}`,
       `${r.calls} chamadas · ${(r.triangles / 1e6).toFixed(2)} M triângulos · texturas ${Math.round(textureBytes(this.scene) / 1048576)} MB`,
       this.build,
       `${this.gpu} · ${px.x}×${px.y}`,

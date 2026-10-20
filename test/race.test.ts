@@ -1,5 +1,4 @@
 import { loadWorld } from 'braga-map';
-import amigosPlan from 'braga-map/tracks/amigos.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { newCar, stepCar, trackGround, TURBO2 } from '../src/car/car.ts';
@@ -9,15 +8,19 @@ import { boxRows, itemOdds, ITEMS, rollItem, type ItemEv, type ItemKind } from '
 import { NO_CONTROLS, Racer, type Controls } from '../src/game/racer.ts';
 import { LAYOUT } from '../src/track/layout.ts';
 import { buildTrack, surfacePoint, type Track } from '../src/track/track.ts';
+import { TRACKS } from '../src/tracks.ts';
 import { worldGround } from '../src/world/ground.ts';
 import { raceGround } from '../src/world/race.ts';
 
 // The items and the handling are tested on the first track, kept for reference: the places these
-// tests put cars (down the Avenida's straight) were picked on it. The bots race the game's track, on
-// the world's ground with the race's walls, as the game runs it.
+// tests put cars (down the Avenida's straight) were picked on it. The bots race each of the game's
+// tracks (tracks.ts), on the world's ground with the race's walls, as the game runs it.
 const track = buildTrack(LAYOUT);
-const amigos = buildTrack(amigosPlan.points, amigosPlan.ramps);
-const { ground: race } = raceGround(worldGround(await loadWorld({ open: true })), amigos, amigosPlan);
+const roam = worldGround(await loadWorld({ open: true }));
+const raced = TRACKS.map(({ course }) => {
+  const on = buildTrack(course.points, course.ramps);
+  return { course, on, race: raceGround(roam, on, course).ground };
+});
 const N = track.samples.length;
 const DT = 1 / 120;
 const RACE: Rules = { mode: 'race', laps: 2, items: true, catchUp: true };
@@ -244,27 +247,29 @@ test('catch-up: far behind the leader, a car goes faster', () => {
   assert.ok(top(800) > top(0) * 1.03, `${top(800)} vs ${top(0)}`);
 });
 
-test('eight bots race a lap of the Volta dos Amigos with items: everyone finishes, items fly, places change', () => {
-  const racers = Array.from({ length: 8 }, (_, k) => new Racer(amigos, `bot${k}`, `Bot ${k}`, true, k, race));
-  const brains = new Map<string, Brain>(racers.map((r, k) => [r.id, newBrain(seeded(k + 1))]));
-  const { a, events } = arena({ ...RACE, laps: 1 }, racers, amigos);
-  const leaders = new Set<string>();
-  let respawns = 0;
-  for (let i = 0; i < 420 / DT && racers.some((r) => r.fin === null); i++) {
-    tick(a, racers, (r) => botControls(r, brains.get(r.id)!, a, DT));
-    if (i % 120 === 0) leaders.add(a.leader()!.id);
-    for (const r of racers) {
-      respawns += r.notes.filter((n) => n.k === 'respawn').length;
-      r.notes = [];
+for (const { course, on, race } of raced) {
+  test(`eight bots race a lap of ${course.name} with items: everyone finishes, items fly, places change`, () => {
+    const racers = Array.from({ length: 8 }, (_, k) => new Racer(on, `bot${k}`, `Bot ${k}`, true, k, race));
+    const brains = new Map<string, Brain>(racers.map((r, k) => [r.id, newBrain(seeded(k + 1))]));
+    const { a, events } = arena({ ...RACE, laps: 1 }, racers, on);
+    const leaders = new Set<string>();
+    let respawns = 0;
+    for (let i = 0; i < 420 / DT && racers.some((r) => r.fin === null); i++) {
+      tick(a, racers, (r) => botControls(r, brains.get(r.id)!, a, DT));
+      if (i % 120 === 0) leaders.add(a.leader()!.id);
+      for (const r of racers) {
+        respawns += r.notes.filter((n) => n.k === 'respawn').length;
+        r.notes = [];
+      }
     }
-  }
-  const fins = racers.map((r) => r.fin);
-  const kinds = new Set(events.map((e) => (e.k === 'proj' ? e.kind : e.k)));
-  const hits = events.filter((e) => e.k === 'hit' && !e.blocked).length;
-  console.log(`finish ${fins.map((f) => (f === null ? 'DNF' : (f / 1000).toFixed(1))).join(' ')} s; events ${[...kinds].join(',')}; ${hits} hits; ${leaders.size} leaders; ${respawns} respawns`);
-  assert.ok(fins.every((f) => f !== null), 'everyone finishes');
-  assert.ok(hits >= 3, 'items hit people');
-  assert.ok(leaders.size >= 2, 'the lead changes');
-  const spread = Math.max(...(fins as number[])) - Math.min(...(fins as number[]));
-  assert.ok(spread < 60000, `finishes spread over ${spread} ms: catch-up keeps it close`);
-});
+    const fins = racers.map((r) => r.fin);
+    const kinds = new Set(events.map((e) => (e.k === 'proj' ? e.kind : e.k)));
+    const hits = events.filter((e) => e.k === 'hit' && !e.blocked).length;
+    console.log(`${course.name}: finish ${fins.map((f) => (f === null ? 'DNF' : (f / 1000).toFixed(1))).join(' ')} s; events ${[...kinds].join(',')}; ${hits} hits; ${leaders.size} leaders; ${respawns} respawns`);
+    assert.ok(fins.every((f) => f !== null), 'everyone finishes');
+    assert.ok(hits >= 3, 'items hit people');
+    assert.ok(leaders.size >= 2, 'the lead changes');
+    const spread = Math.max(...(fins as number[])) - Math.min(...(fins as number[]));
+    assert.ok(spread < 60000, `finishes spread over ${spread} ms: catch-up keeps it close`);
+  });
+}

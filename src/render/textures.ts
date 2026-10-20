@@ -283,17 +283,20 @@ export const roadworks = () =>
     }
   });
 
-export const banner = () =>
+export const banner = (name = 'VOLTA DOS AMIGOS') =>
   canvas(512, 64, (g) => {
     g.fillStyle = '#fbfbf8';
     g.fillRect(0, 0, 512, 64);
     g.fillStyle = '#1d4f9c';
     g.fillRect(0, 0, 512, 7);
     g.fillRect(0, 57, 512, 7);
+    const text = `${name}  ·  BRAGA`;
+    // Smaller for a longer name, to fit the board.
     g.font = '800 26px system-ui, sans-serif';
+    g.font = `800 ${Math.min(26, Math.floor((26 * 480) / g.measureText(text).width))}px system-ui, sans-serif`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText('VOLTA DOS AMIGOS  ·  BRAGA', 256, 33);
+    g.fillText(text, 256, 33);
   });
 
 export const boost = () =>

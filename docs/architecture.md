@@ -10,12 +10,12 @@ change things, read [making-changes.md](making-changes.md).
 |---|---|---|
 | `src/math.ts` | sim | A small vector type `V` and its maths, without three.js |
 | `src/sun.ts` | sim | Where the sun is over Braga at any moment (NOAA's equations), and `?time=` read in Braga's clock (braga-map's task 022) |
-| `braga-map/tracks/amigos.js` | sim | The Volta dos Amigos: Braga's real streets, from the map the games share (the `braga-map` package) |
+| `src/tracks.ts` | sim | The tracks the game races, each braga-map's (`braga-map/tracks/<id>.js`: Braga's real streets, from the map the games share): the Volta dos Amigos, the home track the city is built round, and the Volta de Lamaçães; `courseById`, `lapLimit` |
 | `src/track/layout.ts` | sim | The `Point` type; and `LAYOUT`, the first track (the cartoon Braga Grand Prix), kept for reference and for the tests |
 | `src/track/track.ts` | sim | `buildTrack`: the road sampled every metre. `locate`: where a point is relative to the road |
 | `src/car/car.ts` | sim | `stepCar`: the handling (grip, drift, mini-turbo, boost pads, flying, landing, walls, falling off), on a `Ground`; `trackGround`, a track's own road as one (the first track's, and the tests') |
 | `src/world/land.ts` | sim | `makeLand`: the land as it's drawn and driven on (braga-map's ground, held down at the tunnels' mouths, the stadium's bowl, the river's bed); `mouths` |
-| `src/world/ground.ts` | sim | `worldGround`: the world as a ground, for the open world: the land, every street and path at its level, each flight of steps a tread at a time, and the walls (buildings, parapets, tunnels, trees, handrails, risers too high to climb, the area's edge); and what the game stands on it (the plinth) |
+| `src/world/ground.ts` | sim | `worldGround`: the world as a ground, for the open world: the land, every street and path at its level, each flight of steps a tread at a time, and the walls (buildings, parapets, tunnels, trees, handrails, risers too high to climb, the area's edge); what the game stands on it (the plinth); and `circle`, the walls and trunks a circle is in, a kart's two or a walker |
 | `src/world/race.ts` | sim | `raceGround`: the world's ground for a race, with the race's walls (its road's outline, braga-map's `road`), its ramp and the fences where its road drops away, less the world's walls it takes down (braga-map's `cleared`, `clearedWalls`, and `clearedPieces` for the city to draw them apart); `reachable`, for the tests: whether a race is closed |
 | `src/car/autopilot.ts` | sim | Drives the track by itself: for the bots, `?autodrive` and the tests |
 | `src/race.ts` | sim | Laps, checkpoints, splits, respawning |
@@ -25,13 +25,14 @@ change things, read [making-changes.md](making-changes.md).
 | `src/game/bot.ts` | sim | The bots' driving (each on its own line across the road, moving out to pass) and when they use their items |
 | `src/game/roamer.ts` | sim | `Roamer`: your car round the city, outside a race, on the world's ground (bumps and slipstreams, back on the street when lost) |
 | `src/game/flyer.ts` | sim | `Flyer`: the flying camera (braga-map's task 054), its pace by its height, kept 1 to 500 m over the ground it's given and inside its bound; `landing`: where your kart is put when you stop flying; `onGrid`: a grid of heights as its triangles are drawn |
+| `src/game/walker.ts` | sim | `Walker`: you on foot (braga-map's task 073), on the world's ground at a person's height and radius, walking, running and jumping, up kerbs and treads, stopped by the walls and trunks; `alight`: where you get out beside your kart |
 | `src/session.ts` | browser | Rooms over PeerJS: `HostRoom` and `ClientRoom` |
 | `src/main.ts` | browser | Free roam, the menu over it, the race and its screens, the loop, the cameras, and the glue between all of it |
-| `src/hud.ts` | browser | What's on the screen while you drive: in a race (`Hud`: place, lap, item slot, clock, minimap, order, feed), and round the city (`RoamHud`: speed, the street's name, a minimap round you, feed) |
+| `src/hud.ts` | browser | What's on the screen while you drive: in a race (`Hud`: place, lap, item slot, clock, minimap, order, feed), and round the city (`RoamHud`: speed, the street's name, a minimap round you, feed; on foot, a dot for the speed) |
 | `src/stats.ts` | browser | `?stats`: what the game costs on this screen, in a corner, for measuring it on a phone |
 | `src/audio.ts` | browser | Every sound and the mix it goes through (buses, a limiter, places): synthesized with Web Audio, but the city's, recorded (`src/sounds/`) |
 | `src/ambience.ts` | sim | What's round any point of the city on a grid every 10 m (traffic, town, park, woods), each point worked out the first time it's needed, and where the churches, the rivers, the bus stops and the stadium are, from the map, for the city's sound |
-| `src/input.ts` | browser | The keyboard, the mouse (a drag looks round while flying) and the touch screen (its layouts for driving and for flying): held controls, plus actions counted once per press |
+| `src/input.ts` | browser | The keyboard, the mouse (a drag looks round while flying; on foot it looks round with the pointer locked) and the touch screen (its layouts for driving, flying and on foot): held controls, plus actions counted once per press |
 | `src/render/` | browser | three.js: the look, the city round the track (`city.ts`, its land on `lattice.ts`, what its ground is from `cover.ts`), every street in the open world's area (`streets.ts`, laid on the ground by `tin.ts`), what the race adds to them (`road.ts`), the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
 
 The **sim** files never import three.js or touch the DOM, so `node --test` can load them. The
@@ -49,34 +50,42 @@ start; and goes back to it after a race, where you were before it.
 1. **`syncOthers`**, as in a race (below), but for the room's players only: the bots are out only
    in a race. A friend who has just joined is put on the street nearest the host once the host's
    first position comes in (`besideTheHost`).
-2. **Key actions**: horn, camera, back on the street, and flying (V, the bar's and the menu's
-   buttons: `fly`).
+2. **Key actions**: horn, camera, back on the street, flying (V, the bar's and the menu's
+   buttons: `fly`) and on foot (F, and theirs: `walk`).
 3. **Fixed steps** of `DT`: your `Roamer` on the world's ground (`world.drive`), bumping into the
-   others where they're drawn. With a panel open (the menu, the results), or while you fly, it pulls
-   up and waits.
+   others where they're drawn. With a panel open (the menu, the results), while you fly, or while
+   you're on foot, it pulls up and waits. On foot, your `Walker` is stepped with it, by your keys and
+   thumbs (`steps`); where you look turns once a frame, by the mouse or a drag, before the steps.
 4. **Flying** (`r.fly`, braga-map's task 054): the `Flyer` stepped once a frame by your keys, mouse
    and thumbs (`flight`), unless a panel is open.
 5. **Notes**: the bumps, slipstreams, mini-turbos, walls and landings, through `feel` as in a race.
-6. **`sendPos`**: your snapshot, if you're in a room: parked, while you fly.
+6. **`sendPos`**: your snapshot, if you're in a room: parked, while you fly; on foot, yours and where
+   your kart waits (`snapOf`).
 7. **Drawing and sound**: your kart (its driver the room's, which gives you another if someone has
-   yours), the engines and the city round you (`hearRoam`; flying, your engine from where your kart
-   waits and the city from under the camera), the eggs (the track's sample you're by,
-   from `locate`, while you're within 8 m of the route's edge), the street's name as you drive onto
-   it (the nearest named street whose carriageway you're on, braga-map's line names, `world/names.ts`;
-   kept while you're on the one shown last), and the `RoamHud` with its minimap (flying, round the
-   camera, your kart a dot).
+   yours; empty while you're out of it), the engines and the city round you (`hearRoam`; flying, your
+   engine from where your kart waits and the city from under the camera; on foot, your engine and
+   those of the others on foot off, and the city round you), the eggs (the track's sample you're by,
+   from `locate`, while you're within 8 m of the route's edge), the street's name as you drive or
+   walk onto it (the nearest named street whose carriageway you're on, braga-map's line names,
+   `world/names.ts`; kept while you're on the one shown last), and the `RoamHud` with its minimap
+   (flying or on foot, round you, your kart a dot).
 
 The chase camera follows, or with a panel open the camera turns slowly round your kart (`orbit`),
 which stands on the right of the screen, clear of the menu. Flying, the camera is the flyer's
 (`flyCam`), held still while a panel is open, and the sun's shadows fall round where it looks on the
-ground, at most 100 m ahead (`lookedAt`).
+ground, at most 100 m ahead (`lookedAt`). On foot, it's at your eyes (`walkCam`), its height easing
+up a kerb or a tread, with its near plane brought in to 10 cm (`nearPlane`), as a wall can be a
+walker's width away.
 
 **In a race** it calls `stepRace`:
 
 1. **`syncOthers`**: for every car this browser doesn't drive, finds the two snapshots either side
-   of *now − 110 ms* and interpolates between them. A jump of more than 30 m, such as a respawn,
-   snaps instead of sliding. The result goes into `arena.cars` as a `CarInfo` (used for positions,
-   bumps and targets) and onto the screen.
+   of *now − 110 ms* and interpolates between them. A jump of more than 30 m, such as a respawn, or
+   getting in or out, snaps instead of sliding. The result goes into `arena.cars` as a `CarInfo` (used
+   for positions, bumps and targets) and onto the screen. Round the city, someone on foot is drawn
+   standing where they are, the driver they picked on legs, walking or running (`buildWalker` in
+   `render/drivers.ts`), their name over them, and their kart empty where it waits, which is what's
+   in `cars`.
 2. **Key actions**: horn, camera, use item, respawn, restart.
 3. **Fixed steps**: time accumulates, and the car is stepped at `DT = 1/120` s until it catches up
    (at most 0.25 s per frame). Each step sets `arena.t`, the race clock in ms since the green light,
@@ -94,7 +103,7 @@ The chase camera comes next, then particles, then `look.render()`.
 
 ## The simulation
 
-**The track.** `buildTrack` runs a centripetal Catmull-Rom spline through the layout (`amigos.points`), so sharp corners
+**The track.** `buildTrack` runs a centripetal Catmull-Rom spline through the layout (a track's `points`), so sharp corners
 don't loop. It then resamples it every metre, starting at the point tagged `start`. Each `Sample`
 holds the centre `p`, forward `t`, right `r` (tilted by the banking), surface normal `n`, width,
 walls, surface and whether it's a boost pad. Per-stretch settings (`w`, `bank`, `walls`, `surface`)
@@ -124,7 +133,7 @@ keeps its sample (`idx`) and how far right of the centre line it is (`lat`). In 
 (`air` samples, braga-map's `ramps`: the jump over the Rio Este into the dead end, task 039) there's
 no road and no walls: the car flies on to the landing, and one 3 m under the flight's line has fallen
 short. `track.ramps` has its foot, lip and landing by sample, and `rampSpeed` how fast to take it.
-The race on the Volta dos Amigos runs on the world's (below), with the race's walls and ramp.
+A race runs on the world's (below), with its track's walls and ramp, whichever track the host picks.
 
 The open world's (braga-map's decision 019) is `worldGround(world, open?)` in `src/world/ground.ts`,
 built once (about 0.2 s for the Volta dos Amigos' area) from braga-map's `loadWorld`. Everything
@@ -204,7 +213,8 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
   lost, and `respawn` puts them back (on the jump's run-up, at
   the speed that clears it). A car the race makes on the track (the grid, a respawn) is put on what's
   under it (`place`). `reachable` floods the race's road from its line, a metre at a time, for the
-  tests: nothing off it is reachable. Built with the city (`world.race`), in about 60 ms.
+  tests: nothing off it is reachable. Built with the city for every track (`world.raceOn`, kept by
+  `main.ts` as `races`), with the marks the race puts on the streets: about 85 ms a track.
 
 **A lap.** `advance` in `race.ts` checks whether the step from sample `from` to `to` crossed the next
 checkpoint, or the line once every checkpoint is done. It returns `cp` or `lap` events with splits
@@ -255,7 +265,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk38-` plus a five-character room code, and the invite link is `?room=<code>`, which
+`partykart-pk39-` plus a five-character room code, and the invite link is `?room=<code>`, which
 opens the game straight into the room. A room is made only when someone invites friends ("Convidar
 amigos") or starts a race; until then the game is alone, with no network at all.
 
@@ -268,7 +278,7 @@ To the host (`ToHost` in `session.ts`):
 | `hello` | name, driver | Join. A room with 8 humans already gets `bye` |
 | `pick` | driver | Change driver, outside a race, if nobody else has it |
 | `name` | name | Change my name, outside a race |
-| `pos` | `Snap` | Where my car is. Clients send at most 15 a second |
+| `pos` | `Snap` | Where my car is; on foot, where I am and where it waits. Clients send at most 15 a second |
 | `lap` | ms | I finished a lap in this time |
 | `fin` | ms | I finished the race at this race time |
 | `ev` | `ItemEv` | Something I threw or that happened to me |
@@ -279,7 +289,7 @@ To the clients (`ToClient`):
 
 | `t` | | |
 |---|---|---|
-| `lobby` | lobby, you | The whole room (members, the race's settings, racing or not) and your id in it |
+| `lobby` | lobby, you | The whole room (members, the race's settings and its track's id, racing or not) and your id in it |
 | `cars` | `Snap[]` | Everyone's latest position, 15 times a second, round the city as in a race |
 | `board` | `Entry[]` | The leaderboard: best laps, laps, finish times |
 | `start` | goIn, endIn, grid | The race starts in `goIn` ms and ends at the latest in `endIn` ms. `grid` gives each id's slot |
@@ -334,7 +344,7 @@ sequenceDiagram
 | The bots: driving, items, laps | The host's browser |
 | The room: members, names, drivers, the race's settings, bots | The host |
 | The leaderboard and results | The host, from the laps and finishes it's told |
-| When the race ends | The host: when everyone's finished, 30 s after the first finisher, or at the time limit (for a race, the laps times the lap limit, plus 60 s; the lap limit is the track's length at 60 km/h, set by `setLapLimit`. For time attack, the chosen minutes) |
+| When the race ends | The host: when everyone's finished, 30 s after the first finisher, or at the time limit (for a race, the laps times the lap limit, plus 60 s; the lap limit is the track's length at 60 km/h, `lapLimit` in `tracks.ts`, of the track in the lobby. For time attack, the chosen minutes) |
 
 This is a game for friends, not a competitive one. A client can lie about its own laps. What the
 host does guard against is malformed or hostile input that could break other people's game.
@@ -367,6 +377,22 @@ when the camera is outside it, facing into the area); the others see it jump, as
 race the host starts ends the flight, and you're back in your kart where it waited when it's over.
 The sky goes with the camera (`Look.render`), as it's a box 20 km across.
 
+**On foot** (braga-map's task 073), in free roam: F, or the menu's and the bar's 🚶 A pé, gets you
+out beside your kart, on its side with the pavement if there's room there (`alight`), and you walk in
+first person (`Walker`, `src/game/walker.ts`): 1.75 m tall, the eye at 1.65 m, a circle 0.3 m round,
+1.5 m/s walking and 5 m/s running, a jump of about 40 cm. You stand on the world's ground as a kart
+does (`floor`), up a kerb or a tread a step high (`STEP`, 0.3 m) and down any; bridging the few
+centimetres the map leaves between some treads of a flight; down a bank, but up none steeper than 45°;
+and off a retaining wall's top, but never up its face. Every wall, fence, hedge, gate, building and
+tree stops you at your own radius (`WorldGround.circle`, the kart's own test at a walker's size, which
+also stands a thin wall's faces where they're drawn, `half`), and the area's edge keeps you in it.
+On a computer the mouse looks round with the pointer locked; the browser lets it go at Esc, which the
+game takes for the menu (`Mouse.onLost`), and a click on the world takes it back. On a touch screen,
+twin sticks. Your kart waits where it stopped, sending its snapshot, empty; F again puts you back in
+it. A race the host starts puts you back in it first. The snapshot (`Snap`) carries `w` (on foot),
+your feet's `x`, `y`, `z`, `yaw` and pace (`spd`), how far you look up (`pi`), and where your kart
+waits (`kx`, `ky`, `kz`, `kw`, its up `ux`, `uy`, `uz`); all of these 0 in the kart.
+
 **Race**: 1 to 3 laps from a random starting grid, with positions. Power-ups and catch-up can each
 be turned off in the race's settings.
 
@@ -395,8 +421,8 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   hemisphere light, a sun whose shadow box follows the camera, ACES tone mapping and fog. There are
   three quality levels. High has pixel ratio up to 2 and 2048 shadows. Medium has 1.25 and 1024
   shadows. Low has 1 and no shadows. Changing quality marks every material for recompiling.
-- **The city** (`render/city.ts`), from braga-map: `loadWorld(amigos.box)` loads the map's
-  500 m tiles under the track's box (48 of them, each a chunk the bundle splits off), and makes the
+- **The city** (`render/city.ts`), from braga-map: `loadWorld(HOME.box)` loads the map's
+  500 m tiles under the home track's box (the Volta dos Amigos', which holds the open world) (48 of them, each a chunk the bundle splits off), and makes the
   world the karts' ground of it (`worldGround`, `src/world/ground.ts`, kept as the city's `drive`
   for driving on). It keeps what's in the open world's area and 300 m round it: every building, cut
   back at the kerb where it stands on a carriageway as the karts find it (`trimmed`, braga-map's

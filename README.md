@@ -1,8 +1,8 @@
 # Party Kart
 
-Braga's real streets, to drive round in a kart with your friends, and the Volta dos Amigos to race
-them on, past the friends' houses. In the browser, on a keyboard or a phone, with power-ups and bots
-in a race. A throwaway game: no server, no accounts, nothing to maintain but the map it's played
+Braga's real streets, to drive round in a kart with your friends, and two tracks to race them on:
+the Volta dos Amigos, past the friends' houses, and the Volta de Lamaçães. In the browser, on a
+keyboard or a phone, with power-ups and bots in a race. A throwaway game: no server, no accounts, nothing to maintain but the map it's played
 on, which lives with its photos in braga-map. The drivers are the
 friends, and all faces are cartoons.
 
@@ -27,7 +27,7 @@ and driver, the graphics, the help, and
    or **Partilhar o convite** on a phone). Whoever opens it drives into your world, on the street
    next to you. Each of you sees the others where they are, their names over them, and the feed says
    who came and went. **Entrar** joins a friend's room by its code.
-2. **🏁 Corrida**: the host chooses the mode, the laps or minutes, the items, catch-up and the bots,
+2. **🏁 Corrida**: the host chooses the track, the mode, the laps or minutes, the items, catch-up and the bots,
    and **Começar a corrida** puts everyone in the room on the grid, the empty places filled with
    bots. When it's over the results show over the world, and everyone is back where they were,
    driving.
@@ -38,6 +38,11 @@ and driver, the graphics, the help, and
    others see it parked. **🏎️ Voltar ao kart** (or V) puts it on the street under the camera, to drive
    on from there. A race the host starts ends the flight, and you're back in your kart where it
    waited when it's over.
+5. **🚶 A pé**: get out of your kart and walk Braga in first person, at a person's height: along the
+   pavements, up kerbs and flights of steps, through passages, stopped by every wall, fence, hedge,
+   gate, building and tree. Your kart waits where it stopped, empty, and the others see you standing
+   beside it as the driver you picked, walking or running. **🏎️ Voltar ao kart** (or F) puts you back
+   in it where it waited. A race the host starts puts you back in it first.
 
 If the host leaves, everyone else drives on, alone.
 
@@ -54,6 +59,7 @@ the ghost of your best. Round the city there are no items.
 | Backspace | Restart the lap (time attack) |
 | H · C · M | Horn · camera · sound |
 | V | Fly the camera round the city, and back to your kart |
+| F | Get out and walk, and back in your kart |
 | Esc | The menu |
 
 | Flying | |
@@ -65,6 +71,15 @@ the ghost of your best. Round the city there are no items.
 | Shift | Four times as fast |
 | The mouse, dragged | Look round |
 
+| On foot | |
+|---|---|
+| W and S, or ↑ and ↓ | Forward and back |
+| A and D | Sideways |
+| ← and → | Turn |
+| The mouse | Look round (it's held by the game; Esc lets it go and opens the menu, and a click on the world takes it back) |
+| Shift | Run |
+| Space | Jump |
+
 **On a phone or a tablet**, turned sideways: round the city the kart goes while your thumb is on
 the left half, and pulls up when you lift it; in a race it goes by itself.
 
@@ -74,11 +89,15 @@ the left half, and pulls up when you lift it; in a race it goes by itself.
 | Derrapar | Hold it through a corner, as with Space |
 | Travar | Slows you down, and reverses once you've stopped |
 | Item | In a race: tap to use what it shows; swipe it down to throw backwards |
-| ☰ · ↺ · Voar · 📢 · 🎥 · 🔊 (at the top) | The menu · back on the street (in a race, to your last checkpoint) · fly the camera · horn · camera · sound |
+| ☰ · ↺ · Voar · 🚶 A pé · 📢 · 🎥 · 🔊 (at the top) | The menu · back on the street (in a race, to your last checkpoint) · fly the camera · get out and walk · horn · camera · sound |
 
 Flying, the left half of the screen is a stick where your thumb lands, forward, back and sideways; a
 drag anywhere on the right half looks round; **▲ Subir** and **▼ Descer** are where Derrapar and
 Travar were, and **🏎️ Voltar ao kart** at the top lands.
+
+On foot, twin sticks: the left half walks where your thumb lands, and runs when you push it to its
+rim; a drag anywhere on the right half looks round; **Saltar** jumps; and **🏎️ Voltar ao kart** at the
+top puts you back in it.
 
 On Android the game goes full screen at the first tap. On an iPhone, add the page to the home screen
 (Share → Add to Home Screen) for the same.
@@ -116,6 +135,16 @@ Ponte Pedrinha and down a straight street to the Rio Este, where the road works 
 planks on a pile of rubble: the race jumps the river on it into a dead end, the one way in, and comes
 out by its mouth to go home along the Rua Conselheiro Lobato. The ramp is the one thing on the
 track that isn't in the real Braga, and it's only there in a race.
+
+**The Volta de Lamaçães**: 9.2 km of the streets east of the Avenida da Liberdade, inside the same
+area, with no jump. From the line on the Avenida João XXI, down the Rua Bernardo Sequeira to the
+Largo de Santa Tecla, the Rua de Baixo and the Avenida Doutor Porfírio da Silva; the side streets
+under the Picoto to the Via da Falperra and the Rua Simões de Almeida; north through the streets of
+Lamaçães to the Avenida Robert Smith, up the Rua Irmãos Sousa and the Rua Afonso Palmeira to the
+Avenida Doutor António Alves Palha; and back west by Santa Tecla, the Avenida da Liberdade and the
+Rua André Soares. A third of it is on the Volta dos Amigos' streets, some of them the other way, and
+the rest is narrower and twistier: a lap takes about as long, at a lower speed. The friends' eggs
+stay on their houses, by the Volta dos Amigos, and go off only in its race.
 
 Every street round it is drawn as it is, at its real width: its lanes painted white, its zebra
 crossings, traffic lights and lamps, calçada pavements behind granite kerbs, central reservations
@@ -171,7 +200,7 @@ the game runs slowly, it steps down a level by itself, as far as Low.
 - `src/car/`: the handling (drifts, mini-turbos, jumps), and an autopilot.
 - `src/game/`: a race: the arena (clock, cars, items in flight, order), a racer (laps, boxes,
   items, hits, bumps, slipstreams, catch-up), the items' rules, and the bots; a car driving round
-  the city (`roamer.ts`); and the flying camera (`flyer.ts`).
+  the city (`roamer.ts`); the flying camera (`flyer.ts`); and you on foot (`walker.ts`).
 - `src/world/`: the world as the karts' ground: the land, every street and path at its level, the
   steps, and the walls (`ground.ts`).
 - `src/render/`: the look (sky, sun, shadows, quality); the city round the track (`city.ts`,
@@ -200,7 +229,7 @@ The tests run the TypeScript straight in Node, which needs Node 22.18 or later.
 ```sh
 npm install
 npm run dev      # http://localhost:5173; ?autodrive lets the autopilot drive a race, for testing
-npm test         # the track; the world's ground and free roam; flying; the first track's jump; items, catch-up, slipstreams; eight bots
+npm test         # the track; the world's ground and free roam; flying; on foot; the first track's jump; items, catch-up, slipstreams; eight bots
 npm run check    # the type check (Node runs the tests without one)
 npm run build
 npm run deploy   # publish to GitHub Pages (the gh-pages branch)

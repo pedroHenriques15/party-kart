@@ -139,7 +139,8 @@ class Parts {
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
 // The figure: torso, arms reaching forward, a big head. Facing +x; the head is its own group, to bob.
-export function buildDriverFigure(d: Driver, hands: THREE.Vector3 = V(0.62, 0.62, 0.26)): THREE.Group {
+// Without its arms, for one standing that swings them (buildWalker).
+export function buildDriverFigure(d: Driver, hands: THREE.Vector3 = V(0.62, 0.62, 0.26), arms = true): THREE.Group {
   const fig = new THREE.Group();
   const body = new Parts();
   const face = new Parts();
@@ -153,7 +154,7 @@ export function buildDriverFigure(d: Driver, hands: THREE.Vector3 = V(0.62, 0.62
   const mouth = std('#6b1f24', { roughness: 0.6 });
 
   body.add(new THREE.CapsuleGeometry(0.3, 0.32, 6, 14), outfit, [0, 0.48, 0], [0, 0, 0], [1, 1, 1.15]);
-  for (const s of [-1, 1]) {
+  for (const s of arms ? [-1, 1] : []) {
     const shoulder = V(0.02, 0.72, s * 0.34);
     const hand = V(hands.x, hands.y, s * hands.z);
     body.limb(shoulder, hand, 0.09, outfit);
@@ -218,6 +219,7 @@ export function buildDriverFigure(d: Driver, hands: THREE.Vector3 = V(0.62, 0.62
       }
       case 'watch':
         // A big wristwatch on the right wrist, held where it can be looked at.
+        if (!arms) break;
         body.add(new THREE.CylinderGeometry(0.15, 0.15, 0.06, 18), brass, [hands.x - 0.12, hands.y + 0.1, hands.z], [0.3, 0, 0]);
         body.add(new THREE.CylinderGeometry(0.12, 0.12, 0.065, 18), white, [hands.x - 0.12, hands.y + 0.105, hands.z], [0.3, 0, 0]);
         break;
@@ -326,6 +328,7 @@ function clockHands(size: number, color = '#1b1b1d'): { group: THREE.Group; hour
 export interface KartModel {
   group: THREE.Group;
   driver: Driver;
+  figure: THREE.Object3D; // the driver in the seat, hidden while they're out of the car
   exhaust: THREE.Vector3[]; // where the exhausts are, in the kart's frame
   ember: THREE.Object3D; // the cigarette's lit end, where its smoke comes from
   // vice: the café's easter egg is on, a cigarette and a beer for the driver.
@@ -878,6 +881,7 @@ export function buildKart(d: Driver): KartModel {
   return {
     group,
     driver: d,
+    figure: fig,
     exhaust,
     ember,
     update(speed, steer, dt, grounded, flags, vice = false) {
@@ -948,3 +952,71 @@ export function buildKart(d: Driver): KartModel {
   };
 }
 
+export interface WalkerModel {
+  group: THREE.Group;
+  driver: Driver;
+  // Walking or running at speed m/s, looking up by pitch.
+  update: (speed: number, dt: number, pitch: number) => void;
+}
+
+// The driver out of their car, standing (braga-map's task 073): the same figure on legs, swinging its
+// arms as it walks, leaning into a run, and as tall as a walker is (game/walker.ts), its big head and
+// all. Facing +x, its feet on y = 0.
+const LEG = 0.72;
+const STANDING = 1.75 / (LEG + 1.85);
+export function buildWalker(d: Driver): WalkerModel {
+  const group = new THREE.Group();
+  const body = new THREE.Group(); // leans
+  body.scale.setScalar(STANDING);
+  group.add(body);
+  const fig = buildDriverFigure(d, undefined, false);
+  fig.position.y = LEG - 0.04;
+  body.add(fig);
+  const trousers = std(new THREE.Color(d.outfit).multiplyScalar(0.55).getStyle(), { roughness: 0.85 });
+  const shoes = std('#1c1c1f', { roughness: 0.5 });
+  const sleeve = std(d.outfit, { roughness: 0.75 });
+  const skin = std(d.skin, { roughness: 0.7 });
+  // A leg or an arm: a pivot at the hip or the shoulder, swinging forward and back about z.
+  const limb = (at: THREE.Vector3, build: (p: Parts) => void) => {
+    const pivot = new THREE.Group();
+    pivot.position.copy(at);
+    const p = new Parts();
+    build(p);
+    p.into(pivot);
+    body.add(pivot);
+    return pivot;
+  };
+  const legs = [-1, 1].map((s) =>
+    limb(V(0, LEG, s * 0.15), (p) => {
+      p.limb(V(0, 0.05, 0), V(0, -LEG + 0.1, 0), 0.12, trousers);
+      p.add(new THREE.BoxGeometry(0.34, 0.12, 0.17), shoes, [0.06, -LEG + 0.06, 0]);
+    }),
+  );
+  const arms = [-1, 1].map((s) =>
+    limb(V(0.02, fig.position.y + 0.72, s * 0.36), (p) => {
+      p.limb(V(0, 0, 0), V(0.02, -0.52, s * 0.06), 0.09, sleeve);
+      p.add(new THREE.SphereGeometry(0.11, 12, 8), skin, [0.02, -0.58, s * 0.07]);
+    }),
+  );
+  const head = fig.getObjectByName('head')!;
+  let phase = 0;
+  let swing = 0;
+  return {
+    group,
+    driver: d,
+    update(speed, dt, pitch) {
+      // A stride every 1.4 m walking, longer running; the legs swing further the faster it goes.
+      phase += (dt * speed * Math.PI) / (speed > 3 ? 1.1 : 0.7);
+      swing += (Math.min(0.9, speed * 0.28) - swing) * Math.min(1, dt * 8);
+      if (speed < 0.1) phase += (Math.round(phase / Math.PI) * Math.PI - phase) * Math.min(1, dt * 8);
+      const a = Math.sin(phase) * swing;
+      legs[0].rotation.z = a;
+      legs[1].rotation.z = -a;
+      arms[0].rotation.z = -a * 0.8;
+      arms[1].rotation.z = a * 0.8;
+      body.rotation.z = -Math.min(0.25, Math.max(0, speed - 2) * 0.08);
+      body.position.y = speed > 3 ? Math.abs(Math.sin(phase)) * 0.05 : 0;
+      head.rotation.z = Math.max(-0.6, Math.min(0.6, pitch * 0.6));
+    },
+  };
+}

@@ -754,6 +754,30 @@ body.flying.looking #view {
   cursor: grabbing;
 }
 
+/* On foot (braga-map's task 073), there's no speed either: a dot in the middle of the screen, where you
+   look. */
+body.walking #hud .speed,
+body.walking #hud .speedlines {
+  display: none;
+}
+
+.dot {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.45);
+}
+
+body.walking:not(.paneled) #hud .dot {
+  display: block;
+}
+
 /* The street's name as you turn into it, on a plate as Braga's are: white on blue, a white rule
    inside its edge. */
 .plate {
@@ -1025,21 +1049,36 @@ body.touch.driving .t-pad {
 
 .t-pad[data-mode='time'] .t-item,
 .t-pad[data-mode='roam'] .t-item,
-.t-pad[data-mode='fly'] .t-item {
+.t-pad[data-mode='fly'] .t-item,
+.t-pad[data-mode='walk'] .t-item {
   display: none;
 }
 
 /* Flying: Subir and Descer where Derrapar and Travar are, and a drag anywhere else on the right half
    looks round. */
+/* On foot: twin sticks, the right half's drag looking round as flying, and Saltar where Derrapar is. */
 .t-look,
 .t-rise,
 .t-sink,
+.t-jump,
 .t-pad[data-mode='fly'] .t-drift,
-.t-pad[data-mode='fly'] .t-brake {
+.t-pad[data-mode='fly'] .t-brake,
+.t-pad[data-mode='walk'] .t-drift,
+.t-pad[data-mode='walk'] .t-brake {
   display: none;
 }
 
-.t-pad[data-mode='fly'] .t-look {
+.t-pad[data-mode='walk'] .t-jump {
+  display: grid;
+  right: calc(20px + var(--sr));
+  bottom: calc(20px + var(--sb));
+  width: 100px;
+  height: 100px;
+  border-color: rgba(127, 212, 255, 0.85);
+}
+
+.t-pad[data-mode='fly'] .t-look,
+.t-pad[data-mode='walk'] .t-look {
   display: block;
   position: absolute;
   inset: 0 0 0 50%;

@@ -11,13 +11,13 @@ npm run check && npm test
 
 Then play it with `npm run dev`. Add `?autodrive` and the autopilot drives for you.
 
-## The track
+## The tracks
 
-The game races the Volta dos Amigos, `braga-map/tracks/amigos.js`, from the map of Braga the
-games share: the `braga-map` package, its own repo
-([github.com/pedroHenriques15/braga-map](https://github.com/pedroHenriques15/braga-map), next to
-this one at `../braga-map`). It plans the track on the real streets from OpenStreetMap and the
-ground from DGT's LiDAR, and makes the city round it. Its README says how a track is planned and what to change.
+The game races the tracks in `src/tracks.ts`: the Volta dos Amigos, `braga-map/tracks/amigos.js`,
+and the Volta de Lamaçães, `braga-map/tracks/lamacaes.js`, from the map of Braga the games share:
+the `braga-map` package, its own repo ([github.com/pedroHenriques15/braga-map](https://github.com/pedroHenriques15/braga-map), next to
+this one at `../braga-map`). It plans the tracks on the real streets from OpenStreetMap and the
+ground from DGT's LiDAR, and makes the city round them. Its README says how a track is planned and what to change.
 **Nothing of the track or the city is edited here.** To change them:
 
 1. Change braga-map's scripts (`tools/track.mjs` plans the tracks, `tools/world.mjs` makes the
@@ -39,15 +39,22 @@ for, the same all over the map.
 
 Other things to know:
 
-- A sample is a metre of road. The lap is about 10.1 km (N ≈ 10080). Nothing in the new scenery uses
+- **A new track** is planned in braga-map (its README, "A new track": in the open world, off the
+  other tracks' streets), and here a line in `TRACKS` (`src/tracks.ts`): its file and what the race
+  screen says of it. The race screen lists it, the host picks it, the lobby carries its id, and the
+  city builds its race at load (`world.raceOn` in `render/city.ts`: its ground and the marks on the
+  streets, the start's boards and gate with its name). The tests run over it. The Volta dos Amigos
+  stays the home track (`HOME`): the city is loaded round it, its plinth, eggs and landmarks' signs
+  stand whatever is raced, and only its race may take the world's walls down (`cleared`).
+- A sample is a metre of road. The Volta dos Amigos' lap is about 10.1 km (N ≈ 10080). Nothing in the new scenery uses
   a raw sample index: it's all placed by position, so it moves with the track when that's made
   again.
-- **The tests guard the track.** It must be a 7–10.5 km loop with 5 checkpoints, and the autopilot
-  must lap it on the world's ground within the race's walls with no respawns, its second lap taking
-  170–310 s. The race must be closed (from its line, nothing off braga-map's `road` is reachable),
-  and every row of barriers must stop a kart driven at it. The autopilot must fly the jump's flight
-  from any line and turn into the landing street with no wall hit. Eight bots must all finish a lap,
-  within 60 s of each other. The race runs on the streets at their real widths (braga-map's decision 019):
+- **The tests guard every track in the list.** Each must be a 7–10.5 km loop with 5 checkpoints in
+  the open world's area, and the autopilot must lap it on the world's ground within the race's walls
+  with no respawns, its second lap at 25–60 m/s on average (the Volta dos Amigos' in 170–310 s). The race must be closed (from its line, nothing off braga-map's `road` is reachable),
+  and every row of barriers must stop a kart driven at it. The autopilot must fly the Volta dos
+  Amigos' jump from any line and turn into the landing street with no wall hit. Eight bots must all
+  finish a lap of each, within 60 s of each other. The race runs on the streets at their real widths (braga-map's decision 019):
   if the autopilot can't get round, the bots and the autopilot change, not the street; the line
   keeps 1.2 m inside the race's road where it rounds a corner (`CLEAR` in braga-map's
   `tools/track.mjs`), or the costs can send the loop another way.
@@ -195,7 +202,7 @@ boosting, drifting, charging a turbo, or slipstreaming.
 A sight that's on the map (a building or a monument the track passes) is easiest in
 `src/render/sights.ts`: find its OpenStreetMap id (braga-map's `.cache/osm/*.json`), add it to the
 `sights` in braga-map's `tools/world.mjs` with whatever the builder needs (a position, a
-footprint's rectangle, a front), make the world again (see "The track"), and add a builder for its
+footprint's rectangle, a front), make the world again (see "The tracks"), and add a builder for its
 `kind`. The other games get it too. One that stands for a building of the tiles' carries that
 building's outline as `covers`, and the city doesn't draw the building (it's still a wall to the
 karts). Small ones of a few materials go in `chapels.ts`'s way: built apart, baked together in

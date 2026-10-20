@@ -1,5 +1,5 @@
 import { loadWorld, type World } from 'braga-map';
-import amigos from 'braga-map/tracks/amigos.js';
+import { HOME as amigos } from '../src/tracks.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { autopilot } from '../src/car/autopilot.ts';

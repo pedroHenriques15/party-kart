@@ -1,5 +1,5 @@
-// The keyboard, the mouse and the touch screen. Actions (respawn, restart, horn, camera, use, fly) are
-// counted presses, read once.
+// The keyboard, the mouse and the touch screen. Actions (respawn, restart, horn, camera, use, fly,
+// walk) are counted presses, read once.
 const KEYS = {
   up: ['ArrowUp', 'KeyW'],
   down: ['ArrowDown', 'KeyS'],
@@ -19,9 +19,10 @@ const ACTIONS: Record<string, Action> = {
   KeyH: 'horn',
   KeyC: 'camera',
   KeyV: 'fly',
+  KeyF: 'walk',
 };
 // 'useBack' throws the item backwards: the touch screen's swipe, where the keyboard holds ↓.
-export type Action = 'respawn' | 'restart' | 'horn' | 'camera' | 'use' | 'useBack' | 'fly';
+export type Action = 'respawn' | 'restart' | 'horn' | 'camera' | 'use' | 'useBack' | 'fly' | 'walk';
 
 export interface Held {
   throttle: number;
@@ -41,8 +42,17 @@ export interface Flight {
   fast: boolean;
 }
 
-// How far a drag turns the flying camera, in radians a CSS pixel: the mouse's, and a finger's, which
-// has fewer pixels to go across.
+// On foot (src/game/walker.ts's WalkInput, less the look): the moves from -1 to 1.
+export interface Steps {
+  fwd: number;
+  side: number;
+  turn: number;
+  run: boolean;
+  jump: boolean;
+}
+
+// How far a drag turns the flying camera, or the mouse a walker's head, in radians a CSS pixel: the
+// mouse's, and a finger's, which has fewer pixels to go across.
 const MOUSE_LOOK = 0.004;
 const TOUCH_LOOK = 0.007;
 
@@ -52,6 +62,7 @@ const inField = (e: Event) => e.target instanceof HTMLElement && !!e.target.clos
 export class Keyboard {
   private down = new Set<string>();
   private pending: Action[] = [];
+  private hop = false; // on foot: Space pressed since steps() was read, however briefly
   enabled = false;
 
   constructor() {
@@ -61,6 +72,7 @@ export class Keyboard {
       e.preventDefault();
       this.down.add(e.code);
       if (!e.repeat && ACTIONS[e.code]) this.pending.push(ACTIONS[e.code]);
+      if (!e.repeat && e.code === 'Space') this.hop = true;
     });
     addEventListener('keyup', (e) => this.down.delete(e.code));
     addEventListener('blur', () => this.down.clear());
@@ -97,17 +109,58 @@ export class Keyboard {
       fast: !!(k('ShiftLeft') || k('ShiftRight')),
     };
   }
+
+  // On foot: W and S, or ↑ and ↓, forward and back; A and D sideways; ← and → turn; Shift runs;
+  // Space jumps. The mouse looks round (Mouse).
+  steps(): Steps {
+    const k = (code: string) => (this.down.has(code) ? 1 : 0);
+    const jump = this.hop || !!k('Space');
+    this.hop = false;
+    return {
+      fwd: Math.max(k('KeyW'), k('ArrowUp')) - Math.max(k('KeyS'), k('ArrowDown')),
+      side: k('KeyD') - k('KeyA'),
+      turn: k('ArrowRight') - k('ArrowLeft'),
+      run: !!(k('ShiftLeft') || k('ShiftRight')),
+      jump,
+    };
+  }
 }
 
-// The mouse, while flying: dragged with a button held on the world, it looks round. There's no
-// pointer lock, as Esc is the menu.
+// The mouse. Flying, dragged with a button held on the world, it looks round, with no pointer lock, as
+// Esc is the menu. On foot (`aim`), it looks round as it moves, the pointer locked to the world (a
+// click on it locks it again); Esc lets the browser unlock it, which the game takes for its menu
+// (`onLost`), so Esc is still the menu.
 export class Mouse {
   enabled = false;
+  aim = false;
+  locked = false;
+  // When the browser last let the pointer go of itself, for Esc's keydown, where a browser sends it.
+  lostAt = -Infinity;
+  onLost = () => {};
+  private on: HTMLElement;
+  private letting = false;
   private x = 0;
   private y = 0;
   private held: number | null = null;
 
   constructor(on: HTMLElement) {
+    this.on = on;
+    document.addEventListener('pointerlockchange', () => {
+      const now = document.pointerLockElement === on;
+      if (this.locked && !now && !this.letting) {
+        this.lostAt = performance.now();
+        this.onLost();
+      }
+      this.locked = now;
+      this.letting = false;
+      document.body.classList.toggle('aiming', now);
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!this.locked || !this.aim) return;
+      this.x += e.movementX;
+      this.y += e.movementY;
+    });
+    on.addEventListener('click', () => this.lock());
     on.addEventListener('pointerdown', (e) => {
       if (!this.enabled || e.pointerType !== 'mouse') return;
       this.held = e.pointerId;
@@ -115,7 +168,7 @@ export class Mouse {
       document.body.classList.add('looking');
     });
     on.addEventListener('pointermove', (e) => {
-      if (e.pointerId !== this.held || !this.enabled) return;
+      if (e.pointerId !== this.held || !this.enabled || this.locked) return;
       this.x += e.movementX;
       this.y += e.movementY;
     });
@@ -128,7 +181,25 @@ export class Mouse {
     }
   }
 
-  // The drag since last read, in radians: to the right, and up.
+  // On foot: the pointer locked to the world. Only in answer to a click or a key; a browser refuses it
+  // for a moment after Esc let it go, when a click on the world locks it. Not on a touch screen, where a
+  // finger looks round.
+  lock(): void {
+    if (this.locked || !this.aim || document.body.classList.contains('touch')) return;
+    try {
+      (this.on.requestPointerLock() as unknown as Promise<void> | undefined)?.catch?.(() => {});
+    } catch {
+      /* not allowed now */
+    }
+  }
+
+  unlock(): void {
+    if (!this.locked) return;
+    this.letting = true;
+    document.exitPointerLock();
+  }
+
+  // The drag, or the moves with the pointer locked, since last read, in radians: to the right, and up.
   look(): { x: number; y: number } {
     const l = { x: this.x * MOUSE_LOOK, y: -this.y * MOUSE_LOOK };
     this.x = this.y = 0;
@@ -154,9 +225,11 @@ const SWIPE = 28;
 // race the kart accelerates by itself; round the city it goes while a thumb is on the steering
 // half, and pulls up when it lifts (`waiting`). Brake slows it down, and reverses once stopped, as
 // ↓ does. The rarer
-// actions (back on the street, restart, horn, camera, flying) are buttons in the bar, out of the
-// thumbs' way. Flying ('fly'), the stick on the left half goes forward, back and sideways, a drag
-// anywhere on the right half looks round, and Subir and Descer are where Derrapar and Travar are.
+// actions (back on the street, restart, horn, camera, flying, on foot) are buttons in the bar, out of
+// the thumbs' way. Flying ('fly'), the stick on the left half goes forward, back and sideways, a drag
+// anywhere on the right half looks round, and Subir and Descer are where Derrapar and Travar are. On
+// foot ('walk'), twin sticks: the left walks, running when it's pushed to its rim, a drag on the right
+// half looks round, and Saltar jumps.
 export class TouchPad {
   readonly el: HTMLElement;
   // Whether the touch controls show: from the start on a touch screen, from the first touch on
@@ -165,15 +238,18 @@ export class TouchPad {
   private driving = false;
   private roam = false;
   private flying = false;
+  private walking = false;
   private steer = 0;
-  private move = { x: 0, y: 0 }; // flying: the stick, to the right and forward
+  private move = { x: 0, y: 0 }; // flying and on foot: the stick, to the right and forward
+  private rim = false; // on foot: the stick pushed to its rim, to run
+  private hop = false; // on foot: Saltar pressed, not yet read
   private drift = false;
   private brake = false;
   private rise = false;
   private sink = false;
   private pending: Action[] = [];
   private stick: { id: number; x: number; y: number } | null = null;
-  private turn: { id: number; x: number; y: number } | null = null; // flying: the drag on the right half
+  private turn: { id: number; x: number; y: number } | null = null; // flying and on foot: the drag on the right half
   private looked = { x: 0, y: 0 };
   private flick: { id: number; y: number; done: boolean } | null = null; // on the item button
   private base: HTMLElement;
@@ -192,9 +268,10 @@ export class TouchPad {
     const brake = el('t-btn t-brake', 'Travar');
     const rise = el('t-btn t-rise', '▲\nSubir');
     const sink = el('t-btn t-sink', '▼\nDescer');
+    const jump = el('t-btn t-jump', 'Saltar');
     this.itemBtn = el('t-btn t-item');
     this.el = el('t-pad');
-    this.el.append(zone, look, drift, brake, rise, sink, this.itemBtn, el('t-rotate', 'Deita o telemóvel para veres mais'));
+    this.el.append(zone, look, drift, brake, rise, sink, jump, this.itemBtn, el('t-rotate', 'Deita o telemóvel para veres mais'));
     document.body.append(this.el);
 
     // A finger keeps whatever it pressed until it lifts, even if it slides off.
@@ -224,8 +301,9 @@ export class TouchPad {
     hold(brake, (on) => (this.brake = on));
     hold(rise, (on) => (this.rise = on));
     hold(sink, (on) => (this.sink = on));
+    hold(jump, (on) => on && (this.hop = true));
 
-    // Flying, a drag on the right half looks round, as the mouse does.
+    // Flying and on foot, a drag on the right half looks round, as the mouse does.
     look.addEventListener('pointerdown', (e) => {
       if (this.turn) return;
       grab(e, look);
@@ -279,7 +357,7 @@ export class TouchPad {
     zone.addEventListener('pointermove', (e) => {
       const s = this.stick;
       if (!s || s.id !== e.pointerId) return;
-      if (this.flying) return this.fly(s, e);
+      if (this.flying || this.walking) return this.fly(s, e);
       if (e.clientX - s.x > REACH) s.x = e.clientX - REACH;
       if (e.clientX - s.x < -REACH) s.x = e.clientX + REACH;
       this.base.style.left = `${s.x}px`;
@@ -306,7 +384,7 @@ export class TouchPad {
     document.body.classList.toggle('touch', on);
   }
 
-  // Flying, the stick goes every way, and follows the thumb past its rim as it does steering.
+  // Flying and on foot, the stick goes every way, and follows the thumb past its rim as it does steering.
   private fly(s: { x: number; y: number }, e: PointerEvent): void {
     let dx = e.clientX - s.x;
     let dy = e.clientY - s.y;
@@ -320,6 +398,7 @@ export class TouchPad {
     this.base.style.left = `${s.x}px`;
     this.base.style.top = `${s.y}px`;
     const r = Math.min(1, d / REACH);
+    this.rim = r > 0.95;
     const k = r < DEAD ? 0 : (r - DEAD) / (1 - DEAD) / (r * REACH);
     this.move = { x: dx * k, y: -dy * k };
     this.knob.style.transform = `translate(${dx}px, ${dy}px)`;
@@ -329,6 +408,7 @@ export class TouchPad {
     this.stick = null;
     this.steer = 0;
     this.move = { x: 0, y: 0 };
+    this.rim = false;
     this.base.classList.remove('live');
     this.base.style.left = this.base.style.top = this.knob.style.transform = '';
   }
@@ -338,16 +418,17 @@ export class TouchPad {
     this.flick = null;
     this.turn = null;
     this.looked = { x: 0, y: 0 };
-    this.drift = this.brake = this.rise = this.sink = false;
+    this.drift = this.brake = this.rise = this.sink = this.hop = false;
     for (const b of this.el.querySelectorAll('.down')) b.classList.remove('down');
   }
 
-  // Shown for driving ('race' has the item button, time attack and free roam don't) or flying, or
-  // hidden (null).
-  show(mode: 'race' | 'time' | 'roam' | 'fly' | null): void {
+  // Shown for driving ('race' has the item button, time attack and free roam don't), flying or on
+  // foot, or hidden (null).
+  show(mode: 'race' | 'time' | 'roam' | 'fly' | 'walk' | null): void {
     if (mode === (this.el.dataset.mode || null)) return;
     this.flying = mode === 'fly';
-    this.driving = mode !== null && !this.flying;
+    this.walking = mode === 'walk';
+    this.driving = mode !== null && !this.flying && !this.walking;
     this.roam = mode === 'roam';
     this.el.dataset.mode = mode ?? '';
     this.letGo();
@@ -374,6 +455,17 @@ export class TouchPad {
     return { fwd: this.move.y, side: this.move.x, up: (this.rise ? 1 : 0) - (this.sink ? 1 : 0), turn: 0, look, fast: false };
   }
 
+  // On foot: the stick, running at its rim, and Saltar since last read; and the drags on the right
+  // half, as flight()'s.
+  steps(): Steps & { look: { x: number; y: number } } {
+    const look = { x: this.looked.x * TOUCH_LOOK, y: -this.looked.y * TOUCH_LOOK };
+    this.looked = { x: 0, y: 0 };
+    const jump = this.hop;
+    this.hop = false;
+    if (!this.on || !this.walking) return { fwd: 0, side: 0, turn: 0, run: false, jump: false, look: { x: 0, y: 0 } };
+    return { fwd: this.move.y, side: this.move.x, turn: 0, run: this.rim, jump, look };
+  }
+
   controls(): Held {
     if (!this.on || !this.driving) return { throttle: 0, brake: 0, steer: 0, drift: false };
     const go = !this.roam || !!this.stick;
@@ -394,6 +486,6 @@ export class TouchPad {
 
   // For the bar's buttons.
   press(act: Action): void {
-    if (this.driving || this.flying) this.pending.push(act);
+    if (this.driving || this.flying || this.walking) this.pending.push(act);
   }
 }

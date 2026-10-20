@@ -4,11 +4,14 @@
 import Peer, { type DataConnection } from 'peerjs';
 import type { ItemEv } from './game/items.ts';
 import { driverById, DRIVERS, repeatOf } from './render/drivers.ts';
+import { courseById, lapLimit, TRACKS } from './tracks.ts';
 
 // Builds see each other's rooms only while this matches: pk33 is the race that jumps over the Rio
 // Este into the dead end (braga-map's task 039), its samples changed from there on; pk38 the race round
-// the roundabouts' rings as the LiDAR measured them (braga-map's task 014).
-const PREFIX = 'partykart-pk38-';
+// the roundabouts' rings as the LiDAR measured them (braga-map's task 014); pk39 the race on the track
+// the host picks (braga-map's task 071), which an older guest would race the Volta dos Amigos whatever;
+// pk40 the players on foot (braga-map's task 073), whom an older build would draw as karts.
+const PREFIX = 'partykart-pk40-';
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 export const HOST_ID = 'host';
 export const MAX_RACERS = 8;
@@ -16,13 +19,8 @@ const PING_MS = 1000;
 const SILENT_MS = 15000; // generous: a slow computer can freeze for seconds as a round loads
 export const COUNTDOWN_MS = 4000;
 const FINISH_GRACE_MS = 30000; // after the winner, how long the rest have to finish
-// The most a lap may take before the race is called: main.ts sets it from the track's length.
-let lapLimit = 150;
-export const setLapLimit = (seconds: number): void => {
-  lapLimit = seconds;
-};
-
 export interface Settings {
+  track: string; // its id (tracks.ts)
   mode: 'race' | 'time';
   laps: number;
   minutes: number; // time attack
@@ -44,7 +42,8 @@ export interface Lobby extends Settings {
   racing: boolean;
 }
 
-// Where a car is, as sent about 15 times a second.
+// Where a car is, as sent about 15 times a second; or, out of it (braga-map's task 073), where its
+// driver is on foot and where it waits.
 export interface Snap {
   id: string;
   x: number;
@@ -59,6 +58,14 @@ export interface Snap {
   P: number; // progress, metres counting laps
   fl: number; // status flags (game/arena.ts, FLAG)
   g: number; // grounded
+  // On foot: x, y and z are the feet, yaw the way they face, spd their pace, g on the ground; pi how far
+  // they look up; and the car waits at kx, ky and kz facing kw, ux, uy and uz its up. All 0 in the car.
+  w: number;
+  pi: number;
+  kx: number;
+  ky: number;
+  kz: number;
+  kw: number;
 }
 
 export interface Entry {
@@ -170,6 +177,12 @@ function cleanSnap(id: string, s: Snap): Snap {
     P: num(s.P, -1e6, 1e6),
     fl: num(s.fl, 0, 65535) | 0,
     g: s.g ? 1 : 0,
+    w: s.w ? 1 : 0,
+    pi: num(s.pi, -1.6, 1.6),
+    kx: num(s.kx, -5000, 5000),
+    ky: num(s.ky, -500, 500),
+    kz: num(s.kz, -5000, 5000),
+    kw: num(s.kw, -1e6, 1e6),
   };
 }
 
@@ -227,6 +240,7 @@ export class HostRoom implements Room {
     this.peer = peer;
     this.lobby = {
       code: peer.id.slice(PREFIX.length),
+      track: TRACKS[0].course.id,
       mode: 'race',
       laps: 1,
       minutes: 10,
@@ -450,7 +464,7 @@ export class HostRoom implements Room {
     this.syncBots();
     this.goAt = now + COUNTDOWN_MS;
     const race = this.lobby.mode === 'race';
-    this.endAt = this.goAt + (race ? (this.lobby.laps * lapLimit + 60) * 1000 : this.lobby.minutes * 60_000);
+    this.endAt = this.goAt + (race ? (this.lobby.laps * lapLimit(courseById(this.lobby.track)) + 60) * 1000 : this.lobby.minutes * 60_000);
     this.firstFin = 0;
     this.board = [];
     for (const m of this.lobby.members) this.entry(m.id);
@@ -543,7 +557,7 @@ export class HostRoom implements Room {
 export class ClientRoom implements Room {
   readonly isHost = false;
   you = '';
-  lobby: Lobby = { code: '', mode: 'race', laps: 1, minutes: 10, items: true, catchUp: true, bots: 0, members: [], racing: false };
+  lobby: Lobby = { code: '', track: TRACKS[0].course.id, mode: 'race', laps: 1, minutes: 10, items: true, catchUp: true, bots: 0, members: [], racing: false };
   board: Entry[] = [];
   cars = new Map<string, { at: number; s: Snap }[]>();
   onLobby = () => {};

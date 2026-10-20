@@ -19,7 +19,7 @@ don't add a backend, a build step or a dependency without a strong reason.
 
 - `README.md`: the game as a player sees it (controls, items, the track).
 - `docs/architecture.md`: how it fits together: the simulation, the frame loop, the network.
-- `docs/making-changes.md`: step-by-step guides for changes that touch several files (the track,
+- `docs/making-changes.md`: step-by-step guides for changes that touch several files (the tracks,
   an item, a driver, a status flag, a message, scenery, an easter egg).
 - braga-map's `README.md` (`node_modules/braga-map/README.md`): the map the games share, its
   sections, its tracks, how a track is planned, and the scripts that make them.
@@ -72,6 +72,12 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   dragged to look; on a touch screen a stick on the left half, a drag on the right, ▲ Subir and
   ▼ Descer. V again puts your kart on the street under the camera. To look at a place without
   driving there, or at the city from the air; `?view=` is still the way to frame a still shot.
+- F, or the menu's "🚶 A pé", gets you out of your kart to walk in first person, your kart waiting
+  empty (braga-map's task 073, `src/game/walker.ts`): WASD, the mouse with the pointer locked (Esc
+  lets it go and opens the menu; a click on the world takes it back), Shift runs, Space jumps; on a
+  touch screen twin sticks and Saltar. F again is back in your kart where it waited. To look at the
+  city at walking distance, as the shooter will be played (braga-map's SHOOTER-AREA.md). Under
+  `?autodrive`, `__kart.walk` says where you are on foot.
 - `?view=x,y,z,tx,ty,tz` holds the race's camera at (x, y, z), looking at (tx, ty, tz), to look at
   the scenery from anywhere (the sights on the hills, say). A seventh number sets its vertical
   field of view in degrees (the race's own widens with speed). Take positions from braga-map's map
@@ -127,18 +133,24 @@ these files imports `three` or touches `window`/`document`, the tests can no lon
 
 Outside a race the game is free roam (braga-map's decision 019): your `Roamer`
 (`src/game/roamer.ts`) on the world's ground (`world.drive`), anywhere in the open world's area, the
-room's players drawn where they are from the same snapshots as in a race. The race is something the
+room's players drawn where they are from the same snapshots as in a race. Out of it, you fly the camera
+(`Flyer`) or walk (`Walker`, on the same ground, stopped by the same walls through
+`WorldGround.circle`), your kart waiting; the others see you on foot as the driver you picked,
+standing. The race is something the
 host starts from the menu, and everyone goes back to where they were when it's over.
 
 How a race runs:
 
-- `buildTrack(amigos.points)` turns the points of `braga-map/tracks/amigos.js` (Braga's real
-  streets, planned by braga-map) into a road sampled every metre from the start line. A sample
-  index is roughly metres from the line, and the lap is about 10.1 km (N ≈ 10080 samples).
+- The host picks the track on the race screen, from `TRACKS` in `src/tracks.ts`: the Volta dos
+  Amigos (`braga-map/tracks/amigos.js`) and the Volta de Lamaçães (`lamacaes.js`), Braga's real
+  streets planned by braga-map. `buildTrack(course.points)` turns a track's points into a road
+  sampled every metre from the start line. A sample index is roughly metres from the line, and the
+  Volta dos Amigos' lap is about 10.1 km (N ≈ 10080 samples).
 - `stepCar` (`src/car/car.ts`) is the handling. It always runs at a fixed `DT = 1/120` s, in the
   game and in the tests alike, on a `Ground`: the open world's `worldGround` (`src/world/ground.ts`:
   the land, braga-map's streets at their levels, and walls), or a race's, the same with the race's
-  walls and ramp (`raceGround` in `src/world/race.ts`, built with the city as `world.race`).
+  walls and ramp (`raceGround` in `src/world/race.ts`, built with the city for every track by
+  `world.raceOn`, kept in `main.ts`'s `races`).
 - An `Arena` is one browser's view of a race: the clock, every car's `CarInfo`, the projectiles and
   hazards on the track, and positions. A `Racer` is a car this browser drives: yours, plus the bots
   if you host.
@@ -182,13 +194,14 @@ How a race runs:
 
 ## Gotchas
 
-- **The track and the city come from braga-map.** The track is `braga-map/tracks/amigos.js`, and
-  `buildCity` loads the city round it from the map's tiles (`loadWorld(amigos.box)`): every street
+- **The tracks and the city come from braga-map.** The tracks are `braga-map/tracks/<id>.js`, and
+  `buildCity` loads the city round the home track, the Volta dos Amigos (`HOME` in `tracks.ts`),
+  from the map's tiles (`loadWorld(HOME.box)`): every street
   in the open world's area drawn from the map's surfaces (`streets.ts`), the buildings cut back at
   the kerb as the karts find them (`ground.ts`). Other games use the same map, so change it there: run its
   scripts, tag a new version, then change the tag in `package.json` and `npm install`. To try a
   change before tagging it, `npm install --install-links ../braga-map` (again after each change
-  there), and put the tag back before committing. See "The track" in `docs/making-changes.md`.
+  there), and put the tag back before committing. See "The tracks" in `docs/making-changes.md`.
 - **The race runs on the streets as they're drawn** (braga-map's task 037). Its road is braga-map's
   `road`: the route's own streets at their real widths and the jump's flight. Its outline is the
   race's walls (`raceWalls`), standing at the route's level, and a row of the race's barriers is
@@ -221,35 +234,38 @@ How a race runs:
   animate needs `userData.moves = true` on it or a parent, or it gets frozen into the merged mesh.
 - **`mat()` caches materials by colour and settings**, so changing one changes every mesh that
   uses it. A kart's body paint is its own because gold plating recolours it.
-- **The peer id prefix** `partykart-pk38-` in `src/session.ts` decides which builds can see each
+- **The peer id prefix** `partykart-pk40-` in `src/session.ts` decides which builds can see each
   other's rooms. The deployed game and a dev build share rooms while it matches. Change it when the
-  message format changes incompatibly, or the track changes.
+  message format changes incompatibly, or a track changes or is added.
 - **Item rolls and bot patience use `Math.random`.** That's fine because only one browser ever
   simulates a given car. Never have several browsers each re-simulate something that rolls dice.
 - **The eight-bot race test rolls dice.** "eight bots race a lap…" asserts that the lead changes
   at least once. Its item rolls are random, so it could still fail now and then, though since the
   bots spread across the road to pass (`steerLine` in `src/game/bot.ts`) it rarely does. Rerun it
   before assuming you broke something, and look at the printed summary.
-- **The tests guard the track and the tuning.** They check a loop of 7–10.5 km with 5
-  checkpoints, an autopilot lap of the race on the world's ground with no respawns and a second lap
-  of 170–310 s, the race closed (from its line a kart reaches nothing off its road), every row of
+- **The tests guard the tracks and the tuning.** Over every track in `TRACKS` they check a loop of
+  7–10.5 km with 5 checkpoints inside the open world, an autopilot lap of the race on the world's
+  ground with no respawns and a second lap at 25–60 m/s on average (the Volta dos Amigos' 170–310 s),
+  the race closed (from its line a kart reaches nothing off its road), every row of
   barriers stopping a kart driven at it flat out, the first track's jump flying over 1 s and landing
   at any speed from 60 to 158 km/h, the Volta dos Amigos' jump landing on the race's road from
   braga-map's speed to flat out (past its 4 m landing street, on the ground beside it the race's road
   takes in) and short of it respawning on the run-up, the autopilot flying that jump's flight from
   any line and turning into the landing street with no wall hit, every item turning up at
-  some place in the race, and eight bots all finishing a lap within 60 s of each other. A change to
-  the track, the physics or the item odds has to keep them passing.
+  some place in the race, and eight bots all finishing a lap of each track within 60 s of each other.
+  A change to a track, the physics or the item odds has to keep them passing.
 - **A bot stuck against a wall gets itself out.** Still for 3 s in a race, it's put back on the
   track's line where it is (`unstick`), as a player would press Enter. A kart bumped by another is
   pushed back out of any wall the bump took it through (`nudge`).
-- **A race's time limit follows the track's length.** `setLapLimit` (`session.ts`), set in
-  `main.ts`, allows a lap at 60 km/h. The race's settings offer 1–3 laps, and time attack 5–15
+- **A race's time limit follows its track's length.** `lapLimit` (`tracks.ts`), which the host's
+  `start` takes for the track in the lobby, allows a lap at 60 km/h. The race's settings offer 1–3 laps, and time attack 5–15
   minutes.
 - **What the race adds to the streets is up only in a race.** The start line, the gates, the boost
   pads, the barriers along the start and across the side streets, and the ramp into the dead end
-  (`raceMarks`) are the city's `marks`, shown by `startRace` and hidden by `endRace`; the race's
-  walls and ramp are in its own ground (`world.race`), not `world.drive`. `?scenery` shoots the city
+  (`raceMarks`) are each track's `marks`, shown by `startRace` and hidden by `endRace`; the race's
+  walls and ramp are in its own ground (each track's `ground`, from `world.raceOn`), not
+  `world.drive`. The world's walls the Volta dos Amigos' race takes down (`world.cleared`) are hidden
+  only in its race: no other track may clear any (a test). `?scenery` shoots the city
   without them. Round the city there's no ramp or barrier, on the screen or in the karts' ground:
   free roam is all real.
 - **The plinth at the start is part of the karts' ground**, added to `world.drive` once the city is

@@ -102,6 +102,8 @@ export function runs(track: Track, test: (s: Sample, i: number) => boolean): [nu
 export interface RoadSigns {
   start: THREE.Texture;
   checkpoint: THREE.Texture;
+  // The barriers' boards at the start, with the race's name; the first track's are tex.banner()'s.
+  banner?: THREE.Texture;
 }
 
 // The first track's road and everything on it. `overWater` marks the samples on bridges over
@@ -207,7 +209,7 @@ export function raceMarks(track: Track, signs: RoadSigns, at?: At, rows: [number
   const N = track.samples.length;
 
   // The barriers along the kerbs at the start, white and blue with the race's name.
-  const wallMat = new THREE.MeshStandardMaterial({ map: tex.banner(), side: THREE.DoubleSide, roughness: 0.6 });
+  const wallMat = new THREE.MeshStandardMaterial({ map: signs.banner ?? tex.banner(), side: THREE.DoubleSide, roughness: 0.6 });
   for (const [a, b] of runs(track, (_s, i) => i < 160 || i > N - 160)) {
     for (const side of [-1, 1]) group.add(new THREE.Mesh(wall(track, a, b, (s) => side * (s.w / 2 + 0.4), 0.15, 1.3, 8, at), wallMat));
   }

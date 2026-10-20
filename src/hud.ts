@@ -1,6 +1,7 @@
 // What's on the screen while you drive. In a race (Hud): place and lap, the item slot, the clock, the
 // minimap, the order, what just happened to whom, the speed, and speed lines when boosting or in a
-// slipstream. Round the city (RoamHud): the speed, the street's name, a minimap round you, the feed.
+// slipstream. Round the city (RoamHud): the speed, the street's name, a minimap round you, the feed;
+// on foot, a dot in the middle of the screen for the speed.
 import type { CarInfo } from './game/arena.ts';
 import { ITEMS, type ItemKind } from './game/items.ts';
 import type { Track } from './track/track.ts';
@@ -242,8 +243,11 @@ interface MapLine {
 }
 
 // The keys, at the bottom: driving round the city, and flying (body.flying hides the speed).
-const DRIVE_KEYS = 'Setas conduzem · Espaço derrapa · Enter volta à rua · H buzina · C câmara · V voa · Esc menu';
-const FLY_KEYS = 'WASD voa · ←→ vira · E sobe · Q desce · Shift mais depressa · arrasta o rato para olhar · V volta ao kart · Esc menu';
+const KEYS = {
+  drive: 'Setas conduzem · Espaço derrapa · Enter volta à rua · H buzina · C câmara · V voa · F a pé · Esc menu',
+  fly: 'WASD voa · ←→ vira · E sobe · Q desce · Shift mais depressa · arrasta o rato para olhar · V volta ao kart · Esc menu',
+  walk: 'WASD anda · o rato olha · Shift corre · Espaço salta · F volta ao kart · Esc menu',
+};
 
 // The screen while driving round the city (braga-map's decision 019): the speed, the street's name
 // as you turn into it, a minimap of the area round you with the others on it, what just happened,
@@ -265,7 +269,8 @@ export class RoamHud {
     e.feed = h('div', 'feed');
     e.speed = h('div', 'speed');
     e.lines = h('div', 'speedlines');
-    e.keys = h('div', 'keys', DRIVE_KEYS);
+    e.keys = h('div', 'keys', KEYS.drive);
+    e.dot = h('div', 'dot');
     this.map = h('canvas', 'minimap round');
     this.map.width = this.map.height = SIZE * 2;
     this.edge = m.edge;
@@ -287,7 +292,7 @@ export class RoamHud {
       if (list) list.push(run);
       else this.routeCells.set(k, [run]);
     }
-    root.replaceChildren(h('div', 'tc', e.plate, e.feed), e.speed, this.map, e.keys, e.lines);
+    root.replaceChildren(h('div', 'tc', e.plate, e.feed), e.speed, this.map, e.keys, e.lines, e.dot);
   }
 
   set(o: { speed: number; boosting: boolean; slip: number }): void {
@@ -305,9 +310,9 @@ export class RoamHud {
     }
   }
 
-  // The keys for flying, or for driving.
-  fly(on: boolean): void {
-    this.el.keys.textContent = on ? FLY_KEYS : DRIVE_KEYS;
+  // The keys for driving, flying, or on foot.
+  keys(mode: keyof typeof KEYS): void {
+    this.el.keys.textContent = KEYS[mode];
   }
 
   // The street's name, on a blue-and-white plate as Braga's are, for a few seconds.

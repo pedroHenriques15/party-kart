@@ -1,5 +1,4 @@
-import { loadWorld } from 'braga-map';
-import amigos from 'braga-map/tracks/amigos.js';
+import { loadWorld, type Track as Course } from 'braga-map';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { autopilot } from '../src/car/autopilot.ts';
@@ -7,19 +6,26 @@ import { COYOTE, newCar, speedOf, stepCar, stopInput, trackGround, type Car, typ
 import { advance, newRun, noteSpeed, respawn, startGrid, type RunEvent } from '../src/race.ts';
 import { LAYOUT } from '../src/track/layout.ts';
 import { buildTrack, locate, type Track } from '../src/track/track.ts';
+import { HOME, TRACKS } from '../src/tracks.ts';
 import { Rings, worldGround } from '../src/world/ground.ts';
 import { clearedPieces, raceGround, reachable } from '../src/world/race.ts';
 
-// The game's track; and the first one, kept for reference, for its jump.
-const track = buildTrack(amigos.points, amigos.ramps);
+// The first track, kept for reference, for its jump.
 const gp = buildTrack(LAYOUT);
 const DT = 1 / 120;
-// The race as the game runs it (braga-map's task 037): on the world's ground, its road the route's own
-// streets at their real widths, walled at its edges and barred across the side streets.
+// Every track the game races (tracks.ts), as the game runs it (braga-map's task 037): on the world's
+// ground, its road the route's own streets at their real widths, walled at its edges and barred across
+// the side streets. The tests that guard a track run over each.
 const world = await loadWorld({ open: true });
 const roam = worldGround(world);
-const { ground: race, rows } = raceGround(roam, track, amigos);
-const road = new Rings(amigos.road.flat());
+const raced = TRACKS.map(({ course }) => {
+  const track = buildTrack(course.points, course.ramps);
+  const { ground, rows } = raceGround(roam, track, course);
+  return { course, track, race: ground, rows, road: new Rings(course.road.flat()) };
+});
+// The Volta dos Amigos, for what's its own: its jump, its landing's walls.
+const amigos: Course = HOME;
+const { track, race, road } = raced.find((r) => r.course === HOME)!;
 
 interface Drive {
   laps: number[];
@@ -30,7 +36,7 @@ interface Drive {
   wallHits: number;
 }
 
-function drive(seconds: number, pilot: (c: Car) => Input = (c) => autopilot(c, track), on: Track = track, ground: Ground = on === track ? race : trackGround(on)): Drive {
+function drive(seconds: number, pilot: (c: Car) => Input = (c) => autopilot(c, track), on: Track = track, ground: Ground = raced.find((r) => r.track === on)?.race ?? trackGround(on)): Drive {
   const track = on;
   const put = (c: Car) => ground.place?.(c) ?? c;
   let car = put(newCar(track, startGrid(track)));
@@ -59,18 +65,32 @@ function drive(seconds: number, pilot: (c: Car) => Input = (c) => autopilot(c, t
   return out;
 }
 
-// About 10 km since braga-map's task 039: the race comes down to the ramp over the Rio Este from
-// the north, by Ponte Pedrinha (the owner, knowing it went over 10).
-test('the track is a closed loop of about 10 km, with its checkpoints in order', () => {
-  const s = track.samples;
-  assert.ok(track.length > 7000 && track.length < 10500, `length ${track.length.toFixed(0)} m`);
-  for (let i = 0; i < s.length; i++) {
-    const gap = Math.hypot(s[(i + 1) % s.length].p.x - s[i].p.x, s[(i + 1) % s.length].p.y - s[i].p.y, s[(i + 1) % s.length].p.z - s[i].p.z);
-    assert.ok(gap > 0.5 && gap < 1.5, `sample ${i} to the next is ${gap.toFixed(2)} m`);
+// 7–10.5 km: the Volta is about 10 km since braga-map's task 039, the race coming down to the ramp
+// over the Rio Este from the north, by Ponte Pedrinha (the owner, knowing it went over 10).
+for (const { course, track } of raced) {
+  test(`${course.name} is a closed loop of 7–10.5 km, with its checkpoints in order`, () => {
+    const s = track.samples;
+    assert.ok(track.length > 7000 && track.length < 10500, `length ${track.length.toFixed(0)} m`);
+    for (let i = 0; i < s.length; i++) {
+      const gap = Math.hypot(s[(i + 1) % s.length].p.x - s[i].p.x, s[(i + 1) % s.length].p.y - s[i].p.y, s[(i + 1) % s.length].p.z - s[i].p.z);
+      assert.ok(gap > 0.5 && gap < 1.5, `sample ${i} to the next is ${gap.toFixed(2)} m`);
+    }
+    assert.equal(track.checkpoints.length, 5);
+    assert.deepEqual([...track.checkpoints].sort((a, b) => a - b), track.checkpoints);
+    assert.ok(track.checkpoints[0] > 0);
+  });
+}
+
+// Every track in the open world's area (braga-map's decision 019), where the city is built; only the
+// home track takes the world's walls down (`cleared`), as only its are drawn apart to hide in a race
+// (render/city.ts, raceOn); and no two share an id, which the lobby names the track by.
+test('every track is inside the open world, only the Volta clears walls, and each has an id of its own', () => {
+  for (const { course, track } of raced) {
+    const out = track.samples.filter((s) => !world.inOpen(s.p.x, s.p.z));
+    assert.equal(out.length, 0, `${course.name}: ${out.length} m outside the area`);
+    if (course !== HOME) assert.equal(course.cleared.length, 0, `${course.name} takes walls down`);
   }
-  assert.equal(track.checkpoints.length, 5);
-  assert.deepEqual([...track.checkpoints].sort((a, b) => a - b), track.checkpoints);
-  assert.ok(track.checkpoints[0] > 0);
+  assert.equal(new Set(TRACKS.map((t) => t.course.id)).size, TRACKS.length);
 });
 
 test('locate: on the centre line, beside it, and above it', () => {
@@ -82,19 +102,22 @@ test('locate: on the centre line, beside it, and above it', () => {
   assert.equal(at(s.w, 0).onRoad, false);
 });
 
-test("the autopilot laps the race cleanly, on the world's ground within its walls", () => {
-  // Long enough for two laps of up to 310 s from the standing start (braga-map's task 026 made the
-  // loop 10.25 km, the two laps 604 s).
-  const d = drive(640);
-  console.log(
-    `laps ${d.laps.map((ms) => (ms / 1000).toFixed(1)).join(', ')} s; respawns ${d.respawns}; longest air ${d.maxAir.toFixed(2)} s; top ${(d.topSpeed * 3.6).toFixed(0)} km/h; wall hits ${d.wallHits}`,
-  );
-  assert.equal(d.respawns, 0);
-  assert.ok(d.laps.length >= 2, `only ${d.laps.length} laps`);
-  // 170–310 s since braga-map's task 037 put the race on the streets at their real widths (the owner,
-  // knowing it went over 290: 296.7 s, the line round each street's own bends and its tighter corners).
-  assert.ok(d.laps[1] > 170000 && d.laps[1] < 310000, `lap ${d.laps[1]} ms`);
-});
+// A lap at 25–60 m/s on average, a street loop's corners and straights; the Volta's in 170–310 s since
+// braga-map's task 037 put the race on the streets at their real widths (the owner, knowing it went
+// over 290: 296.7 s, the line round each street's own bends and its tighter corners).
+for (const { course, track: on } of raced) {
+  test(`the autopilot laps ${course.name} cleanly, on the world's ground within its walls`, () => {
+    const [lo, hi] = course === HOME ? [170000, 310000] : [(on.length / 60) * 1000, (on.length / 25) * 1000];
+    // Long enough for two laps of the slowest from the standing start (the Volta's 640 s).
+    const d = drive(Math.ceil((2 * hi) / 1000 + 20), (c) => autopilot(c, on), on);
+    console.log(
+      `${course.name}: laps ${d.laps.map((ms) => (ms / 1000).toFixed(1)).join(', ')} s (lap 2 within ${(lo / 1000).toFixed(0)}–${(hi / 1000).toFixed(0)}); respawns ${d.respawns}; longest air ${d.maxAir.toFixed(2)} s; top ${(d.topSpeed * 3.6).toFixed(0)} km/h; wall hits ${d.wallHits}`,
+    );
+    assert.equal(d.respawns, 0);
+    assert.ok(d.laps.length >= 2, `only ${d.laps.length} laps`);
+    assert.ok(d.laps[1] > lo && d.laps[1] < hi, `lap ${d.laps[1]} ms`);
+  });
+}
 
 // The ramp over the Rio Este into the dead end (braga-map's task 039), on the world's ground: from the
 // speed braga-map says clears it to flat out, a kart flies over the gap and comes down on the race's
@@ -184,42 +207,48 @@ test("the race takes the lot's walls down at the landing, and round the city the
 // The race is closed (decision 019): from its line, a kart going anywhere a metre at a time, up no
 // more than a kerb and never through a wall, gets nowhere off the race's road nor down off the route,
 // but where it falls under the jump.
-test("the race is closed: from its line, nowhere off its road and nothing under the route", () => {
-  const r = reachable(race, track, amigos.road);
-  console.log(`the race's road: ${r.cells} m² a kart can reach, ${rows.length} rows of barriers`);
-  assert.ok(r.cells > 50000, `only ${r.cells} m² reached`);
-  assert.deepEqual(r.out.map(([x, y, z]) => [Math.round(x), Math.round(y), Math.round(z)]), []);
-});
+for (const { course, track, race, rows } of raced) {
+  test(`${course.name} is closed: from its line, nowhere off its road and nothing under the route`, () => {
+    const r = reachable(race, track, course.road);
+    console.log(`${course.name}'s road: ${r.cells} m² a kart can reach, ${rows.length} rows of barriers`);
+    // At least 5 m² a metre of the loop (the Volta's over 50 000 m²).
+    assert.ok(r.cells > track.length * 5, `only ${r.cells} m² reached`);
+    assert.deepEqual(r.out.map(([x, y, z]) => [Math.round(x), Math.round(y), Math.round(z)]), []);
+  });
+}
 
 // Every row of barriers across a side street holds: a kart driven straight at its middle flat out,
 // from 6 m inside the race's road, or 4 (where there's room for it), stays on the road and in the race.
-test('the barriers across the side streets stop a kart driven straight at them', () => {
-  let tried = 0;
-  const through: string[] = [];
-  for (const row of amigos.closures) {
-    const k = row.length >> 1, [ax, , az] = row[Math.max(0, k - 1)], [bx, , bz] = row[Math.min(row.length - 1, k)];
-    const L = Math.hypot(bx - ax, bz - az);
-    if (L < 0.3) continue;
-    const mx = (ax + bx) / 2, mz = (az + bz) / 2;
-    let nx = -(bz - az) / L, nz = (bx - ax) / L;
-    if (road.has(mx + nx, mz + nz)) [nx, nz] = [-nx, -nz];
-    // From 6 m in, or 4, where there's room for a kart all round it.
-    const room = (x: number, z: number) => [0, 1, 2, 3, 4, 5, 6, 7].every((q) => road.has(x + 1.8 * Math.cos((q * Math.PI) / 4), z + 1.8 * Math.sin((q * Math.PI) / 4)));
-    const back = [6, 4].find((d) => room(mx - nx * d, mz - nz * d));
-    if (!back || !road.has(mx - nx * 2, mz - nz * 2)) continue;
-    const sx = mx - nx * back, sz = mz - nz * back, i = locate(track, { x: sx, y: 0, z: sz }, null).i;
-    if (track.samples[i].air) continue;
-    tried++;
-    const car = race.place!({ ...newCar(track, i, 0), p: { x: sx, y: track.samples[i].p.y + 1, z: sz }, yaw: Math.atan2(nz, nx) });
-    car.v = { x: nx * 30, y: 0, z: nz * 30 };
-    let fell = false;
-    for (let s = 0; s < 1.5 / DT && !fell; s++) fell = stepCar(car, { throttle: 1, brake: 0, steer: 0, drift: false }, race, DT);
-    if (fell || !road.has(car.p.x, car.p.z)) through.push(`(${mx.toFixed(0)}, ${mz.toFixed(0)})`);
-  }
-  console.log(`barriers: ${tried} rows driven at, ${through.length} gone through`);
-  assert.ok(tried > 80, `only ${tried} rows tried`);
-  assert.deepEqual(through, []);
-});
+for (const { course, track, race, road } of raced) {
+  test(`${course.name}'s barriers across the side streets stop a kart driven straight at them`, () => {
+    let tried = 0;
+    const through: string[] = [];
+    for (const row of course.closures) {
+      const k = row.length >> 1, [ax, , az] = row[Math.max(0, k - 1)], [bx, , bz] = row[Math.min(row.length - 1, k)];
+      const L = Math.hypot(bx - ax, bz - az);
+      if (L < 0.3) continue;
+      const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+      let nx = -(bz - az) / L, nz = (bx - ax) / L;
+      if (road.has(mx + nx, mz + nz)) [nx, nz] = [-nx, -nz];
+      // From 6 m in, or 4, where there's room for a kart all round it.
+      const room = (x: number, z: number) => [0, 1, 2, 3, 4, 5, 6, 7].every((q) => road.has(x + 1.8 * Math.cos((q * Math.PI) / 4), z + 1.8 * Math.sin((q * Math.PI) / 4)));
+      const back = [6, 4].find((d) => room(mx - nx * d, mz - nz * d));
+      if (!back || !road.has(mx - nx * 2, mz - nz * 2)) continue;
+      const sx = mx - nx * back, sz = mz - nz * back, i = locate(track, { x: sx, y: 0, z: sz }, null).i;
+      if (track.samples[i].air) continue;
+      tried++;
+      const car = race.place!({ ...newCar(track, i, 0), p: { x: sx, y: track.samples[i].p.y + 1, z: sz }, yaw: Math.atan2(nz, nx) });
+      car.v = { x: nx * 30, y: 0, z: nz * 30 };
+      let fell = false;
+      for (let s = 0; s < 1.5 / DT && !fell; s++) fell = stepCar(car, { throttle: 1, brake: 0, steer: 0, drift: false }, race, DT);
+      if (fell || !road.has(car.p.x, car.p.z)) through.push(`(${mx.toFixed(0)}, ${mz.toFixed(0)})`);
+    }
+    console.log(`${course.name}'s barriers: ${tried} rows of ${course.closures.length} driven at, ${through.length} gone through`);
+    // Most of them: a row too short, or with no room in front of it, isn't driven at.
+    assert.ok(tried > course.closures.length / 2, `only ${tried} rows tried`);
+    assert.deepEqual(through, []);
+  });
+}
 
 test("the first track's jump lands on the road at any speed up to flat out", () => {
   const lip = gp.tags.find((t) => t.tag === 'lip')!.i;

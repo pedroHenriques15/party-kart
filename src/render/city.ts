@@ -1,11 +1,11 @@
-// The Volta dos Amigos's world: Braga as it is, from the map the games share (braga-map, made from
-// OpenStreetMap and DGT's LiDAR), loaded tile by tile round the track. The land as the ground really
+// The open world: Braga as it is, from the map the games share (braga-map, made from OpenStreetMap
+// and DGT's LiDAR), loaded tile by tile round the home track (the Volta dos Amigos, tracks.ts). The land as the ground really
 // is, and what's on it painted onto it; every street in the open world's area as it is (streets.ts),
 // laid on the ground the karts drive on (src/world/ground.ts); every building in the area and round
 // it on its own ground, with its floors and its roof, cut back at the kerb where it stands on a
 // carriageway; trees; the Rio Este and its bridges; the decks and tunnels (levels.ts); the granite
 // plinth with Braga's arms at the start; the sights (sights.ts); and the friends' easter eggs on their
-// houses (eggs.ts). What only the race adds to the streets is road.ts.
+// houses (eggs.ts). What only a race adds to the streets is road.ts, built for each track (raceOn).
 import { heightOn, loadWorld, type Box, type Building as MapBuilding, type FacadeProportions, type Track as Course, type World as Braga } from 'braga-map';
 import * as THREE from 'three';
 import { onGrid, type Bound } from '../game/flyer.ts';
@@ -225,7 +225,9 @@ ${kinds.map((k) => `  if (w[${k}] > 0.0) coverRgb += w[${k}] * ${lawn && k === G
 // Besides the city, the world as the karts' ground (ground.ts), built for it and kept for driving on.
 // What the map says the ground is, each kind with its photo (cover.ts), as the renderer's graphics card
 // takes them; and the map's photos of facades (photos.ts).
-export async function buildCity(track: Track, course: Course, quality: Quality, renderer: THREE.WebGLRenderer): Promise<World & { eggs: Eggs; drive: WorldGround; race: WorldGround; stageYaw: number; marks: THREE.Object3D; cleared: THREE.Object3D; above: (x: number, z: number) => number; horizon: Bound }> {
+// The city is built round `track`, the home track (tracks.ts): its plinth, eggs and landmarks' signs, and
+// the world's walls its race takes down drawn apart (`cleared`). raceOn() adds a race on any track.
+export async function buildCity(track: Track, course: Course, quality: Quality, renderer: THREE.WebGLRenderer): Promise<World & { eggs: Eggs; drive: WorldGround; stageYaw: number; raceOn: (track: Track, course: Course) => RaceWorld; cleared: THREE.Object3D; above: (x: number, z: number) => number; horizon: Bound }> {
   const map = await loadWorld(course.box);
   // Fetched, and turned for the graphics card in workers, while the land is worked out. If they can't be
   // had, the city goes without them: the ground painted from the map, as it was before task 016, and the
@@ -496,19 +498,6 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   group.add(streets.cleared);
   updates.push(streets.update);
 
-  // ---- What only the race adds to the streets: the start line, the gates, the boost pads, the
-  // barriers at the start and across every side street it passes, the ramp, and the road works'
-  // boards round the corner it takes in at the ramp's landing. Up only while a race is on (main.ts):
-  // round the city the streets are as they are. Its ground is the world's, with its
-  // walls and ramp (race.ts). Each laid on the street at the route's level there: on a deck, the
-  // deck. ----
-  const raced = raceGround(wg, track, course);
-  const onRoute = (x: number, z: number) => wg.floor(x, z, track.samples[distanceToRoad(track, x, z).i].p.y + 1.5).y;
-  const road = raceMarks(track, { start: tex.sign('VOLTA DOS AMIGOS', 'BRAGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('PONTO DE CONTROLO', '', '#111318', '#ffe14d', 1024, 160) }, onRoute, raced.rows, course.boards ?? []);
-  const marks = Object.assign(bake(road.group), { name: 'race marks', visible: false });
-  group.add(marks);
-  updates.push(road.update);
-
   // ---- The Rio Este's stone bridges under the streets crossing it; the decks, their pillars and
   // the tunnels' mouths (levels.ts). Baked together at the end, being many small meshes. ----
   const statics = new THREE.Group();
@@ -527,7 +516,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
     for (const b of all) if (Math.abs(b.cx - x) < r + 30 && Math.abs(b.cz - z) < r + 30 && b.pts.some(([px, pz]) => Math.hypot(px - x, pz - z) < r)) n++;
     return n;
   };
-  const plinth = startPlinth(track, ground, buildingsNear);
+  const plinth = startPlinth(track, course.name, ground, buildingsNear);
   statics.add(plinth.group);
   // The top of the building at (x, z), or of the nearest one within 12 m, with its roof.
   const roofAt = (x: number, z: number) => {
@@ -636,12 +625,36 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
     stage: plinth.stage,
     stageAt: plinth.at,
     stageYaw: plinth.yaw,
-    marks,
     cleared: streets.cleared,
     eggs,
     drive: wg,
-    race: raced.ground,
+    raceOn: (t, c) => raceOn(group, wg, t, c, c.id === course.id),
   };
+}
+
+// A race on a track, besides the city: its ground, the world's with the race's walls and ramp (race.ts);
+// and what only the race adds to the streets: the start line, the gates, the boost pads, the barriers
+// at the start and across every side street it passes, the ramp, and the road works' boards round the
+// corner it takes in at the ramp's landing, each laid on the street at the route's level there (on a
+// deck, the deck). Its marks are up only while it's raced (main.ts): round the city the streets are as
+// they are. `clears` says whether the world's walls it takes down are the city's `cleared`, drawn
+// apart to be hidden while it runs: only the home track's are (a test keeps every other track's
+// `cleared` empty).
+export interface RaceWorld {
+  ground: WorldGround;
+  marks: THREE.Object3D;
+  update: (t: number) => void;
+  clears: boolean;
+}
+
+function raceOn(city: THREE.Group, wg: WorldGround, track: Track, course: Course, home: boolean): RaceWorld {
+  const raced = raceGround(wg, track, course);
+  const onRoute = (x: number, z: number) => wg.floor(x, z, track.samples[distanceToRoad(track, x, z).i].p.y + 1.5).y;
+  const name = course.name.toUpperCase();
+  const road = raceMarks(track, { start: tex.sign(name, 'BRAGA', '#fbfbf8', '#1d4f9c', 1024, 192, '#1d4f9c'), checkpoint: tex.sign('PONTO DE CONTROLO', '', '#111318', '#ffe14d', 1024, 160), banner: tex.banner(name) }, onRoute, raced.rows, course.boards ?? []);
+  const marks = Object.assign(bake(road.group), { name: `race marks: ${course.id}`, visible: false });
+  city.add(marks);
+  return { ground: raced.ground, marks, update: road.update, clears: home };
 }
 
 // ---- The ground's map ----
@@ -1289,9 +1302,9 @@ function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality
 // ---- The start ----
 
 // A granite plinth beside the road just past the line, on whichever side has room, where the lobby
-// shows your car; behind it a granite wall with Braga's arms and the race's name on azulejos.
+// shows your car; behind it a granite wall with Braga's arms and the track's name (`title`) on azulejos.
 // `crowded` counts the buildings near a spot.
-function startPlinth(track: Track, ground: (x: number, z: number) => number, crowded: (x: number, z: number, r: number) => number) {
+function startPlinth(track: Track, title: string, ground: (x: number, z: number) => number, crowded: (x: number, z: number, r: number) => number) {
   let best = { i: 40, side: 1, score: Infinity };
   for (let i = 25; i < 140; i += 15) {
     for (const side of [-1, 1]) {
@@ -1328,7 +1341,7 @@ function startPlinth(track: Track, ground: (x: number, z: number) => number, cro
   const arms = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 4.25), new THREE.MeshStandardMaterial({ map: tex.bragaArms(), transparent: true, roughness: 0.6 }));
   arms.position.set(0, 5.6, -3.49);
   plinth.add(arms);
-  const name = new THREE.Mesh(new THREE.PlaneGeometry(10, 1.6), new THREE.MeshStandardMaterial({ map: tex.sign('VOLTA DOS AMIGOS', 'Braga', '#f4f7fb', '#1d4f9c', 1024, 164, '#1d4f9c'), roughness: 0.3 }));
+  const name = new THREE.Mesh(new THREE.PlaneGeometry(10, 1.6), new THREE.MeshStandardMaterial({ map: tex.sign(title.toUpperCase(), 'Braga', '#f4f7fb', '#1d4f9c', 1024, 164, '#1d4f9c'), roughness: 0.3 }));
   name.position.set(0, 2.35, -3.49);
   plinth.add(name);
   // Its front (+z) faces the road.

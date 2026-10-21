@@ -286,6 +286,15 @@ export class FootBot {
   private perches: { x: number; y: number; z: number }[] = [];
   private perching = false;
   private holdUntil = 0;
+  // In a competitive match (game/comp.ts), what the round wants of it: somewhere to go (a bomb site, the
+  // bomb), and whether that comes before going after someone it heard (`urgent`); standing at its spawn
+  // through the freeze (`frozen`); and planting or defusing till round ms `busyUntil`, crouched and
+  // still, its gun down.
+  objective: { x: number; y: number; z: number; r: number } | null = null;
+  urgent = false;
+  frozen = false;
+  busyUntil = 0;
+  private toObjective = false;
   // What it's done, for the tests and the host's page: times it had to be put back on the paths, shots
   // (scoped ones too), grenades thrown, times flashed.
   stuck = 0;
@@ -432,13 +441,33 @@ export class FootBot {
     const o = foe && foes.find((x) => x.id === foe.id);
     if (foe && !o) this.foe = null;
     else if (foe && o && foe.t === this.seen?.t) Object.assign(foe, { x: o.x, y: o.y, z: o.z, c: o.c ?? 0, yaw: o.yaw });
-    const inp = this.think(dt, t, view);
+    let inp = this.think(dt, t, view);
+    // Frozen, or planting or defusing: it looks, but stands (crouched over the bomb), and fires nothing.
+    const busy = t < this.busyUntil;
+    if (this.frozen || busy) inp = { ...STAND, look: { x: 0, y: 0 }, crouch: busy };
     w.fighter = speedWith(s.hand, s.scope > 0);
     if (w.step(inp, dt)) this.stuck++;
     s.crouch = w.crouch > 0.5;
+    if (this.frozen || busy) {
+      this.pin = { x: w.p.x, z: w.p.z, t };
+      return null;
+    }
     this.unpin(t, inp);
     if (this.plan) return this.throwing(t, view);
     return this.trigger(t, view, foes);
+  }
+
+  // Whether it's had someone in sight lately: it doesn't stop to plant or defuse under fire.
+  fighting(t: number): boolean {
+    return !!this.foe || t - this.fought < 1500 || (!!this.threat && t - this.threat.t < 1500);
+  }
+
+  // Where the round wants it, as of now (null: nowhere); a new place, a new way.
+  aimFor(o: FootBot['objective'], urgent: boolean): void {
+    const a = this.objective;
+    if (!o || !a || Math.hypot(o.x - a.x, o.z - a.z) > 1 || Math.abs(o.y - a.y) > 1) this.toObjective = false;
+    this.objective = o;
+    this.urgent = urgent;
   }
 
   // Who it can see now (the nearest, or the one it was after while it still can), and what it hears.
@@ -664,9 +693,28 @@ export class FootBot {
     } else {
       if (!spray) this.scopeTo(false, t);
       if (this.goal !== 'cover') {
-        // Where it last saw someone, or heard them; else somewhere else in the arena.
+        // Where it last saw someone, or heard them; else somewhere else in the arena. In a match, the
+        // round's objective first when it's urgent, or with nothing else to go on.
         const lead = this.seen && t - this.seen.t < RECALL * 1000 ? this.seen : this.heard && t - this.heard.t < HEARD * 1000 ? this.heard : null;
-        if (lead && !this.perching) {
+        const obj = this.objective;
+        if (obj && (this.urgent || !lead)) {
+          this.perching = false;
+          const far = Math.hypot(obj.x - w.p.x, obj.z - w.p.z);
+          if (far > obj.r) {
+            if ((!this.toObjective || !this.way || this.next >= this.way.length || t - this.wayAt > 6000) && this.may(view)) {
+              this.toObjective = this.go(obj, 'roam', t);
+              // No way there: as near as it can get, by the paths' point nearest it.
+              if (!this.toObjective) this.objective = null;
+            }
+          } else {
+            // There: it holds, looking round, till the round wants it elsewhere.
+            this.way = null;
+            this.toObjective = true;
+            this.holdUntil = t + 400;
+          }
+          walk = far < 12 && !this.urgent && this.rand() < skill.sneak * 0.5;
+        } else if (lead && !this.perching) {
+          this.toObjective = false;
           // There, or no way there: it forgets it.
           const fresh = this.goal !== 'hunt' || t - this.wayAt > 3000;
           const far = Math.hypot(lead.x - w.p.x, lead.z - w.p.z);
@@ -1144,6 +1192,8 @@ export class Squad {
   // Whether it's a team round, the bots' `s.team` and the others' `team` saying who's on which: set,
   // or seen in them (anyone on team 1).
   teams: boolean;
+  // Whether a bot put down comes back (the deathmatch), or waits for the next round (a match).
+  respawn = true;
   private teamed = false;
   private readonly f: Field;
   private readonly paths: Paths;
@@ -1215,7 +1265,7 @@ export class Squad {
     for (let k = 0; k < n; k++) {
       const b = this.bots[(k + this.turn) % n];
       if (!b.s.alive) {
-        if (t - b.s.downAt >= RESPAWN) b.spawn(pickSpawn(this.f, this.enemies(b, [...others, ...up]), blockers, this.rand), b.pick(), t);
+        if (this.respawn && t - b.s.downAt >= RESPAWN) b.spawn(pickSpawn(this.f, this.enemies(b, [...others, ...up]), blockers, this.rand), b.pick(), t);
         continue;
       }
       const ev = b.step(dt, t, { others: [...others, ...up.filter((o) => o.id !== b.id)], blockers, plans, clouds: world.clouds, fires: world.fires, teams: teamed });

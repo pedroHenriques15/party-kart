@@ -15,7 +15,10 @@ type Bus = 'engine' | 'fx' | 'jingle' | 'ambience';
 let bus: Record<Bus, GainNode> | null = null;
 // Each bus's level. The engines sit under everything, an effect over the engine, and the city (task
 // 025) under the engines. A jingle ducks the effects while it plays, so it's heard over them.
-const LEVEL: Record<Bus, number> = { engine: 0.5, fx: 0.6, jingle: 0.55, ambience: 0.3 };
+const BASE: Record<Bus, number> = { engine: 0.5, fx: 0.6, jingle: 0.55, ambience: 0.3 };
+// And as the settings turn them up or down (setVolumes), with all of it.
+const LEVEL: Record<Bus, number> = { ...BASE };
+let volume = 1;
 // Two seconds of white noise, made once, for every sound that needs some: each reads from a random
 // place in it.
 let hiss: AudioBuffer | null = null;
@@ -47,7 +50,7 @@ export function unlockAudio(): void {
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       ctx = c;
       void loadCity(c);
-      if (muted) master.gain.value = 0;
+      master.gain.value = muted ? 0 : volume;
       if (metering) meter = newMeter(c, master);
     }
     // Safari also has 'interrupted', after a phone call or the page going to the background.
@@ -61,8 +64,23 @@ export const isMuted = () => muted;
 
 export function toggleMute(): boolean {
   muted = !muted;
-  if (ctx && master) master.gain.setTargetAtTime(muted ? 0 : 1, ctx.currentTime, 0.01);
+  if (ctx && master) master.gain.setTargetAtTime(muted ? 0 : volume, ctx.currentTime, 0.01);
   return muted;
+}
+
+// The settings' levels, 0 to 1: all of it, the engines, the effects (the items, the guns, the hits),
+// the city round you, and the jingles.
+export function setVolumes(v: { volume: number; engines: number; effects: number; city: number; music: number }): void {
+  volume = v.volume;
+  const part: Record<Bus, number> = { engine: v.engines, fx: v.effects, jingle: v.music, ambience: v.city };
+  for (const k of Object.keys(BASE) as Bus[]) LEVEL[k] = BASE[k] * part[k];
+  if (!ctx || !master || !bus) return;
+  const t = ctx.currentTime;
+  master.gain.setTargetAtTime(muted ? 0 : volume, t, 0.02);
+  for (const k of Object.keys(BASE) as Bus[]) {
+    bus[k].gain.cancelScheduledValues(t);
+    bus[k].gain.setTargetAtTime(LEVEL[k], t, 0.02);
+  }
 }
 
 // ---- Where sounds are heard from ----
@@ -1700,6 +1718,26 @@ export const fightSfx = {
     const hit = head ? rec(o, 'headshot-dink', { rate: vary(1, 0.02), gain: 0.5 }) : rec(o, 'impact-flesh', { rate: vary(1.15, 0.04), gain: 0.3 });
     if (!hit) note(o, head ? 2600 : 1900, now(), 0.06, 0.12, { type: 'triangle', cutoff: 6000, attack: 0.001 });
     if (kill) bell(o, C6, now() + 0.05, 0.2, 0.1);
+  },
+  // The competitive mode's bomb (game/comp.ts): its beep from where it ticks, louder the nearer the
+  // end; the keypad's taps while it's planted or defused; and its blast, from far off too.
+  bomb: (at: Place, urgent: number) => {
+    fightSounds();
+    const o = fightOut('bomb', 0.2, at, 8, 90);
+    if (o) note(o, 2900, now(), 0.09, 0.1 + 0.08 * urgent, { type: 'square', cutoff: 7000, attack: 0.001 });
+  },
+  keypad: (at?: Place) => {
+    fightSounds();
+    const o = fightOut('keypad', 0.15, at, 4, 30);
+    if (o) note(o, 1500 + Math.random() * 900, now(), 0.05, 0.06, { type: 'square', cutoff: 5000, attack: 0.001 });
+  },
+  blast: (at: Place) => {
+    fightSounds();
+    const o = fightOut('blast', 3, at, 60, 2000);
+    if (!o) return;
+    const t = now();
+    if (!rec(o, 'explosion-he', { t, rate: 0.72, gain: 1 })) noise(o, t, 1.8, 0.6, 1200, 60, 'lowpass', 0.7, 0.002);
+    noise(o, t + 0.05, 2.4, 0.35, 400, 40, 'lowpass', 0.6, 0.01);
   },
   // You put someone down: two notes going up, and their fall under them.
   down: () => {

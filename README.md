@@ -70,9 +70,22 @@ and driver, the graphics, the help, and
 6. **🚶 A pé**: get out of your kart and walk Braga in first person, at a person's height: along the
    pavements, up kerbs and flights of steps, through passages, stopped by every wall, fence, hedge,
    gate, building, tree and kart. Your kart waits where it stopped, empty, and the others see you
-   standing beside it as the driver you picked, walking or running, and hear your footsteps.
+   standing beside it as the driver you picked, walking or running, and hear your footsteps. You're
+   armed, as in a round: what you last bought in your hands, and the buy menu (B) yours whenever you
+   want it, the money unlimited. Your shots leave their marks and your grenades go off, seen and heard
+   by the others on foot, but round the city nobody's hurt: the bullets go through people.
    **🏎️ Voltar ao kart** (or F) puts you back in it where it waited. A race the host starts puts you
    back in it first.
+7. **⚙️ Definições**: the settings, kept in your browser. *Gráficos*: the quality, stepping down by
+   itself when the game's slow (or not), the resolution, the field of view on foot and driving, and
+   the camera's shake. *Som*: all of it, the engines, the effects and guns, the city round you, and the
+   jingles, each its own level. *Rato e mira*: the mouse's sensitivity, through a scope too, the
+   vertical axis upside down, a finger's on a touch screen; and the crosshair (its colour, length,
+   thickness, gap, opacity, a dot, its outline, and whether it opens as your shots would spread),
+   with a preview. *Ecrã*: the keys' line at the bottom, the minimap, the frames a second. *Controlos*:
+   every control's keys, for driving, flying, on foot and in a round, each its own: ✕ takes a key off,
+   + binds another by pressing it (any key, or a mouse button or the wheel); a key another control of
+   the same mode had is taken from it. Esc is always the menu.
 
 If the host leaves, everyone else drives on, alone.
 
@@ -106,9 +119,14 @@ the ghost of your best. Round the city there are no items.
 | W and S, or ↑ and ↓ | Forward and back |
 | A and D | Sideways |
 | ← and → | Turn |
-| The mouse | Look round (it's held by the game; Esc lets it go and opens the menu, and a click on the world takes it back) |
-| Shift | Run |
+| The mouse | Look round and aim (it's held by the game; Esc lets it go and opens the menu, and a click on the world takes it back, and fires) |
+| Shift | Walk, slowly and quietly |
+| Ctrl or C | Crouch |
 | Space | Jump |
+| Click, right button, R, 1–4, Q, the wheel | Your weapons, as in a round (below) |
+| B | The buy menu, the money unlimited |
+| G | Look your weapon over |
+| Enter | Back on the street |
 
 The deathmatch's guns are Counter-Strike 2's (`src/game/arsenal.ts`), each with its damage (a hit
 on the head counts four times, on the legs three quarters), how much of it gets through armour, how
@@ -139,7 +157,9 @@ alight for 7 s, and a smoke puts it out. Falls of more than a storey hurt.
 | Shift | Walk: slower, truer, and quiet (running, your footsteps are heard) |
 | Ctrl or C | Crouch |
 | Space | Jump (crouch in the air to tuck your legs up and reach higher) |
-| Tab, held | The scores: kills, deaths, kills to the head |
+| Tab, held | The scores: kills, deaths, kills to the head (in a match, your team-mates' money too) |
+| E, held | In a match: plant the bomb (in a site), defuse it (beside it), swap your gun for one on the ground |
+| G | In a match: drop the gun in your hand, or the bomb |
 
 While you drive, fly or walk, no key or mouse button takes you off the game: Alt, F1, F3, F5, F7, /
 and Ctrl with S, D, F, P, R or + do nothing of the browser's, the mouse's side buttons don't go back
@@ -253,8 +273,36 @@ Capelas's car for sale for parts (rusty, roofless, its bumper hanging off), and 
 giant alarm clock on the back, because he's always late. With more than five on the grid, the bots
 drive the same cars again in a second paint ("Pedro II").
 
-**Graphics** (*Gráficos*): *Alta*, *Média* or *Baixa*, in the menu. Phones start on Medium. If
-the game runs slowly, it steps down a level by itself, as far as Low.
+**Graphics** (*Gráficos*): *Alta*, *Média* or *Baixa*, in the menu, and the rest in **⚙️ Definições**.
+Phones start on Medium. If the game runs slowly, it steps down a level by itself, as far as Low (the
+settings can turn that off).
+
+The keys in the tables are the defaults: every one can be changed in **⚙️ Definições › Controlos**,
+and the keys' line at the bottom and the help say them as they're bound.
+
+**Competitivo**, the menu's 🎯 Tiroteio with *Modo: Competitivo (bomba)*: Counter-Strike 2's
+competitive mode in the same three arenas, two teams of up to four, the empty places bots. One team
+starts as the Terrorists (orange), the other as the Counter-Terrorists (blue), each at its own end of
+the arena; the two bomb sites, **A** and **B**, are nearer the Counter-Terrorists' (their letters show
+over them, through the walls, and their edges are painted on the ground). Nobody comes back in a
+round: put down, you watch a team-mate (a click for the next). A round starts with 15 s frozen at your
+spawn, buying; the buy menu sells there for 20 s more, at Counter-Strike's prices, each side its own
+guns (the AK-47, the Galil and the SG 553 the Terrorists', the M4s, the FAMAS and the AUG the
+Counter-Terrorists', a defuse kit theirs too). Then 1:55. One Terrorist carries the bomb: hold **E**
+in a site for 3.2 s to plant it (standing still), and it goes off 40 s later, its beeps quicker as
+the time runs out; a Counter-Terrorist holds **E** by it for 10 s (5 with a kit) to defuse it. The
+Terrorists win the round by putting the Counter-Terrorists down, or by the bomb going off; the
+Counter-Terrorists by putting the Terrorists down before a plant, by defusing it, or by the time
+running out. The money is Counter-Strike's: $800 to start each half, $3250 for a round won ($3500
+by the bomb or a defuse), $1400 for one lost and $500 more for each lost in a row after it (to
+$3400), $800 to each Terrorist for a round lost after a plant, $300 for planting or defusing, a kill
+by the gun ($300 a rifle's, $600 a sub-machine gun's, $900 a pump shotgun's, $1500 the knife's, $100
+the AWP's), $16000 at most. What you buy is yours while you live, the guns full again each round;
+put down, you drop your gun where you fell (walk over it with your slot empty to pick it up, or **E**
+by it to swap), and the bomb if you carried it. **G** drops the gun in your hand, or the bomb. After
+half the rounds the sides swap and the money's back to $800; the first to win more than half the
+rounds wins: *Curta*, the first to 9 of 16, or *Completa*, the first to 13 of 24 (12 all is a draw).
+Tab shows each player's kills and deaths, your team-mates' money, and who's down.
 
 ## How it works
 
@@ -282,7 +330,9 @@ the game runs slowly, it steps down a level by itself, as far as Low.
   items, hits, bumps, slipstreams, catch-up), the items' rules, and the bots; a car driving round
   the city (`roamer.ts`); the flying camera (`flyer.ts`); you on foot (`walker.ts`); the
   deathmatch: its guns (`arsenal.ts`), a fighter, health, armour, shots and scores (`fight.ts`),
-  grenades (`nades.ts`), an arena's field and spawns (`field.ts`); and its bots (`footbot.ts`).
+  grenades (`nades.ts`), an arena's field and spawns (`field.ts`); and its bots (`footbot.ts`); the
+  competitive mode's rules, money, sites and spawns, and the host's match (`comp.ts`), and its bots'
+  part in it (`matchbots.ts`).
 - `src/world/`: the world as the karts' ground: the land, every street and path at its level, the
   steps, and the walls (`ground.ts`); the arenas' buildings' insides (`interiors.ts`, laid out by
   `storeys.ts` as their facades are); line of sight through it (`sight.ts`); and where someone on
@@ -291,13 +341,16 @@ the game runs slowly, it steps down a level by itself, as far as Low.
   from the map), every street and path in its area (`streets.ts`), what the race adds to them (`road.ts`),
   the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs (`eggs.ts`); trees, karts and
   drivers, items, particles, skid marks; the deathmatch's weapons in your hands, bullet marks and
-  edge (`arms.ts`), the others as fighters (`soldier.ts`) and the grenades (`nades.ts`); and the first track's world (`world.ts`,
+  edge (`arms.ts`), the others as fighters (`soldier.ts`), the grenades (`nades.ts`), and a match's
+  sites, bomb and guns on the ground (`comp.ts`); and the first track's world (`world.ts`,
   `landmarks.ts`, `braga.ts`), for reference.
 - The map of Braga is its own repo, [braga-map](https://github.com/pedroHenriques15/braga-map),
   shared with the games to come: the city in sections, and the tracks planned on its streets. The
   game installs it as a package.
 - `src/session.ts`: rooms. `src/hud.ts`: what's on the screen while you drive, in a race and round
-  the city. `src/main.ts`: the menu, the race's screens, and the loop.
+  the city. `src/main.ts`: the menu, the race's screens, and the loop. `src/binds.ts`: every
+  control and its default keys; `src/prefs.ts`: the settings, kept in the browser;
+  `src/settingsScreen.ts`: ⚙️ Definições.
 - `src/audio.ts`: every sound, through one mix. The karts' engines are a race car's V8 through six
   gears, synthesized, as is everything else but the city round the track: recordings of traffic,
   a town, birds, woods, a river, bells, a bus and a crowd (CC0, from Freesound, listed in

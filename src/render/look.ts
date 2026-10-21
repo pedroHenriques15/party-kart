@@ -163,6 +163,8 @@ export class Look {
   private sky: Sky;
   private rain: THREE.LineSegments | null = null;
   quality: Quality = 'high';
+  // The resolution, as a share of what the quality draws (the settings'): lower, quicker.
+  scale = 1;
   // Drawn over the world once it's drawn, its depth cleared: your gun in first person (render/arms.ts,
   // braga-map's task 074), which never goes into a wall however close you stand to it.
   overlay: THREE.Scene | null = null;
@@ -204,7 +206,7 @@ export class Look {
   setQuality(q: Quality): void {
     this.quality = q;
     const r = this.renderer;
-    r.setPixelRatio(Math.min(q === 'high' ? 2 : q === 'medium' ? 1.25 : 1, devicePixelRatio));
+    r.setPixelRatio(Math.min(q === 'high' ? 2 : q === 'medium' ? 1.25 : 1, devicePixelRatio) * this.scale);
     r.shadowMap.enabled = q !== 'low';
     this.sun.castShadow = q !== 'low';
     const size = q === 'high' ? 2048 : 1024;

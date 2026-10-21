@@ -77,7 +77,9 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   empty (braga-map's task 073, `src/game/walker.ts`): WASD, the mouse with the pointer locked (Esc
   lets it go and opens the menu; a click on the world takes it back), Shift runs, Space jumps; on a
   touch screen twin sticks and Saltar. F again is back in your kart where it waited. To look at the
-  city at walking distance, as the shooter is played (braga-map's SHOOTER-AREA.md). Under
+  city at walking distance, as the shooter is played (braga-map's SHOOTER-AREA.md). On foot you're
+  armed (`startFree`: a `FightCtx` with `free`): what you last bought, B the buy menu with unlimited
+  money, your shots and grenades seen and heard by the others on foot, nobody hurt. Under
   `?autodrive`, `__kart.walk` says where you are on foot, and `__walk(x, z, tx, ty, tz, y)` puts you at
   (x, z) looking at (tx, ty, tz), on the floor at height y if it's given (a tower's upper floors).
 - The menu's "🎯 Tiroteio" is the deathmatch (braga-map's task 074, after Counter-Strike 2's since its
@@ -95,7 +97,16 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   bots (where, up or down, health, weapon, shots, times put back on their paths), and the grenades,
   clouds and fires up. With
   the pointer locked, Playwright's mouse buttons can turn the view (a movement comes with them):
-  dispatch `mousedown`/`mouseup` on the document instead to hold the trigger.
+  dispatch `mousedown`/`mouseup` on the document instead to hold the trigger (headless, the pointer
+  lock is refused: dispatch the `mousedown` on `#view`, which fires as it asks for the lock).
+- Its "Modo: Competitivo (bomba)" is Counter-Strike 2's competitive mode (`src/game/comp.ts`, the
+  rules, the money and the host's `Match`; `src/game/matchbots.ts`, its bots): rounds with no coming
+  back, the bomb planted at A or B and defused, the money earned and spent, the sides swapped at half
+  time. `__kart.fight.comp` has the round, its phase, your side and money, the score, the bomb, who's
+  up, the sites and spawns, and the bots' plants and defuses.
+- ⚙️ Definições (`src/settingsScreen.ts`) changes the graphics, the sound, the mouse, the crosshair
+  and every control's keys (`src/binds.ts`, kept with the rest in `localStorage`'s `pk-settings` by
+  `src/prefs.ts`). The keys in this file are the defaults.
 - `?view=x,y,z,tx,ty,tz` holds the race's camera at (x, y, z), looking at (tx, ty, tz), to look at
   the scenery from anywhere (the sights on the hills, say). A seventh number sets its vertical
   field of view in degrees (the race's own widens with speed). Take positions from braga-map's map

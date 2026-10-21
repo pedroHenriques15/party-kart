@@ -4,6 +4,7 @@
 // on foot, a dot in the middle of the screen for the speed.
 import type { CarInfo } from './game/arena.ts';
 import { ARMOUR, FAMILIES, GUN_IDS, GUNS, isGun, isNade, KNIFE, NADE_IDS, NADES, NADES_MAX, nameOf, type Cause, type Family, type GunId, type Loadout, type NadeId, type WeaponId } from './game/arsenal.ts';
+import { COMP, priceOf, sells, type Side } from './game/comp.ts';
 import { ITEMS, type ItemKind } from './game/items.ts';
 import type { Track } from './track/track.ts';
 
@@ -315,9 +316,10 @@ export class RoamHud {
     }
   }
 
-  // The keys for driving, flying, on foot, or in a round.
-  keys(mode: keyof typeof KEYS): void {
-    this.el.keys.textContent = KEYS[mode];
+  // The keys for driving, flying, on foot, or in a round: as main.ts says them (the keys as the
+  // settings bind them), or the defaults.
+  keys(mode: keyof typeof KEYS, text: string = KEYS[mode]): void {
+    this.el.keys.textContent = text;
     // A round's keys are many: they stay long enough to be read, then go out of the way.
     this.keysUntil = mode === 'fight' ? performance.now() + 20000 : Infinity;
   }
@@ -474,6 +476,9 @@ export interface ScoreRow {
   hs: number;
   me: boolean;
   team?: number;
+  // In a match: their money (your team-mates' only), and whether they're down this round.
+  money?: number;
+  dead?: boolean;
 }
 
 // A line of the kill feed: who put whom down, with what, whether in the head, and whether you were
@@ -512,6 +517,42 @@ export interface FightView {
   dead: { by: string; w: Cause; head: boolean; wait: number } | null; // put down: by whom, with what, back in `wait` s
   buyLeft: number; // seconds left to buy in after coming back (0: what's bought is for the next life)
   scores: ScoreRow[] | null; // the scores while Tab is held
+  // A competitive match's (game/comp.ts), or null; and whether you're on foot round the city, where
+  // nothing's at stake.
+  comp?: CompView | null;
+  free?: boolean;
+}
+
+// A match on the screen: each side's rounds and how many are up, yours, the round of how many, your
+// money, the bomb (yours to carry, or planted), what you're planting or defusing and how far along,
+// a line under the clock, and whether you have a defuse kit.
+export interface CompView {
+  rounds: Record<Side, number>;
+  alive: Record<Side, number>;
+  mine: Side;
+  round: number;
+  total: number;
+  money: number;
+  bomb: 'mine' | 'planted' | null;
+  task: { text: string; k: number } | null;
+  note: string;
+  kit: boolean;
+}
+
+// The sides' names and colours, as Counter-Strike's.
+export const SIDES: Record<Side, { name: string; short: string; color: string }> = {
+  T: { name: 'Terroristas', short: 'T', color: '#e8a838' },
+  CT: { name: 'Contraterroristas', short: 'CT', color: '#5aa0ff' },
+};
+
+// The buy menu in a match: your money, your side, whether it sells now (and why not), and whether
+// you've a defuse kit.
+export interface Shop {
+  money: number;
+  side: Side;
+  open: boolean;
+  why: string;
+  kit: boolean;
 }
 
 // The two teams of a round of teams, as the scores and the clock name and colour them.
@@ -563,8 +604,8 @@ const iconOf = (w: Cause): IconKind => (w === 'fall' ? 'fall' : w === 'knife' ? 
 const FAMILY_GUNS = Object.fromEntries(FAMILIES.map((f) => [f.id, GUN_IDS.filter((g) => GUNS[g].family === f.id)])) as Record<Family, GunId[]>;
 
 // The buy menu's last tab, after the families: armour and grenades, in its keys' order.
-type Gear = { kind: 'armour'; level: 1 | 2 } | { kind: 'nade'; id: NadeId };
-const GEAR: Gear[] = [{ kind: 'armour', level: 1 }, { kind: 'armour', level: 2 }, ...NADE_IDS.map((id) => ({ kind: 'nade' as const, id }))];
+type Gear = { kind: 'armour'; level: 1 | 2 } | { kind: 'nade'; id: NadeId } | { kind: 'kit' };
+const GEAR: Gear[] = [{ kind: 'armour', level: 1 }, { kind: 'armour', level: 2 }, ...NADE_IDS.map((id) => ({ kind: 'nade' as const, id })), { kind: 'kit' }];
 const GEAR_KEY = String(FAMILIES.length + 1);
 type Tab = Family | 'gear';
 
@@ -592,6 +633,14 @@ export class FightHud {
   // The dead panel's touch button asked for the buy menu. Unless main.ts says otherwise, it opens it
   // with the loadout it last showed, or else what the screen shows you carrying.
   onBuyAsked: () => void = () => this.buy(true, this.kit ?? this.carried());
+  // In a match, a defuse kit bought.
+  onKit: () => void = () => {};
+  // A control's key as the settings bind it (main.ts), for the keys shown; and whether a key is the
+  // buy menu's own (B, as bound), which closes it.
+  keyOf: (id: string) => string = (id) => ({ slot1: '1', slot2: '2', slot3: '3', slot4: '4', buy: 'B' })[id] ?? '';
+  isBuyKey: (code: string) => boolean = (code) => code === 'KeyB';
+  // In a match: the shop (prices, money, your side); null when the money's unlimited.
+  private shop: Shop | null = null;
   private e: Record<string, HTMLElement> = {};
   private arcs: HTMLElement[] = [];
   // What the screen last showed, by key, so a frame only touches what changed.
@@ -640,18 +689,28 @@ export class FightHud {
     e.ammo = h('div', 'ammo', h('span', 'count', e.mag, e.reserve), e.gunName, e.reload);
 
     e.center = h('div', 'center');
+    // A match's: your money, bottom left over your health; the bomb, if it's yours; and what you're
+    // planting or defusing.
+    e.money = h('div', 'money-now');
+    e.taskText = h('span', 'tt');
+    e.taskBar = h('i');
+    e.task = h('div', 'task', e.taskText, h('span', 'meter', e.taskBar));
+    e.note = h('small', 'note');
+    e.bomb = h('div', 'bombmark', 'Bomba');
 
     e.deadBy = h('h2');
     e.deadHow = h('p', 'dp-how');
     e.deadWait = h('p', 'dp-wait');
     const ask = h('button', 'touch-only', '🛒 Armas');
     ask.addEventListener('click', () => this.onBuyAsked());
-    e.dead = h('div', 'deadpanel', h('p', 'dp-tag', 'Morto'), e.deadBy, e.deadHow, e.deadWait, h('p', 'dp-hint keys-only', h('kbd', '', 'B'), ' muda de armas'), ask);
+    e.deadKey = h('kbd', '', 'B');
+    e.dead = h('div', 'deadpanel', h('p', 'dp-tag', 'Morto'), e.deadBy, e.deadHow, e.deadWait, h('p', 'dp-hint keys-only', e.deadKey, ' muda de armas'), ask);
 
     e.scores = h('div', 'scores');
     e.buy = this.buildBuy();
 
-    this.el = h('div', 'fight', e.hurt, e.scope, e.flash, e.from, e.cross, e.marker, e.top, e.killfeed, e.vitals, e.slots, e.ammo, e.center, e.dead, e.scores, e.buy);
+    e.top.querySelector('.mid')!.append(e.note);
+    this.el = h('div', 'fight', e.hurt, e.scope, e.flash, e.from, e.cross, e.marker, e.top, e.killfeed, e.vitals, e.money, e.bomb, e.slots, e.ammo, e.center, e.task, e.dead, e.scores, e.buy);
     root.append(this.el);
     // Capture, ahead of the game's own keys: while the menu is open its digits and B and Esc are its.
     addEventListener('keydown', this.onKey, true);
@@ -713,11 +772,34 @@ export class FightHud {
     const sk = `${v.slots.primary}|${v.slots.secondary}|${v.slots.nades.join(',')}|${w}`;
     if (this.changed('slots', sk)) this.drawSlots(v);
 
-    // The clock, and the teams' kills or where you stand.
+    // The clock, and the teams' kills or where you stand; in a match, each side's rounds and how many
+    // of it are up, the round, and your money.
     this.text('clock', e.clock, v.clock);
-    this.text('standing', e.standing, v.teams ? '' : v.standing);
-    this.cls('teams', e.top, 'teams', !!v.teams);
-    if (v.teams) {
+    this.text('standing', e.standing, v.teams || v.comp ? '' : v.standing);
+    this.cls('teams', e.top, 'teams', !!v.teams || !!v.comp);
+    this.cls('free', this.el, 'free', !!v.free);
+    const c = v.comp ?? null;
+    this.cls('comp', this.el, 'comp', !!c);
+    this.text('note', e.note, c ? c.note : '');
+    this.text('deadKey', e.deadKey, this.keyOf('buy'));
+    if (c) {
+      const side = (el: HTMLElement, sd: Side, k: string) => {
+        this.text(`${k}n`, el.querySelector('small')!, `${SIDES[sd].short} · ${c.alive[sd]} ${c.alive[sd] === 1 ? 'vivo' : 'vivos'}`);
+        this.text(`${k}s`, el.querySelector('b')!, String(c.rounds[sd]));
+        this.style(`${k}c`, el, '--tc', SIDES[sd].color);
+        this.cls(`${k}m`, el, 'mine', c.mine === sd);
+      };
+      side(e.teamA, 'CT', 'ca');
+      side(e.teamB, 'T', 'cb');
+      this.text('money', e.money, `${c.money} €`);
+      this.cls('bombMine', e.bomb, 'on', c.bomb === 'mine' && v.alive);
+      this.cls('task', e.task, 'on', !!c.task);
+      if (c.task) {
+        this.cls('taskHint', e.task, 'hint', c.task.k <= 0);
+        this.text('taskText', e.taskText, c.task.text);
+        this.style('taskBar', e.taskBar, 'transform', `scaleX(${Math.min(1, Math.max(0, c.task.k)).toFixed(3)})`);
+      }
+    } else if (v.teams) {
       this.text('ta', e.teamA.querySelector('b')!, String(v.teams.a));
       this.text('tb', e.teamB.querySelector('b')!, String(v.teams.b));
       this.cls('mineA', e.teamA, 'mine', v.teams.mine === 0);
@@ -756,7 +838,8 @@ export class FightHud {
         e.deadHow.replaceChildren(...kids(icon(iconOf(d.w)), h('span', '', d.w === 'fall' ? 'Uma queda' : nameOf(d.w)), d.head ? h('span', 'headshot', icon('head'), 'na cabeça') : null));
       }
       const s = Math.ceil(d.wait);
-      this.text('deadWait', e.deadWait, s > 0 ? `Voltas em ${s} s` : 'A voltar…');
+      // In a match nobody comes back till the next round.
+      this.text('deadWait', e.deadWait, d.wait < 0 ? 'Voltas na próxima ronda' : s > 0 ? `Voltas em ${s} s` : 'A voltar…');
     }
     this.cls('deadOn', e.dead, 'on', !!v.dead);
 
@@ -765,7 +848,7 @@ export class FightHud {
 
     // The scores, only when they change.
     const key = v.scores ? JSON.stringify(v.scores) : '';
-    if (this.changed('scores', key)) this.drawScores(v.scores, !!v.teams);
+    if (this.changed('scores', key)) this.drawScores(v.scores, !!v.teams || !!v.comp, !!v.comp, v.comp ? [v.comp.rounds.CT, v.comp.rounds.T] : null);
 
     // The kill feed's old lines go.
     if (this.feedLines.length) {
@@ -781,27 +864,30 @@ export class FightHud {
     const nades = v.slots.nades;
     this.e.slots.replaceChildren(
       ...kids(
-      v.slots.primary ? row('1', icon(GUNS[v.slots.primary].family), GUNS[v.slots.primary].name, w === v.slots.primary) : null,
-      row('2', icon('pistol'), GUNS[v.slots.secondary].name, w === v.slots.secondary),
-      row('3', icon('knife'), KNIFE.name, w === 'knife'),
-      nades.length ? row('4', icon('nade'), isNade(w) ? NADES[w].name : 'Granadas', isNade(w), h('span', 'pips', ...nades.map((n) => h('i', `pip ${n}${n === w ? ' on' : ''}`)))) : null,
+      v.slots.primary ? row(this.keyOf('slot1'), icon(GUNS[v.slots.primary].family), GUNS[v.slots.primary].name, w === v.slots.primary) : null,
+      row(this.keyOf('slot2'), icon('pistol'), GUNS[v.slots.secondary].name, w === v.slots.secondary),
+      row(this.keyOf('slot3'), icon('knife'), KNIFE.name, w === 'knife'),
+      nades.length ? row(this.keyOf('slot4'), icon('nade'), isNade(w) ? NADES[w].name : 'Granadas', isNade(w), h('span', 'pips', ...nades.map((n) => h('i', `pip ${n}${n === w ? ' on' : ''}`)))) : null,
       ),
     );
   }
 
-  private drawScores(rows: ScoreRow[] | null, teams: boolean): void {
+  // The scores: one table, or one a team; in a match one a side (a row's `team` then 0 for the
+  // Counter-Terrorists, 1 for the Terrorists), with the rounds won.
+  private drawScores(rows: ScoreRow[] | null, teams: boolean, comp = false, rounds: [number, number] | null = null): void {
     const s = this.e.scores;
     s.classList.toggle('on', !!rows);
     if (!rows) return;
     const sorted = [...rows].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
+    const money = rows.some((r) => r.money !== undefined);
     const table = (list: ScoreRow[], title: Node[], color: string | null) => {
       const t = h(
         'div',
         'table',
         h('div', 'title', ...title),
-        h('div', 'row head', h('span', 'who', 'Jogador'), h('span', '', 'Abates'), h('span', '', 'Mortes'), h('span', 'hs', '% cabeça')),
+        h('div', `row head${money ? ' cashed' : ''}`, h('span', 'who', 'Jogador'), money ? h('span', 'cash', 'Dinheiro') : null, h('span', '', 'Abates'), h('span', '', 'Mortes'), h('span', 'hs', '% cabeça')),
         ...list.map((r) => {
-          const el = h('div', `row${r.me ? ' me' : ''}`, h('span', 'who', h('i', 'sw'), h('span', 'nm', r.name)), h('span', '', String(r.kills)), h('span', '', String(r.deaths)), h('span', 'hs', pct(r.hs, r.kills)));
+          const el = h('div', `row${r.me ? ' me' : ''}${r.dead ? ' down' : ''}${money ? ' cashed' : ''}`, h('span', 'who', h('i', 'sw'), h('span', 'nm', r.name)), money ? h('span', 'cash', r.money === undefined ? '' : `${r.money} €`) : null, h('span', '', String(r.kills)), h('span', '', String(r.deaths)), h('span', 'hs', pct(r.hs, r.kills)));
           el.style.setProperty('--c', r.color);
           return el;
         }),
@@ -811,10 +897,10 @@ export class FightHud {
     };
     if (teams || rows.some((r) => r.team !== undefined)) {
       s.replaceChildren(
-        h('div', 'tables', ...TEAMS.map((t, i) => {
+        h('div', 'tables', ...(comp ? [SIDES.CT, SIDES.T] : TEAMS).map((t, i) => {
           const list = sorted.filter((r) => (r.team ?? 0) === i);
           const kills = list.reduce((n, r) => n + r.kills, 0);
-          return table(list, [h('span', '', t.name), h('b', '', String(kills))], t.color);
+          return table(list, [h('span', '', t.name), h('b', '', String(comp && rounds ? rounds[i] : kills))], t.color);
         })),
       );
     } else s.replaceChildren(table(sorted, [h('span', '', 'Pontuação'), h('small', '', 'cada um por si')], null));
@@ -875,52 +961,80 @@ export class FightHud {
     if (open) this.drawBuy();
   }
 
+  // In a match, the shop as it is now (null: the money's unlimited); the menu drawn again if it's open
+  // and anything it shows changed.
+  setShop(s: Shop | null): void {
+    const was = JSON.stringify(this.shop);
+    this.shop = s ? { ...s } : null;
+    if (this.open && was !== JSON.stringify(this.shop)) this.drawBuy();
+  }
+
   private close(): void {
     if (!this.open || !this.kit) return;
     this.buy(false, this.kit);
     this.onBuyClosed();
   }
 
+  // A change asked for. With unlimited money it's yours at once; in a match main.ts buys it (or not),
+  // and shows the menu again with what you have.
   private change(kit: Loadout): void {
-    this.kit = kit;
-    this.drawBuy();
+    if (!this.shop) {
+      this.kit = kit;
+      this.drawBuy();
+    }
     this.onBuy({ ...kit, nades: [...kit.nades] });
   }
 
+  // Whether the shop sells an item now, as it would leave you: on your side, and within your money.
+  private affords(want: Loadout): boolean {
+    const s = this.shop;
+    if (!s || !this.kit) return true;
+    return s.open && priceOf(this.kit, want) <= s.money;
+  }
+
   // A gun to its slot, or a piece of the gear's tab: armour on or off, a grenade more (or, when no
-  // more fit, none of that kind).
+  // more fit, none of that kind); in a match only what's bought, never sold back.
   private take(item: GunId | Gear): void {
     const k = this.kit;
     if (!k) return;
+    const shop = this.shop;
     if (typeof item === 'string') {
       const g = GUNS[item];
-      if (g.slot === 'primary') {
-        if (k.primary !== item) this.change({ ...k, primary: item });
-      } else if (k.secondary !== item) this.change({ ...k, secondary: item });
-    } else if (item.kind === 'armour') this.change({ ...k, armour: k.armour === item.level ? 0 : item.level });
-    else {
+      if (shop && !sells(shop.side, item)) return;
+      const want = g.slot === 'primary' ? { ...k, primary: item } : { ...k, secondary: item };
+      if ((g.slot === 'primary' ? k.primary : k.secondary) === item || !this.affords(want)) return;
+      this.change(want);
+    } else if (item.kind === 'kit') {
+      if (shop && shop.side === 'CT' && !shop.kit && shop.open && shop.money >= COMP.kit) this.onKit();
+    } else if (item.kind === 'armour') {
+      if (shop) {
+        if (k.armour < item.level && this.affords({ ...k, armour: item.level })) this.change({ ...k, armour: item.level });
+      } else this.change({ ...k, armour: k.armour === item.level ? 0 : item.level });
+    } else {
       const have = k.nades.filter((n) => n === item.id).length;
-      if (have < NADES[item.id].max && k.nades.length < NADES_MAX) this.change({ ...k, nades: [...k.nades, item.id] });
-      else if (have > 0) this.change({ ...k, nades: k.nades.filter((n) => n !== item.id) });
+      const want = { ...k, nades: [...k.nades, item.id] };
+      if (have < NADES[item.id].max && k.nades.length < NADES_MAX && this.affords(want)) this.change(want);
+      else if (have > 0 && !shop) this.change({ ...k, nades: k.nades.filter((n) => n !== item.id) });
     }
   }
 
   private drop(id: NadeId): void {
     const k = this.kit;
     const i = k ? k.nades.lastIndexOf(id) : -1;
-    if (k && i >= 0) this.change({ ...k, nades: k.nades.filter((_, j) => j !== i) });
+    if (k && i >= 0 && !this.shop) this.change({ ...k, nades: k.nades.filter((_, j) => j !== i) });
   }
 
-  // The buy menu's own keys while it's open, ahead of the game's: digits, Backspace, B and Esc.
+  // The buy menu's own keys while it's open, ahead of the game's: digits, Backspace, the buy key and Esc.
   private key(ev: KeyboardEvent): void {
     if (!this.open || ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const d = digitOf(ev.code);
-    if (!d && ev.code !== 'Escape' && ev.code !== 'KeyB' && ev.code !== 'Backspace') return;
+    const shut = ev.code === 'Escape' || this.isBuyKey(ev.code);
+    if (!d && !shut && ev.code !== 'Backspace') return;
     // Every digit is the menu's while it's open, even one that picks nothing: none switches weapons.
     ev.preventDefault();
     ev.stopImmediatePropagation();
     if (ev.repeat) return;
-    if (ev.code === 'Escape' || ev.code === 'KeyB') this.close();
+    if (shut) this.close();
     else if (ev.code === 'Backspace') {
       this.picked = false;
       this.drawBuy();
@@ -931,7 +1045,7 @@ export class FightHud {
       this.picked = true;
       this.drawBuy();
     } else {
-      const items = this.tab === 'gear' ? GEAR : FAMILY_GUNS[this.tab];
+      const items = this.tab === 'gear' ? this.gear() : FAMILY_GUNS[this.tab];
       const item = items[d - 1];
       if (!item) return;
       this.picked = false;
@@ -940,11 +1054,16 @@ export class FightHud {
     }
   }
 
+  // The gear's tab: the defuse kit only in a match, a Counter-Terrorist's.
+  private gear(): Gear[] {
+    return GEAR.filter((g) => g.kind !== 'kit' || this.shop?.side === 'CT');
+  }
+
   private buildBuy(): HTMLElement {
     const e = this.e;
     e.till = h('p', 'till');
     const x = h('button', 'close', '✕');
-    x.title = 'Fechar (B ou Esc)';
+    x.title = 'Fechar';
     x.addEventListener('click', () => this.close());
     const fams = h(
       'nav',
@@ -962,12 +1081,14 @@ export class FightHud {
     );
     e.items = h('div', 'items');
     e.kit = h('div', 'kit');
+    e.wallet = h('span', 'money', h('small', '', 'Dinheiro'), '∞ €');
+    e.buyHint = h('span', 'hint keys-only');
     const panel = h(
       'div',
       'buy-panel',
-      h('header', '', h('h2', '', 'Armas'), e.till, h('span', 'money', h('small', '', 'Dinheiro'), '∞ €'), x),
+      h('header', '', h('h2', '', 'Armas'), e.till, e.wallet, x),
       h('div', 'buy-body', fams, e.items),
-      h('footer', '', h('span', 'lbl', 'Levas'), e.kit, h('span', 'hint keys-only', h('kbd', '', '1–7'), ' família, depois a arma · ', h('kbd', '', 'B'), ' fecha')),
+      h('footer', '', h('span', 'lbl', 'Levas'), e.kit, e.buyHint),
     );
     const el = h('div', 'buy', panel);
     // Clicks in the menu are its own: none reaches the game, to fire or to take the pointer back.
@@ -977,30 +1098,49 @@ export class FightHud {
   }
 
   private drawTill(): void {
+    const shop = this.shop;
     const s = Math.ceil(this.buyLeft);
-    if (!this.changed('till', s)) return;
-    this.e.till.textContent = s > 0 ? `Tempo de compra: ${s} s` : 'Fica para a próxima vida';
-    this.e.till.classList.toggle('later', s <= 0);
+    const key = shop ? `${shop.open}|${shop.why}|${s}` : this.view?.free ? 'free' : s;
+    if (!this.changed('till', key)) return;
+    const t = this.e.till;
+    if (shop) {
+      t.textContent = shop.open ? `Tempo de compra: ${s} s` : shop.why;
+      t.classList.toggle('later', !shop.open);
+    } else if (this.view?.free) {
+      t.textContent = 'Pela cidade: compra quando quiseres';
+      t.classList.remove('later');
+    } else {
+      t.textContent = s > 0 ? `Tempo de compra: ${s} s` : 'Fica para a próxima vida';
+      t.classList.toggle('later', s <= 0);
+    }
   }
 
   private drawBuy(): void {
     const e = this.e;
     const k = this.kit;
     if (!k) return;
+    const shop = this.shop;
     this.shown.delete('till');
     this.drawTill();
+    e.wallet.replaceChildren(h('small', '', 'Dinheiro'), shop ? `${shop.money} €` : '∞ €');
+    e.buyHint.replaceChildren(h('kbd', '', '1–7'), ' família, depois a arma · ', h('kbd', '', this.keyOf('buy') || 'B'), ' fecha');
     for (const [id, b] of this.famBtns) b.classList.toggle('on', id === this.tab);
     e.items.classList.toggle('picking', this.picked);
+    // A card's state in a match: not for your side, more than your money, or the shop shut.
+    const why = (want: Loadout, have: boolean, side: boolean) => (!shop || have ? '' : !side ? 'other' : !this.affords(want) ? 'cant' : '');
     const card = (n: number, ic: SVGSVGElement, name: string, price: number, blurb: string, have: boolean, cls = '', ...extra: Child[]) =>
       h('button', `card${have ? ' have' : ''}${cls ? ` ${cls}` : ''}`, h('span', 'key keys-only', String(n)), have ? h('span', 'tick', 'Tens') : null, ic, h('b', 'name', name), h('span', 'price', `${price} €`), h('small', 'blurb', blurb), ...extra);
     if (this.tab === 'gear') {
       const total = k.nades.length;
+      const gear = this.gear();
       e.items.replaceChildren(
         h('p', 'sect', 'Proteção'),
         ...GEAR.slice(0, 2).map((g, i) => {
           const lvl = (g as { level: 1 | 2 }).level;
           const a = lvl === 1 ? ARMOUR.vest : ARMOUR.helmet;
-          const b = card(i + 1, icon(lvl === 1 ? 'shield' : 'helmet'), a.name, a.price, lvl === 1 ? '100 de armadura no corpo' : 'O corpo e a cabeça', k.armour === lvl);
+          const price = shop && lvl === 2 && k.armour === 1 ? COMP.helmetOnly : a.price;
+          const have = shop ? k.armour >= lvl : k.armour === lvl;
+          const b = card(i + 1, icon(lvl === 1 ? 'shield' : 'helmet'), a.name, price, lvl === 1 ? '100 de armadura no corpo' : 'O corpo e a cabeça', have, why({ ...k, armour: lvl }, have, true));
           b.addEventListener('click', () => this.take(g));
           return b;
         }),
@@ -1010,22 +1150,38 @@ export class FightHud {
           const have = k.nades.filter((n) => n === id).length;
           const full = have < nd.max && total >= NADES_MAX;
           const pips = h('span', 'pips', ...Array.from({ length: nd.max }, (_, j) => h('i', `pip ${id}${j < have ? ' on' : ''}`)));
-          const minus = have > 0 ? h('span', 'minus', '−') : null;
+          const minus = have > 0 && !shop ? h('span', 'minus', '−') : null;
           minus?.addEventListener('click', (ev) => {
             ev.stopPropagation();
             this.drop(id);
           });
-          const b = card(i + 3, icon('nade', id), nd.name, nd.price, nd.blurb, have > 0, `nade${full ? ' full' : ''}`, pips, minus);
+          const maxed = have >= nd.max;
+          const b = card(i + 3, icon('nade', id), nd.name, nd.price, nd.blurb, have > 0, `nade${full ? ' full' : ''} ${maxed && shop ? '' : why({ ...k, nades: [...k.nades, id] }, false, true)}`, pips, minus);
           if (minus) minus.title = 'Tirar uma';
           b.addEventListener('click', () => this.take({ kind: 'nade', id }));
           return b;
         }),
+        ...(gear.some((g) => g.kind === 'kit')
+          ? [
+              h('p', 'sect', 'Contraterroristas'),
+              (() => {
+                const have = !!shop?.kit;
+                const b = card(GEAR.length, icon('shield'), 'Kit de desativação', COMP.kit, 'Desativa a bomba em 5 s', have, have ? '' : !shop || (shop.open && shop.money >= COMP.kit) ? '' : 'cant');
+                b.addEventListener('click', () => this.take({ kind: 'kit' }));
+                return b;
+              })(),
+            ]
+          : []),
       );
     } else {
       e.items.replaceChildren(
         ...FAMILY_GUNS[this.tab].map((id, i) => {
           const g = GUNS[id];
-          const b = card(i + 1, icon(g.family), g.name, g.price, g.blurb, k.primary === id || k.secondary === id, '', h('span', 'spec', `${g.mag} / ${g.reserve}`, g.slot === 'secondary' ? ' · secundária' : ''));
+          const mine = k.primary === id || k.secondary === id;
+          const side = !shop || sells(shop.side, id);
+          const want = g.slot === 'primary' ? { ...k, primary: id } : { ...k, secondary: id };
+          const only = !side ? (shop!.side === 'T' ? ' · só para os CT' : ' · só para os T') : '';
+          const b = card(i + 1, icon(g.family), g.name, g.price, g.blurb, mine, why(want, mine, side), h('span', 'spec', `${g.mag} / ${g.reserve}`, g.slot === 'secondary' ? ' · secundária' : '', only));
           b.addEventListener('click', () => this.take(id));
           return b;
         }),
@@ -1035,17 +1191,18 @@ export class FightHud {
     const chip = (ic: SVGSVGElement, name: string, ...extra: Child[]) => h('span', 'carry', ic, h('span', '', name), ...extra);
     const counts = NADE_IDS.map((id) => [id, k.nades.filter((n) => n === id).length] as const).filter(([, n]) => n > 0);
     let drop: HTMLElement | null = null;
-    if (k.primary) {
+    if (k.primary && !shop) {
       drop = h('span', 'x', '✕');
       drop.title = 'Largar a arma principal';
       drop.addEventListener('click', () => this.change({ ...k, primary: null }));
     }
     e.kit.replaceChildren(
       ...kids(
-      k.primary ? chip(icon(GUNS[k.primary].family), GUNS[k.primary].name, drop) : h('span', 'carry none', 'Sem arma principal'),
-      chip(icon('pistol'), GUNS[k.secondary].name),
-      k.armour ? chip(icon(k.armour === 2 ? 'helmet' : 'shield'), k.armour === 2 ? ARMOUR.helmet.name : ARMOUR.vest.name) : null,
-      ...counts.map(([id, n]) => chip(icon('nade', id), n > 1 ? `${NADES[id].name} ×${n}` : NADES[id].name)),
+        k.primary ? chip(icon(GUNS[k.primary].family), GUNS[k.primary].name, drop) : h('span', 'carry none', 'Sem arma principal'),
+        chip(icon('pistol'), GUNS[k.secondary].name),
+        k.armour ? chip(icon(k.armour === 2 ? 'helmet' : 'shield'), k.armour === 2 ? ARMOUR.helmet.name : ARMOUR.vest.name) : null,
+        ...counts.map(([id, n]) => chip(icon('nade', id), n > 1 ? `${NADES[id].name} ×${n}` : NADES[id].name)),
+        shop?.kit ? chip(icon('shield'), 'Kit de desativação') : null,
       ),
     );
   }

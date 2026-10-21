@@ -10,8 +10,9 @@ export type Family = 'pistol' | 'smg' | 'rifle' | 'sniper' | 'shotgun' | 'heavy'
 export type GunId = 'glock' | 'usp' | 'p250' | 'deagle' | 'mac10' | 'mp9' | 'ump' | 'p90' | 'galil' | 'famas' | 'ak47' | 'm4a4' | 'm4a1s' | 'sg553' | 'aug' | 'ssg08' | 'awp' | 'nova' | 'xm1014' | 'negev';
 export type NadeId = 'he' | 'flash' | 'smoke' | 'molotov';
 export type WeaponId = GunId | 'knife' | NadeId;
-// What put someone down that isn't a weapon in a hand: a fall, or the fire's left after its thrower.
-export type Cause = WeaponId | 'fall';
+// What put someone down that isn't a weapon in a hand: a fall, or the bomb (the competitive mode's,
+// game/comp.ts); or the fire's left after its thrower.
+export type Cause = WeaponId | 'fall' | 'c4';
 
 // In the order a snapshot's flags count them (FIGHT.weapon): never reorder, only add at the end.
 export const WEAPON_IDS: WeaponId[] = ['knife', 'glock', 'usp', 'p250', 'deagle', 'mac10', 'mp9', 'ump', 'p90', 'galil', 'famas', 'ak47', 'm4a4', 'm4a1s', 'sg553', 'aug', 'ssg08', 'awp', 'nova', 'xm1014', 'negev', 'he', 'flash', 'smoke', 'molotov'];
@@ -177,6 +178,7 @@ export function isNade(w: WeaponId | Cause): w is NadeId {
 
 export function nameOf(w: Cause): string {
   if (w === 'fall') return 'uma queda';
+  if (w === 'c4') return 'A bomba';
   if (w === 'knife') return KNIFE.name;
   return isGun(w) ? GUNS[w].name : NADES[w].name;
 }

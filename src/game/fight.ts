@@ -228,7 +228,7 @@ export class Soldier {
   // and whether it's the hit that put it down.
   hurt(h: Pick<Hit, 'b' | 'h' | 'l'>, w: Cause, t: number): { lost: number; down: boolean } {
     if (!this.alive || t < this.safeUntil) return { lost: 0, down: false };
-    const pen = isGun(w) ? GUNS[w].pen : w === 'knife' ? 0.85 : w === 'he' ? 0.5 : 1;
+    const pen = isGun(w) ? GUNS[w].pen : w === 'knife' ? 0.85 : w === 'he' || w === 'c4' ? 0.5 : 1;
     let lost = h.l;
     let worn = 0;
     for (const [n, covered] of [[h.b, true], [h.h, this.helmet]] as const) {
@@ -388,6 +388,8 @@ export interface DownEv {
   x: number;
   y: number;
   z: number;
+  // In a competitive match, the gun that falls where they did (game/comp.ts), with what's in it.
+  drop?: { w: GunId; mag: number; reserve: number };
 }
 
 export type FightEv = ShotEv | DownEv | NadeEv;

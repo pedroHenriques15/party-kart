@@ -408,6 +408,8 @@ export class Viewmodel {
 
   private use(w: WeaponId | null): void {
     if (!w) {
+      // Put away: out of the hands, or the next one is drawn over it.
+      if (this.held) this.gun.remove(this.held.root);
       this.held = null;
       return;
     }

@@ -2,14 +2,17 @@ import { map as bragaMap, type Track as Course } from 'braga-map';
 import * as THREE from 'three';
 import './style.css';
 import { ambienceOf } from './ambience.ts';
-import { beep, checkpointSound, cityHeard, cityIs, citySound, engines, fightSfx, horn, isMuted, lapSound, listen, measureAudio, played, readMeter, recordAudio, recordState, resetMeter, sfx, thud, toggleMute, unlockAudio, type Kart } from './audio.ts';
+import { beep, checkpointSound, cityHeard, cityIs, citySound, engines, fightSfx, horn, isMuted, lapSound, listen, measureAudio, played, readMeter, recordAudio, recordState, resetMeter, setVolumes, sfx, thud, toggleMute, unlockAudio, type Kart } from './audio.ts';
+import { keyName, keysOf, keysText, learnLayout, type Mode } from './binds.ts';
 import { autopilot } from './car/autopilot.ts';
 import { carAt, clampSteer, newCar, speedOf, stopInput, type Car, type Input } from './car/car.ts';
 import { Arena, FLAG, type ArenaFx, type CarInfo, type Rules } from './game/arena.ts';
 import { botControls, newBrain, type Brain } from './game/bot.ts';
-import { drawOf, GUNS, isGun, isNade, nameOf as weaponName, speedWith, START, type Cause, type Loadout } from './game/arsenal.ts';
-import { BUY_TIME, fighterOf, fire, hitTotal, landed, RESPAWN, Soldier, spreadOf, stab, struck, type Body, type DownEv, type FightEv, type Hit, type ShotEv } from './game/fight.ts';
-import { field, pickSpawn, seeOn, type Field } from './game/field.ts';
+import { drawOf, GUNS, isGun, isNade, nameOf as weaponName, speedWith, START, type Cause, type GunId, type Loadout } from './game/arsenal.ts';
+import { blastAt, COMP, compMap, inBuyZone, killReward, Match, priceOf, sideOf, siteAt, startKit, type CompState, type Side } from './game/comp.ts';
+import { carriedBy as carried, MatchBots } from './game/matchbots.ts';
+import { BUY_TIME, fighterOf, fire, hitTotal, landed, RESPAWN, Soldier, spreadOf, stab, struck, type Body, type DownEv, type FightEv, type Hit, type See, type ShotEv } from './game/fight.ts';
+import { field, pickSpawn, seeOn, type Field, type Spawn } from './game/field.ts';
 import { along, blast, blinding, burning, CLOUD, douse, FIRE, fly as flyNade, inFire, thickness, toss, WINDUP, type Blaze, type Cloud, type Flight, type NadeEv } from './game/nades.ts';
 import { Flyer, landing, type Bound, type FlyInput } from './game/flyer.ts';
 import { SKILLS, Squad, type FootBot, type Mark } from './game/footbot.ts';
@@ -17,10 +20,13 @@ import { ITEMS } from './game/items.ts';
 import { NO_CONTROLS, Racer, type Controls, type Note } from './game/racer.ts';
 import { Roamer } from './game/roamer.ts';
 import { alight, EYE, FALL, STAND, type WalkInput, Walker } from './game/walker.ts';
-import { FightHud, fmt, fmtDiff, Hud, ordinal, RoamHud, TEAMS } from './hud.ts';
+import { FightHud, fmt, fmtDiff, Hud, ordinal, RoamHud, SIDES, TEAMS, type CompView as CompHud, type ScoreRow, type Shop } from './hud.ts';
 import { Keyboard, Mouse, TouchPad } from './input.ts';
+import { loadPrefs, savePrefs, type Prefs } from './prefs.ts';
+import { capturing, settingsScreen } from './settingsScreen.ts';
 import { addScaled, clamp, v3, type V } from './math.ts';
 import { buildEdge, ShotsView, Viewmodel, type HandState } from './render/arms.ts';
+import { CompView } from './render/comp.ts';
 import { buildProps } from './render/props.ts';
 import { loadParked, type Parked } from './world/cover.ts';
 import { NadesView } from './render/nades.ts';
@@ -33,12 +39,12 @@ import { Skids } from './render/skids.ts';
 import { nameTag } from './render/textures.ts';
 import { buildCity, type RaceWorld } from './render/city.ts';
 import type { EggEvent } from './render/eggs.ts';
-import { ClientRoom, cleanName, HOST_ID, HostRoom, MAX_RACERS, type Entry, type GameEv, type Room, type Snap } from './session.ts';
+import { ClientRoom, cleanName, HOST_ID, HostRoom, MAX_RACERS, teamed, type Entry, type GameEv, type Room, type Snap } from './session.ts';
 import { Stats, textureBytes } from './stats.ts';
 import { buildTrack, locate, type Track } from './track/track.ts';
 import { courseById, HOME, km, TRACKS } from './tracks.ts';
 import { streetNames } from './world/names.ts';
-import { clear, type Blocker } from './world/sight.ts';
+import { clear, sight, type Blocker } from './world/sight.ts';
 
 const DT = 1 / 120;
 // ?autodrive: the autopilot drives your car in a race (for testing the game in a browser), and
@@ -66,15 +72,18 @@ if (SCENERY) {
 // The tracks as the game drives them, by id (tracks.ts); the home track's is the city's.
 const tracks = new Map(TRACKS.map(({ course: c }) => [c.id, buildTrack(c.points, c.ramps)]));
 const home = tracks.get(HOME.id)!;
-const keys = new Keyboard();
-const pad = new TouchPad();
+// The settings (prefs.ts): the controls' keys among them.
+let prefs: Prefs = loadPrefs();
+learnLayout();
+const keys = new Keyboard(prefs.binds);
+const pad = new TouchPad((code) => keys.bound(code));
 // A phone or a tablet: its finger is its pointer.
 const PHONE = matchMedia('(pointer: coarse)').matches;
 
 // ---- Three.js ----
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
-const mouse = new Mouse(canvas);
+const mouse = new Mouse(canvas, keys);
 const ui = document.querySelector<HTMLDivElement>('#ui')!;
 const hudRoot = document.querySelector<HTMLDivElement>('#hud')!;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -139,7 +148,102 @@ function remember(k: string, v: string): void {
   }
 }
 
+look.scale = prefs.scale;
 look.setQuality(quality);
+
+// ---- The settings (prefs.ts, settingsScreen.ts) ----
+
+// The frames a second, in a corner, when the settings ask for them.
+const fpsEl = document.createElement('div');
+fpsEl.className = 'fps';
+const fpsCount = { frames: 0, since: 0 };
+
+// The settings put to work: the keys, the mouse's and a finger's sensitivity, the sound's levels, the
+// resolution, the crosshair, and what the screen shows.
+function applyPrefs(): void {
+  const p = prefs;
+  keys.bind(p.binds);
+  mouse.sens = p.sens;
+  mouse.scopeSens = p.scopeSens;
+  mouse.invert = p.invert;
+  pad.sens = p.touchSens;
+  setVolumes(p);
+  if (look.scale !== p.scale) {
+    look.scale = p.scale;
+    look.setQuality(quality);
+  }
+  const c = p.crosshair;
+  const root = document.documentElement.style;
+  root.setProperty('--ch-c', c.color);
+  root.setProperty('--ch-len', `${c.len}px`);
+  root.setProperty('--ch-th', `${c.thick}px`);
+  root.setProperty('--ch-a', String(c.alpha));
+  root.setProperty('--ch-dot', c.dot ? 'block' : 'none');
+  root.setProperty('--ch-out', c.outline ? '0 0 0 1px rgba(0, 0, 0, 0.75)' : 'none');
+  document.body.classList.toggle('no-hints', !p.hints);
+  document.body.classList.toggle('no-minimap', !p.minimap);
+  if (p.fps && !fpsEl.isConnected) document.body.append(fpsEl);
+  if (!p.fps) fpsEl.remove();
+}
+applyPrefs();
+
+const settingsHost = {
+  get prefs() {
+    return prefs;
+  },
+  set prefs(p: Prefs) {
+    prefs = p;
+  },
+  get quality() {
+    return quality;
+  },
+  setQuality(q: Quality) {
+    quality = q;
+    remember('pk-quality', q);
+    look.setQuality(q);
+  },
+  changed(p: Prefs) {
+    prefs = p;
+    savePrefs(p);
+    applyPrefs();
+    // The keys' line at the bottom says the keys as they are now.
+    roam?.hud.keys(hintMode(), hints(hintMode()));
+  },
+  muted: isMuted,
+  toggleMute: () => void toggleMute(),
+  capture(on: boolean) {
+    keys.capturing = on;
+  },
+  back() {
+    page = 'main';
+    render();
+  },
+};
+
+// The way you play now, for the keys: driving (a race too), flying, on foot, or in a round.
+function inputMode(): Mode {
+  if (race || !roam) return 'drive';
+  return roam.fly ? 'fly' : roam.walk ? (fight && !fight.free ? 'fight' : 'foot') : 'drive';
+}
+const hintMode = (): 'drive' | 'fly' | 'walk' | 'fight' => {
+  const m = inputMode();
+  return m === 'foot' ? 'walk' : m;
+};
+
+// The keys' line at the bottom, as the keys are bound: the first of each control's keys.
+function hints(mode: 'drive' | 'fly' | 'walk' | 'fight'): string {
+  const b = prefs.binds;
+  const m: Mode = mode === 'walk' ? 'foot' : mode;
+  const k = (id: string) => keyName(keysOf(b, m, id)[0] ?? '') || '—';
+  const move = `${k('fwd')}${k('left')}${k('back')}${k('right')}`;
+  if (mode === 'drive') return `${k('throttle')} ${k('brake')} ${k('steerLeft')} ${k('steerRight')} conduzem · ${k('drift')} derrapa · ${k('respawn')} volta à rua · ${k('horn')} buzina · ${k('camera')} câmara · ${k('fly')} voa · ${k('walk')} a pé · Esc menu`;
+  if (mode === 'fly') return `${move} voa · ${k('turnLeft')}${k('turnRight')} vira · ${k('rise')} sobe · ${k('sink')} desce · ${k('fast')} mais depressa · arrasta o rato para olhar · ${k('fly')} volta ao kart · Esc menu`;
+  const arms = `${k('fire')} dispara · ${k('alt')}: mira, facada, lançar · ${k('reload')} recarrega · ${k('slot1')}–${k('slot4')} armas (${k('last')} a anterior) · ${k('buy')} compra`;
+  if (mode === 'walk') return `${move} anda · o rato olha · ${k('quiet')} caminha · ${k('crouch')} agacha · ${k('jump')} salta · ${arms}
+${k('inspect')} inspeciona · ${k('walk')} volta ao kart · Esc menu`;
+  return `${move} anda · o rato aponta · ${arms}
+${k('quiet')} caminha · ${k('crouch')} agacha · ${k('jump')} salta · ${k('use')} planta, desativa, apanha · ${k('inspect')} inspeciona · ${k('scores')} pontuação · Esc menu`;
+}
 
 // ---- Karts on screen ----
 
@@ -243,7 +347,7 @@ let busy = '';
 let results: Entry[] | null = null;
 // The menu, over the world; and its page: the main one, the race's settings, or the deathmatch's.
 let menu = false;
-let page: 'main' | 'race' | 'fight' = 'main';
+let page: 'main' | 'race' | 'fight' | 'settings' = 'main';
 
 interface RaceCtx {
   course: Course;
@@ -361,7 +465,7 @@ const wholeBtn = () =>
 // In a room, a race or a round, the page doesn't go by mistake: Back (a mouse's side button,
 // Alt+←, a swipe) only comes back to the game, as the page pushes an entry of its own on the history
 // for it to take, and closing or reloading the page asks first.
-const staying = () => !!(room || race || fight);
+const staying = () => !!(room || race || (fight && !fight.free));
 let pushed = false; // the page's own entry is on the history's top
 let here = location.href; // the address there, as the game last left it
 let leaving = false; // on purpose
@@ -493,6 +597,7 @@ function menuScreen(): HTMLElement {
   const r = room;
   if (page === 'race' && r) return raceScreen(r);
   if (page === 'fight' && r) return fightScreen(r);
+  if (page === 'settings') return settingsScreen(settingsHost, render);
   const taken = new Map(r ? r.lobby.members.filter((m) => m.id !== r.you && !m.bot).map((m) => [m.driver, m.name] as const) : []);
   const name = h('input', {
     maxLength: 16,
@@ -534,19 +639,21 @@ function menuScreen(): HTMLElement {
     h(
       'div',
       { class: 'row wrap' },
-      h('button', { onclick: () => void openRace(), disabled: !!busy || !!fight }, '🏁 Corrida'),
-      h('button', { onclick: () => void openFight(), disabled: !!busy || !!fight }, '🎯 Tiroteio'),
-      !fight && h('button', { onclick: reposition }, '↺ Reposicionar'),
+      h('button', { onclick: () => void openRace(), disabled: !!busy || inRound() }, '🏁 Corrida'),
+      h('button', { onclick: () => void openFight(), disabled: !!busy || inRound() }, '🎯 Tiroteio'),
+      !inRound() && h('button', { onclick: reposition }, '↺ Reposicionar'),
       roam && !roam.walk && h('button', { onclick: () => (fly(roam!, !roam!.fly), closeMenu()) }, roam.fly ? '🏎️ Voltar ao kart' : '🎥 Voar pela cidade'),
-      roam && !roam.fly && !fight && h('button', { onclick: () => (walk(roam!, !roam!.walk), closeMenu()) }, roam.walk ? '🏎️ Voltar ao kart' : '🚶 A pé'),
+      roam && !roam.fly && !inRound() && h('button', { onclick: () => (walk(roam!, !roam!.walk), closeMenu()) }, roam.walk ? '🏎️ Voltar ao kart' : '🚶 A pé'),
     ),
     h('p', { class: 'err' }, busy || notice),
-    h('div', { class: 'row foot' }, qualityPicker()),
+    h('div', { class: 'row foot' }, qualityPicker(), h('button', { class: 'ghost', onclick: () => ((page = 'settings'), render()) }, '⚙️ Definições')),
     howTo(),
   );
 }
 
 function howTo(): HTMLElement {
+  // A control's keys as bound (⚙️ Definições › Controlos).
+  const k = (mode: Mode, id: string) => h('b', {}, keysText(prefs.binds, mode, id));
   return h(
     'details',
     { class: 'how' },
@@ -554,22 +661,23 @@ function howTo(): HTMLElement {
     h(
       'ul',
       {},
-      h('li', { class: 'keys-only' }, h('b', {}, 'Conduzir:'), ' setas ou WASD, por onde quiseres dentro da zona (o mapa mostra o limite a vermelho). ', h('b', {}, 'Derrapar:'), ' mantém o Espaço numa curva; quando as faíscas ficarem azuis, e depois laranja, larga para um mini-turbo.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Conduzir:'), ' ', k('drive', 'throttle'), ' acelera, ', k('drive', 'brake'), ' trava, ', k('drive', 'steerLeft'), ' e ', k('drive', 'steerRight'), ' viram, por onde quiseres dentro da zona (o mapa mostra o limite a vermelho). Derrapar: mantém ', k('drive', 'drift'), ' numa curva; quando as faíscas ficarem azuis, e depois laranja, larga para um mini-turbo.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Virar:'), ' com o polegar esquerdo, a arrastar para a esquerda e para a direita em qualquer sítio dessa metade do ecrã. Pela cidade, o kart anda enquanto lá tiveres o polegar e para quando o levantas; na corrida anda sozinho. ', h('b', {}, 'Travar'), ' abranda, e faz marcha-atrás depois de parar. Melhor com o telemóvel deitado.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Derrapar:'), ' mantém-no numa curva; quando as faíscas ficarem azuis, e depois laranja, larga para um mini-turbo.'),
-      h('li', { class: 'keys-only' }, h('b', {}, 'Voar:'), ' V, ou 🎥 Voar pela cidade no menu, deixa o kart à espera e leva a câmara por cima da cidade e dos montes, até ao horizonte. WASD ou ↑↓ anda, ←→ vira, ', h('b', {}, 'E'), ' sobe, ', h('b', {}, 'Q'), ' desce, ', h('b', {}, 'Shift'), ' vai mais depressa, e arrastar o rato olha à volta. V outra vez põe o kart na rua por baixo da câmara.'),
-      h('li', { class: 'keys-only' }, h('b', {}, 'A pé:'), ' F, ou 🚶 A pé no menu, tira-te do kart, que fica à espera onde parou, e andas por Braga com os teus olhos: ', h('b', {}, 'WASD'), ' anda, o rato olha à volta, ', h('b', {}, 'Shift'), ' corre e ', h('b', {}, 'Espaço'), ' salta. Sobes passeios e escadas, mas não muros. F outra vez volta ao kart, onde ele ficou.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Voar:'), ' ', k('drive', 'fly'), ', ou 🎥 Voar pela cidade no menu, deixa o kart à espera e leva a câmara por cima da cidade e dos montes, até ao horizonte. ', k('fly', 'fwd'), ' e ', k('fly', 'back'), ' andam, ', k('fly', 'left'), ' e ', k('fly', 'right'), ' de lado, ', k('fly', 'rise'), ' sobe, ', k('fly', 'sink'), ' desce, ', k('fly', 'fast'), ' vai mais depressa, e arrastar o rato olha à volta. ', k('fly', 'fly'), ' outra vez põe o kart na rua por baixo da câmara.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'A pé:'), ' ', k('drive', 'walk'), ', ou 🚶 A pé no menu, tira-te do kart, que fica à espera onde parou, e andas por Braga com os teus olhos e as tuas armas: ', k('foot', 'fwd'), k('foot', 'left'), k('foot', 'back'), k('foot', 'right'), ' anda, o rato olha e aponta, ', k('foot', 'quiet'), ' caminha devagar, ', k('foot', 'crouch'), ' agacha e ', k('foot', 'jump'), ' salta. ', k('foot', 'fire'), ' dispara e ', k('foot', 'buy'), ' abre o menu de compra, com dinheiro sem fim: aqui não magoas ninguém. ', k('foot', 'walk'), ' outra vez volta ao kart, onde ele ficou.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'A pé:'), ' 🚶 A pé, lá em cima, tira-te do kart, que fica à espera onde parou, e andas por Braga com os teus olhos: o polegar esquerdo anda (e corre, se o levares até ao fim), arrastar na metade direita olha à volta, e Saltar salta. Voltar ao kart põe-te nele, onde ficou.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Voar:'), ' Voar lá em cima, ou 🎥 Voar pela cidade no menu, deixa o kart à espera e leva a câmara por cima da cidade e dos montes, até ao horizonte. O polegar esquerdo anda para onde o arrastares, arrastar na metade direita olha à volta, e ▲ Subir e ▼ Descer. Voltar ao kart põe-no na rua por baixo da câmara.'),
       h('li', {}, h('b', {}, 'Amigos:'), ' Convidar amigos dá-te uma ligação para lhes mandares; quem a abrir aparece ao teu lado, no teu mundo.'),
       h('li', {}, h('b', {}, 'Corrida:'), ` ${TRACKS.length > 1 ? 'numa das pistas' : `a ${HOME.name}`}, com toda a gente da sala e bots nos lugares vazios. O anfitrião escolhe ${TRACKS.length > 1 ? 'a pista, ' : ''}as voltas e os itens e dá a partida; no fim voltas para onde estavas.`),
-      h('li', {}, h('b', {}, 'Tiroteio:'), ' a pé no Fujacal, com toda a gente da sala, cada um por si ou em duas equipas, como no Counter-Strike: compras as armas que quiseres (o dinheiro não acaba), vinte armas, a faca, granadas, colete e capacete, e ficam contigo sempre que voltas. Ganha quem abater mais até acabar o tempo; no fim voltas ao kart, onde ficou.'),
-      h('li', { class: 'keys-only' }, h('b', {}, 'No tiroteio:'), ' WASD anda, o rato aponta, o clique dispara, o botão direito mira (com a espingarda de precisão), ', h('b', {}, 'R'), ' recarrega, ', h('b', {}, 'Tab'), ' mostra a pontuação, e ', h('b', {}, '1'), ' a ', h('b', {}, '4'), ' escolhem a arma.'),
+      h('li', {}, h('b', {}, 'Tiroteio:'), ' a pé no Fujacal, com toda a gente da sala, como no Counter-Strike. Mata-mata, cada um por si ou em duas equipas: compras as armas que quiseres (o dinheiro não acaba), vinte armas, a faca, granadas, colete e capacete, e ficam contigo sempre que voltas; ganha quem abater mais até acabar o tempo. Ou competitivo: Terroristas contra Contraterroristas, rondas sem voltar, a bomba plantada em A ou B e desativada, o dinheiro ganho ronda a ronda e gasto na tua base, os lados trocados ao intervalo. No fim voltas ao kart, onde ficou.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'No tiroteio:'), ' ', k('fight', 'fwd'), k('fight', 'left'), k('fight', 'back'), k('fight', 'right'), ' anda, o rato aponta, ', k('fight', 'fire'), ' dispara, ', k('fight', 'alt'), ' mira (com a espingarda de precisão), ', k('fight', 'reload'), ' recarrega, ', k('fight', 'scores'), ' mostra a pontuação, ', k('fight', 'slot1'), ' a ', k('fight', 'slot4'), ' escolhem a arma, ', k('fight', 'buy'), ' compra. No competitivo, mantém ', k('fight', 'use'), ' para plantar a bomba num local (A ou B) ou para a desativar, e ', k('fight', 'drop'), ' larga a arma.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'No tiroteio:'), ' o polegar esquerdo anda, arrastar na metade direita aponta, Fogo dispara (e aponta, se o arrastares), Recarregar, e Mira com a espingarda de precisão. Toca na arma para a escolher.'),
-      h('li', { class: 'keys-only' }, h('b', {}, 'Itens, na corrida:'), ' passa pelas caixas ?; ', h('b', {}, 'E'), ' ou ', h('b', {}, 'Shift'), ' usa o que te saiu (com ↓ atiras para trás). Quanto mais atrás fores, melhor o que te sai.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Itens, na corrida:'), ' passa pelas caixas ?; ', k('drive', 'use'), ' usa o que te saiu (com ', k('drive', 'brake'), ' atiras para trás). Quanto mais atrás fores, melhor o que te sai.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'Itens, na corrida:'), ' passa pelas caixas ? e toca no botão do item (arrasta-o para baixo para atirar para trás). Quanto mais atrás fores, melhor o que te sai.'),
       h('li', {}, h('b', {}, 'Cone de aspiração:'), ' cola-te atrás de um carro e ele puxa-te, com mais força quanto mais perto; sai para ultrapassar e a velocidade a mais vai-se em poucos segundos.'),
-      h('li', { class: 'keys-only' }, h('b', {}, 'Enter'), ' volta à rua (na corrida, ao último ponto de controlo). ', h('b', {}, 'H'), ' buzina · ', h('b', {}, 'C'), ' câmara · ', h('b', {}, 'M'), ' som · ', h('b', {}, 'Esc'), ' menu.'),
+      h('li', { class: 'keys-only' }, k('drive', 'respawn'), ' volta à rua (na corrida, ao último ponto de controlo). ', k('drive', 'horn'), ' buzina · ', k('drive', 'camera'), ' câmara · ', k('drive', 'mute'), ' som · ', h('b', {}, 'Esc'), ' menu.'),
+      h('li', {}, h('b', {}, '⚙️ Definições:'), ' os gráficos (a resolução, o campo de visão), o som de cada coisa, a sensibilidade do rato, a mira, e as teclas de tudo, para conduzir, voar, andar a pé e no tiroteio: muda as que quiseres.'),
       h('li', { class: 'touch-only' }, h('b', {}, '↺'), ' volta à rua (na corrida, ao último ponto de controlo). O menu, a buzina, a câmara e o som estão lá em cima.'),
       h(
         'li',
@@ -685,15 +793,29 @@ function fightScreen(r: Room): HTMLElement {
   const bots = h('select', { disabled: !host, onchange: () => host?.configure({ bots: Number(bots.value) }) }, ...Array.from({ length: MAX_RACERS - humans + 1 }, (_, n) => h('option', { value: String(n), selected: n === L.bots }, String(n))));
   const skill = h('select', { disabled: !host || !L.bots, onchange: () => host?.configure({ skill: Number(skill.value) }) }, ...SKILLS.map((s, n) => h('option', { value: String(n), selected: n === L.skill }, s)));
   const where = h('select', { disabled: !host, onchange: () => host?.configure({ arena: where.value }) }, ...world.drive.d.world.arenas.map((a) => h('option', { value: a.id, selected: a.id === L.arena }, a.name)));
-  const teams = h('select', { disabled: !host, onchange: () => host?.configure({ teams: teams.value === 'teams' }) }, h('option', { value: 'ffa', selected: !L.teams }, 'Cada um por si'), h('option', { value: 'teams', selected: L.teams }, 'Duas equipas'));
+  const comp = L.kind === 'comp';
+  const mode = h(
+    'select',
+    { disabled: !host, onchange: () => host?.configure(mode.value === 'comp' ? { kind: 'comp', teams: true } : { kind: 'dm', teams: mode.value === 'teams' }) },
+    h('option', { value: 'ffa', selected: !comp && !L.teams }, 'Mata-mata: cada um por si'),
+    h('option', { value: 'teams', selected: !comp && L.teams }, 'Mata-mata: duas equipas'),
+    h('option', { value: 'comp', selected: comp }, 'Competitivo (bomba)'),
+  );
+  const half = h('select', { disabled: !host, onchange: () => host?.configure({ half: Number(half.value) }) }, h('option', { value: '8', selected: L.half === 8 }, 'Curta: primeiro a 9'), h('option', { value: '12', selected: L.half === 12 }, 'Completa: primeiro a 13'));
   return h(
     'div',
     { class: 'panel lobby' },
     h('h2', {}, '🎯 Tiroteio'),
-    h('p', { class: 'tag' }, 'A pé, como no Counter-Strike, numa de três arenas pequenas no Fujacal e no Conselheiro Lobato, entre carros estacionados e obras, com portas abertas nos rés-do-chão e prédios que se sobem até ao telhado: toda a gente da sala, cada um por si ou em duas equipas, com as armas que comprar (o dinheiro não acaba), e bots nos lugares vazios. Ganha quem abater mais até acabar o tempo, e no fim cada um volta ao seu kart.'),
+    h(
+      'p',
+      { class: 'tag' },
+      comp
+        ? 'Competitivo, como no Counter-Strike 2: Terroristas contra Contraterroristas, rondas sem voltar, a bomba plantada em A ou em B e desativada, o dinheiro ganho a abater e a ganhar rondas, gasto no menu de compra no início de cada ronda, na tua base. Ao intervalo trocam de lado; ganha quem chegar primeiro a mais de metade das rondas. Bots nos lugares vazios, a jogar o mesmo.'
+        : 'A pé, como no Counter-Strike, numa de três arenas pequenas no Fujacal e no Conselheiro Lobato, entre carros estacionados e obras, com portas abertas nos rés-do-chão e prédios que se sobem até ao telhado: toda a gente da sala, cada um por si ou em duas equipas, com as armas que comprar (o dinheiro não acaba), e bots nos lugares vazios. Ganha quem abater mais até acabar o tempo, e no fim cada um volta ao seu kart.',
+    ),
     h('div', { class: 'room' }, h('div', {}, h('span', { class: 'label' }, 'Sala'), h('b', { class: 'code' }, L.code)), inviteButton(L.code)),
     members(r, true),
-    h('div', { class: 'settings' }, h('label', { class: 'inline' }, 'Arena ', where), h('label', { class: 'inline' }, 'Modo ', teams), h('label', { class: 'inline' }, 'Duração ', minutes), h('label', { class: 'inline' }, 'Bots ', bots), h('label', { class: 'inline' }, 'Nível ', skill)),
+    h('div', { class: 'settings' }, h('label', { class: 'inline' }, 'Arena ', where), h('label', { class: 'inline' }, 'Modo ', mode), comp ? h('label', { class: 'inline' }, 'Partida ', half) : h('label', { class: 'inline' }, 'Duração ', minutes), h('label', { class: 'inline' }, 'Bots ', bots), h('label', { class: 'inline' }, 'Nível ', skill)),
     host
       ? h(
           'button',
@@ -705,7 +827,7 @@ function fightScreen(r: Room): HTMLElement {
               host.start();
             },
           },
-          'Começar o tiroteio',
+          comp ? 'Começar a partida' : 'Começar o tiroteio',
         )
       : h('p', { class: 'wait' }, 'À espera que o anfitrião comece…'),
     h(
@@ -761,14 +883,15 @@ function fightResults(r: Room, list: Entry[]): HTMLElement {
     results = null;
     render();
   };
-  // In two teams, which won, by their kills together.
-  const sums = [0, 1].map((k) => list.filter((e) => e.team === k).reduce((s, e) => s + e.kills, 0));
+  // In two teams, which won, by their kills together; in a match, by its rounds.
+  const sums = lastMatch ? lastMatch.score : [0, 1].map((k) => list.filter((e) => e.team === k).reduce((s, e) => s + e.kills, 0));
   const mine = list.find((e) => e.id === r.you)?.team;
-  const won = !list.some((e) => e.team !== undefined) ? '' : sums[0] === sums[1] ? `Empate, ${sums[0]} a ${sums[1]}` : `Ganhou a ${TEAMS[sums[0] > sums[1] ? 0 : 1].name}, ${Math.max(...sums)} a ${Math.min(...sums)}${mine === undefined ? '' : (sums[0] > sums[1]) === (mine === 0) ? ' — a tua!' : ''}`;
+  const unit = lastMatch ? ' rondas' : '';
+  const won = !list.some((e) => e.team !== undefined) ? '' : sums[0] === sums[1] ? `Empate, ${sums[0]} a ${sums[1]}${unit}` : `Ganhou a ${TEAMS[sums[0] > sums[1] ? 0 : 1].name}, ${Math.max(...sums)} a ${Math.min(...sums)}${unit}${mine === undefined ? '' : (sums[0] > sums[1]) === (mine === 0) ? ' — a tua!' : ''}`;
   return h(
     'div',
     { class: 'panel results' },
-    h('h2', {}, 'O tiroteio acabou'),
+    h('h2', {}, lastMatch ? 'A partida acabou' : 'O tiroteio acabou'),
     won && h('p', { class: 'tag' }, won),
     h(
       'ol',
@@ -784,7 +907,7 @@ function fightResults(r: Room, list: Entry[]): HTMLElement {
         ),
       ),
     ),
-    h('div', { class: 'row' }, r.isHost && h('button', { onclick: () => (fullScreen(), (r as HostRoom).start()) }, 'Outra ronda'), h('button', { class: 'primary', onclick: back }, 'Voltar a conduzir')),
+    h('div', { class: 'row' }, r.isHost && h('button', { onclick: () => (fullScreen(), (r as HostRoom).start()) }, lastMatch ? 'Outra partida' : 'Outra ronda'), h('button', { class: 'primary', onclick: back }, 'Voltar a conduzir')),
   );
 }
 
@@ -810,7 +933,7 @@ function bar(): HTMLElement {
   }
   const humans = room ? room.lobby.members.filter((m) => !m.bot).length : 0;
   // In a round: the menu, the scores and the sound; the host can end it.
-  if (fight) {
+  if (fight && !fight.free) {
     return h(
       'div',
       { class: 'bar' },
@@ -834,6 +957,7 @@ function bar(): HTMLElement {
     !flying && !walking && touchBtn('↺', 'Voltar à rua', () => pad.press('respawn')),
     !walking && touchBtn(flying ? '🏎️ Voltar ao kart' : 'Voar', flying ? 'Voltar ao kart' : 'Voar pela cidade', () => pad.press('fly')),
     !flying && touchBtn(walking ? '🏎️ Voltar ao kart' : '🚶 A pé', walking ? 'Voltar ao kart' : 'Sair do kart e andar a pé', () => pad.press('walk')),
+    fight?.free && touchBtn('🛒 Armas', 'Comprar armas', () => fight && toggleBuy(fight)),
     touchBtn('📢', 'Buzina', () => pad.press('horn')),
     !flying && !walking && touchBtn('🎥', 'Câmara', () => pad.press('camera')),
     sound,
@@ -847,6 +971,7 @@ function render(): void {
   const flying = !race && !!roam?.fly;
   const walking = !race && !!roam?.walk;
   keys.enabled = driving;
+  keys.mode = inputMode();
   mouse.playing = driving;
   mouse.enabled = driving && flying;
   holdPage();
@@ -858,6 +983,7 @@ function render(): void {
   document.body.classList.toggle('flying', flying);
   document.body.classList.toggle('walking', walking);
   document.body.classList.toggle('fighting', !!fight);
+  document.body.classList.toggle('matching', !!fight?.comp);
   document.body.classList.toggle('racing', !!race);
   document.body.classList.toggle('driving', driving);
   document.body.classList.toggle('paneled', !!panel);
@@ -1004,7 +1130,7 @@ function wire(r: Room): void {
     // Everyone goes back to where they were: none of the race's positions are wanted any more.
     r.cars.clear();
     results = list;
-    if (fight) endFight();
+    if (inRound()) endFight();
     else endRace();
     render();
   };
@@ -1015,6 +1141,8 @@ function wire(r: Room): void {
   };
   r.onBoard = () => {};
   r.onEv = (ev) => (ev.k === 'shot' || ev.k === 'down' || ev.k === 'nade' ? onFightEv(ev) : race?.arena.apply(ev));
+  r.onComp = (s) => onComp(s);
+  if (r instanceof HostRoom) r.onCompAct = (from, a) => fight?.comp?.match?.act(from, a, performance.now());
   r.onClose = (why) => {
     room = null;
     endFight();
@@ -1051,6 +1179,7 @@ function startRoam(car: Car): void {
   car.v = v3();
   const me = new Roamer(world.drive, room?.you || 'me', myName(), car);
   roam = { me, kart: showKart(myDriver(), null), karts: new Map(), cars: new Map(), hud: new RoamHud(hudRoot, mapLines), acc: 0, cam: 0, steer: 0, throttle: 0, shake: 0, vice: 0, idx: null, street: '', stride: 0, kept: 0, fly: null, walk: null, eye: 0, hop: false };
+  roam.hud.keys('drive', hints('drive'));
   slow.frames = slow.time = 0;
 }
 
@@ -1058,6 +1187,7 @@ function stopRoam(): Car | null {
   const r = roam;
   if (!r) return null;
   // Back in the kart: a race starts from where it waits.
+  if (fight?.free) endFight(false);
   if (r.walk) nearPlane(false);
   hide(r.kart);
   for (const k of r.karts.values()) hide(k);
@@ -1079,7 +1209,7 @@ function besideTheHost(r: RoamCtx): void {
     let c = d.spawn(s.x, s.z, s.y, s.yaw);
     if (Math.hypot(c.p.x - s.x, c.p.z - s.z) < 6) c = d.place(carAt(v3(c.p.x - Math.cos(c.yaw) * 7, c.p.y, c.p.z - Math.sin(c.yaw) * 7), c.yaw, c.up), c.p.y + 1.5);
     r.me.car = c;
-    if (r.walk && !fight) r.walk = alight(world.drive, c.p, c.yaw);
+    if (r.walk && !inRound()) r.walk = alight(world.drive, c.p, c.yaw);
   } catch {
     /* no street near the host: stay where you are */
   }
@@ -1119,7 +1249,7 @@ function fly(r: RoamCtx, on: boolean): void {
     r.kept = performance.now();
     camPos.copy(camera.position);
   }
-  r.hud.keys(on ? 'fly' : 'drive');
+  r.hud.keys(on ? 'fly' : 'drive', hints(on ? 'fly' : 'drive'));
   render();
 }
 
@@ -1148,15 +1278,18 @@ function walk(r: RoamCtx, on: boolean): void {
     const c = r.me.car;
     r.walk = alight(world.drive, c.p, c.yaw);
     r.eye = r.walk.p.y + EYE;
-    r.hud.feed(pad.on ? '🚶 A pé: o polegar esquerdo anda (no fim, corre), a metade direita olha, Saltar salta' : '🚶 A pé: WASD anda, o rato olha, Shift corre, Espaço salta; F volta ao kart', 'big');
+    const k = (id: string) => keyName(keysOf(prefs.binds, 'foot', id)[0] ?? '');
+    r.hud.feed(pad.on ? '🚶 A pé: o polegar esquerdo anda (no fim, corre), a metade direita olha, Fogo dispara, 🛒 compra' : `🚶 A pé: ${k('fwd')}${k('left')}${k('back')}${k('right')} anda, o rato olha e aponta, ${k('fire')} dispara, ${k('buy')} compra armas; ${k('walk')} volta ao kart`, 'big');
+    startFree(r);
   } else {
+    if (fight?.free) endFight(false);
     r.walk = null;
     camPos.copy(camera.position);
   }
   mouse.aim = on;
   if (on) mouse.lock();
   nearPlane(on);
-  r.hud.keys(on ? 'walk' : 'drive');
+  r.hud.keys(on ? 'walk' : 'drive', hints(on ? 'walk' : 'drive'));
   render();
 }
 
@@ -1197,9 +1330,18 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
     kartBlock(block, me.car.p.x, me.car.p.y, me.car.p.z, me.car.yaw);
     r.walk.blockers = [...block, ...[...standing.values()].filter((a) => !a.downAt).map((a) => ({ x: a.x, z: a.z, r: 0.3, y0: a.y, y1: a.y + 1.75 }))];
   }
-  const trig = f ? trigger(f) : null;
+  const trig = f ? trigger(f, now) : null;
 
   for (const act of [...keys.actions(), ...pad.actions()]) {
+    // On foot round the city, your guns out: back in the kart, or back on the street, as on foot.
+    if (f?.free && act === 'walk') {
+      walk(r, false);
+      break;
+    }
+    if (f?.free && act === 'respawn') {
+      r.walk?.respawn();
+      continue;
+    }
     if (f) {
       fightAction(f, act, now);
       continue;
@@ -1218,7 +1360,10 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
   // stand (or come down). In a round, you stand till the start, and while you're down.
   const scope = zoomOf(f);
   let foot = r.walk && !open ? steps(1 / scope) : STAND;
-  if (f && (!f.started || !f.me.alive)) foot = { ...STAND, look: f.me.alive ? foot.look : { x: 0, y: 0 } };
+  // A match's freeze, or planting or defusing, holds you where you are, looking round.
+  const cm = f?.comp;
+  const held = !!cm && (!!cm.task || (cm.s.phase === 'freeze' && cm.s.round === cm.round));
+  if (f && (!f.started || !f.me.alive || held)) foot = { ...STAND, look: f.me.alive ? foot.look : { x: 0, y: 0 }, crouch: held ? foot.crouch : false };
   r.walk?.look(foot.look);
   r.hop ||= foot.jump;
   r.acc += Math.min(0.25, dt);
@@ -1234,7 +1379,8 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
     me.step(r.cars.values(), ctl, DT);
     if (r.walk) {
       if (r.walk.step({ ...foot, look: { x: 0, y: 0 }, jump: r.hop }, DT)) {
-        if (f) respawn(f, r.walk, now);
+        if (f && !f.free && !f.comp) respawn(f, r.walk, now);
+        else if (f?.comp && arena) placeAt(r.walk, (f.comp.side === 'T' ? f.comp.s.map.t : f.comp.s.map.ct)[0] ?? arena.spawns[0]);
         else r.hud.feed('De volta à rua');
       }
       r.hop = false;
@@ -1242,6 +1388,8 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
       if (f?.squad && f.started) stepBots(f, r.walk, now - f.goAt - r.acc * 1000);
     }
   }
+  // A pull the gun couldn't use in time is let go.
+  if (f && f.trig.at && now - f.trig.at > PULL_KEPT) f.trig.pulls = f.trig.alts = 0;
   // Your footsteps.
   if (r.walk?.grounded && (!f || f.me.alive)) {
     const v = r.walk.speed();
@@ -1342,7 +1490,7 @@ const arenas = new Map<string, { field: Field; edge: THREE.Group }>();
 let arena: Field | null = null;
 // The edge (and cover) of the arena the round is in, up while it lasts.
 let edgeUp: THREE.Group | null = null;
-let arms: { shots: ShotsView; view: Viewmodel; nades: NadesView } | null = null;
+let arms: { shots: ShotsView; view: Viewmodel; nades: NadesView; comp: CompView } | null = null;
 
 // The cars the LiDAR saw parked in the arenas (braga-map's ground cover), cover in a round; fetched once
 // the city's up. Every browser must make an arena alike (a shot is decided on the shooter's), so one
@@ -1378,14 +1526,26 @@ function arenaFor(id: string): { field: Field; edge: THREE.Group } {
   return a;
 }
 
-// The others on foot as they're drawn this frame (syncOthers): where they stand, which way they face,
-// how far they're crouched, whether they're in the round and since when they're down, their footsteps,
-// and in a round their figure.
+// What's drawn for any fighting, made the first time: the shots, your weapon, the grenades, and a
+// match's sites, bomb and guns on the ground.
+function armsUp(): NonNullable<typeof arms> {
+  if (!arms) {
+    arms = { shots: new ShotsView(), view: new Viewmodel(scene.environment), nades: new NadesView(), comp: new CompView() };
+    scene.add(arms.shots.group, arms.nades.group, arms.comp.group);
+    look.overlay = arms.view.scene;
+  }
+  return arms;
+}
+
+// The others on foot as they're drawn this frame (syncOthers): where they stand, which way they face
+// and look, how far they're crouched, whether they're armed and since when they're down, their
+// footsteps, and armed, their figure.
 interface Afoot {
   x: number;
   y: number;
   z: number;
   yaw: number;
+  pitch: number;
   spd: number;
   c: number;
   fighting: boolean;
@@ -1404,15 +1564,23 @@ function kartBlock(out: Blocker[], x: number, y: number, z: number, yaw: number)
   for (const s of [1, -1]) out.push({ x: x + Math.cos(yaw) * 0.95 * s, z: z + Math.sin(yaw) * 0.95 * s, r: 0.8, y0: y - 0.3, y1: y + 1.1 });
 }
 
+// Whether a round (or a match) is on, rather than your guns out round the city; and the match, if
+// it's one.
+const inRound = () => !!fight && !fight.free;
+const matchOn = () => (fight && !fight.free ? fight.comp : null);
+
 // In a round of two teams, the team someone's on; else null. Who's the same side as whom, and the
-// colour someone's drawn in (their team's, the HUD's TEAMS).
-const teamOf = (id: string): number | null => (room?.lobby.mode === 'fight' && room.lobby.teams ? (room.lobby.members.find((m) => m.id === id)?.team ?? null) : null);
+// colour someone's drawn in (their team's, the HUD's TEAMS; in a match their side's).
+const teamOf = (id: string): number | null => (room?.lobby.racing && teamed(room.lobby) ? (room.lobby.members.find((m) => m.id === id)?.team ?? null) : null);
 const mates = (a: string, b: string) => {
   const t = teamOf(a);
   return t !== null && t === teamOf(b);
 };
+const sideOfTeam = (c: CompCtx, team: number): Side => sideOf(team, Math.max(1, c.s.round), c.s.half);
 const shade = (id: string) => {
   const t = teamOf(id);
+  const c = matchOn();
+  if (t !== null && c) return SIDES[sideOfTeam(c, t)].color;
   return t === null ? colorOf(id) : TEAMS[t].color;
 };
 
@@ -1445,12 +1613,52 @@ interface Thrown {
   done: boolean;
 }
 
+// The trigger as the frames have it: held, and a pull (and the right button's press) not yet used, from
+// when. A pull is kept a moment, so a click is never lost to a frame with no step of the game in it (a
+// screen faster than the game's 120 steps a second has many), nor to a gun a few milliseconds short of
+// ready; a click the gun can't use by then is let go.
+interface Trig {
+  held: boolean;
+  pulls: number;
+  alt: boolean;
+  alts: number;
+  at: number;
+}
+const PULL_KEPT = 220;
+
+// A competitive match (game/comp.ts) as this browser plays it: the host's last word on it and when it
+// came, the round it has started here, your side, your defuse kit, your buys the host hasn't counted
+// yet, what you're planting or defusing, the guns asked for and got, the bomb's last beep, the last
+// result shown; and if you host, the match itself, when it was last sent, and the bots' doings.
+interface CompCtx {
+  s: CompState;
+  at: number;
+  round: number;
+  side: Side;
+  kit: boolean;
+  seq: number;
+  spent: { seq: number; cost: number }[];
+  task: { kind: 'plant' | 'defuse'; from: number; dur: number } | null;
+  asked: Map<string, number>;
+  taken: Set<string>;
+  beepAt: number;
+  shown: string;
+  boomed: boolean;
+  match: Match | null;
+  sentAt: number;
+  bots: MatchBots | null;
+  spectate: string | null;
+}
+
 // The deathmatch (braga-map's task 074): a round on foot in Fujacal, in free roam, your kart waiting
-// where it was; started by the host as a race is. You, the round's clock, what you come back with, the
-// grenades up, and what's on the screen.
+// where it was; started by the host as a race is. Or a competitive match (`comp`), or your guns out on
+// foot round the city (`free`: nobody hurt, the money unlimited, the buy menu always open). You, the
+// round's clock, what you come back with, the grenades up, and what's on the screen.
 interface FightCtx {
   goAt: number; // performance.now() of the start: the round's clock is ms since
   endAt: number;
+  free: boolean;
+  comp: CompCtx | null;
   me: Soldier;
   hud: FightHud;
   kit: Loadout; // to come back with, as bought
@@ -1466,6 +1674,7 @@ interface FightCtx {
   scores: boolean; // shown, by the bar's button on a touch screen
   downs: number;
   squad: Squad | null; // the bots, if you host (braga-map's task 075)
+  trig: Trig;
   // The grenades thrown, the smoke clouds and the fires up, round ms; a grenade's pin pulled (since,
   // how hard it'll go); flashed till (performance.now()) and for how long; the fire's damage owed;
   // when you last looked your gun over.
@@ -1482,33 +1691,66 @@ interface FightCtx {
 }
 
 let fight: FightCtx | null = null;
+// The last match's score and who won, for its results.
+let lastMatch: { score: [number, number]; winner: number | null; half: number } | null = null;
+
+// A fight context, new: you with a loadout, the screen for it.
+function newFight(o: { goAt: number; endAt: number; free: boolean; comp: CompCtx | null; me: Soldier; squad: Squad | null; started: boolean }): FightCtx {
+  const hud = new FightHud(hudRoot);
+  hud.keyOf = (id) => keyName(keysOf(prefs.binds, keys.mode === 'foot' ? 'foot' : 'fight', id)[0] ?? '');
+  hud.isBuyKey = (code) => keys.works(code, 'buy');
+  const f: FightCtx = { ...o, hud, kit: lastKit, by: '', byW: 'knife', byHead: false, fell: 0, hurt: 0, from: [], center: null, lastBeep: 99, scores: false, downs: 0, trig: { held: false, pulls: 0, alt: false, alts: 0, at: 0 }, thrown: [], clouds: [], fires: [], pin: null, blindUntil: 0, blindFor: 1, burn: 0, burnBy: '', inspectAt: -1e9, mags: 0 };
+  hud.onBuy = buy;
+  hud.onBuyAsked = () => toggleBuy(fight!);
+  hud.onBuyClosed = () => {
+    render();
+    mouse.lock();
+  };
+  hud.onKit = () => buyKit(f);
+  return f;
+}
+
+// On foot round the city, your guns out: what you last bought in your hands, the
+// buy menu yours whenever you want it, the money unlimited; your shots and grenades are seen and heard
+// by the others on foot, and hurt nobody.
+function startFree(r: RoamCtx): void {
+  if (fight || !r.walk) return;
+  armsUp();
+  const now = performance.now();
+  const me = new Soldier(room?.you || 'me', lastKit);
+  me.arm(lastKit, 0);
+  me.safeUntil = 0;
+  fight = newFight({ goAt: now, endAt: Infinity, free: true, comp: null, me, squad: null, started: true });
+  r.walk.fighter = speedWith(me.hand, false);
+  r.hud.keys('walk', hints('walk'));
+}
 
 // The host has started a round: everyone on foot at a spawn in the arena (the grid says whose), your
-// kart waiting where it was, the buy menu up till the start.
+// kart waiting where it was, the buy menu up till the start. In a match, the host's word on it says
+// where and when.
 function startFight(goIn: number, endIn: number, grid: Record<string, number>): void {
   const rm = room!;
   if (race) endRace();
   if (!roam) startRoam(before ?? startCar());
   const r = roam!;
-  if (fight) endFight();
+  if (fight) endFight(false);
   menu = false;
   page = 'main';
   results = null;
+  lastMatch = null;
   // Flying, the camera comes down: your kart waits where it was.
   r.fly = null;
+  const comp = rm.lobby.kind === 'comp';
   const bots = rm.isHost ? rm.lobby.members.filter((m) => m.bot) : [];
   const here = arenaFor(rm.lobby.arena);
   const f = (arena = here.field);
   for (const a of arenas.values()) a.edge.visible = a === here;
   here.edge.visible = true;
   edgeUp = here.edge;
-  if (!arms) {
-    arms = { shots: new ShotsView(), view: new Viewmodel(scene.environment), nades: new NadesView() };
-    scene.add(arms.shots.group, arms.nades.group);
-    look.overlay = arms.view.scene;
-  }
-  arms.shots.clear();
-  arms.nades.clear();
+  const A = armsUp();
+  A.shots.clear();
+  A.nades.clear();
+  A.comp.clear();
   const now = performance.now();
   // Joining a round under way: where none of the others can see.
   const s = goIn > 0 ? f.spawns[(grid[rm.you] ?? 0) % f.spawns.length] : pickSpawn(f, foes(), kartBlocks);
@@ -1518,52 +1760,68 @@ function startFight(goIn: number, endIn: number, grid: Record<string, number>): 
   r.walk = w;
   r.eye = w.p.y + EYE;
   r.hop = false;
-  const me = new Soldier(rm.you, lastKit);
+  keys.mode = 'fight';
+  const me = new Soldier(rm.you, comp ? startKit('CT') : lastKit);
   me.team = teamOf(rm.you) ?? 0;
-  mouse.pulls = mouse.alts = mouse.wheel = 0;
-  keys.fighting = true;
   // The host's bots, each at its spawn on the grid as a player is, as good as the host chose.
   let squad: Squad | null = null;
   if (bots.length) {
     squad = new Squad(f, f.paths, rm.lobby.skill / (SKILLS.length - 1));
+    squad.respawn = !comp;
     for (const m of bots) squad.add(m.id, Math.max(0, -goIn), goIn > 0 ? f.spawns[(grid[m.id] ?? 0) % f.spawns.length] : null, foes()).s.team = m.team ?? 0;
   }
-  const hud = new FightHud(hudRoot);
-  fight = { goAt: now + goIn, endAt: now + endIn, me, hud, kit: lastKit, by: '', byW: 'knife', byHead: false, fell: 0, hurt: 0, from: [], center: null, lastBeep: 99, started: goIn <= 0, scores: false, downs: 0, squad, thrown: [], clouds: [], fires: [], pin: null, blindUntil: 0, blindFor: 1, burn: 0, burnBy: '', inspectAt: -1e9, mags: 0 };
-  hud.onBuy = buy;
-  hud.onBuyAsked = () => toggleBuy(fight!);
-  hud.onBuyClosed = () => {
-    render();
-    mouse.lock();
-  };
-  me.arm(lastKit, now - fight.goAt);
+  let cc: CompCtx | null = null;
+  if (comp) {
+    // A match starts at once: its freeze is its countdown. The host makes it, the others wait for its
+    // word on it.
+    const match = rm.isHost ? new Match(rm.lobby.members.map((m) => ({ id: m.id, team: m.team ?? 0 })), compMap(f), rm.lobby.half) : null;
+    match?.start(now);
+    const s0 = match ? match.state(now) : waitingState(compMap(f), rm.lobby.half);
+    cc = { s: s0, at: now, round: 0, side: 'CT', kit: false, seq: 0, spent: [], task: null, asked: new Map(), taken: new Set(), beepAt: 0, shown: '', boomed: false, match, sentAt: 0, bots: match && squad ? new MatchBots(squad, match) : null, spectate: null };
+  }
+  fight = newFight({ goAt: comp ? now : now + goIn, endAt: comp ? Infinity : now + endIn, free: false, comp: cc, me, squad, started: comp || goIn <= 0 });
+  const fc = fight;
+  if (cc?.match) for (const b of squad?.bots ?? []) b.frozen = true;
+  me.arm(comp ? startKit('CT') : lastKit, now - fc.goAt);
+  if (comp) me.safeUntil = 0;
   // Before the start, the guns to choose, as Counter-Strike's deathmatch opens.
-  if (!fight.started) hud.buy(true, lastKit);
-  r.hud.keys('fight');
+  if (!fc.started) fc.hud.buy(true, lastKit);
+  r.hud.keys('fight', hints('fight'));
   const where = world.drive.d.world.arenas.find((a) => a.id === rm.lobby.arena) ?? world.drive.d.world.arenas[0];
   r.hud.setEdge(where.pts);
   const side = teamOf(rm.you);
-  r.hud.feed(`🎯 Tiroteio em ${where.name}: ${side === null ? 'cada um por si' : `estás na ${TEAMS[side].name}`}`, 'big');
+  r.hud.feed(comp ? `🎯 Competitivo em ${where.name}: primeiro a ${rm.lobby.half + 1} rondas` : `🎯 Tiroteio em ${where.name}: ${side === null ? 'cada um por si' : `estás na ${TEAMS[side].name}`}`, 'big');
   nearPlane(true);
   (document.activeElement as HTMLElement | null)?.blur();
   render();
 }
 
-// The round over (or left): the edge down, the grenades gone, and back in your kart where it waited.
-function endFight(): void {
+// A match's state before the host's first word on it.
+function waitingState(map: CompState['map'], half: number): CompState {
+  return { round: 0, phase: 'freeze', left: COMP.freeze, buyLeft: 0, score: [0, 0], half, money: {}, ack: {}, alive: [], bomb: { at: 'carried', by: null, x: 0, y: 0, z: 0, site: null }, drops: [], took: [], last: null, spawns: {}, winner: null, map };
+}
+
+// The round over (or left), or your guns put away round the city: the edge down, the grenades gone;
+// and out of a round, back in your kart where it waited (`back`).
+function endFight(back = true): void {
   const f = fight;
   if (!f) return;
   fight = null;
-  keys.fighting = false;
   f.hud.remove();
-  for (const a of arenas.values()) a.edge.visible = false;
-  if (edgeUp) edgeUp.visible = false;
   if (arms) {
     arms.view.update(camera, SUN_DIR, 0, IDLE);
     arms.nades.clear();
+    arms.comp.clear();
   }
   fightSfx.calm();
   pad.unscope();
+  document.body.classList.remove('picking');
+  if (f.free) {
+    if (roam?.walk) roam.walk.fighter = null;
+    return;
+  }
+  for (const a of arenas.values()) a.edge.visible = false;
+  if (edgeUp) edgeUp.visible = false;
   for (const a of standing.values()) {
     a.fig?.fall(0, 0);
     a.fighting = false;
@@ -1575,26 +1833,90 @@ function endFight(): void {
   if (r.walk) {
     r.walk.fighter = null;
     r.walk.crouch = 0;
-    walk(r, false);
+    if (back) walk(r, false);
   } else render();
 }
 
 // The buy menu changed what you carry: kept for the next life (and the next round), and yours now if
-// you came back a moment ago.
+// you came back a moment ago. In a match, bought with your money, if you have it and the shop's open.
 function buy(kit: Loadout): void {
   const f = fight;
   if (!f) return;
+  const t = performance.now() - f.goAt;
+  const c = f.comp;
+  if (c) {
+    const have = carried(f.me);
+    const cost = priceOf(have, kit);
+    const shop = shopOf(f, c);
+    if (!shop.open || cost > shop.money || !f.me.alive) return f.hud.buy(true, have);
+    const armour = f.me.armour;
+    const was = f.me.hand;
+    f.me.equip(kit, t);
+    // The armour you had stays as worn as it was, unless you bought more.
+    if (kit.armour <= have.armour) {
+      f.me.armour = armour;
+      f.me.helmet = have.armour === 2;
+    }
+    if (f.me.hand !== was) drew(f);
+    spend(f, c, cost);
+    f.hud.buy(true, carried(f.me));
+    return;
+  }
   f.kit = lastKit = kit;
   remember('pk-kit', JSON.stringify(kit));
-  const t = performance.now() - f.goAt;
-  if (f.started && (!f.me.alive || t - f.me.spawnAt > BUY_TIME)) return;
+  if (!f.free && f.started && (!f.me.alive || t - f.me.spawnAt > BUY_TIME)) return;
   const was = f.me.hand;
   f.me.equip(kit, t);
   if (f.me.hand !== was) drew(f);
 }
 
+// A defuse kit, a Counter-Terrorist's, in a match.
+function buyKit(f: FightCtx): void {
+  const c = f.comp;
+  if (!c || c.kit || c.side !== 'CT') return;
+  const shop = shopOf(f, c);
+  if (!shop.open || shop.money < COMP.kit) return;
+  c.kit = true;
+  spend(f, c, COMP.kit);
+  f.hud.setShop(shopOf(f, c));
+  f.hud.buy(true, carried(f.me));
+}
+
+// Money spent in a match: told to the host, and off what the screen shows till it's counted.
+function spend(f: FightCtx, c: CompCtx, cost: number): void {
+  if (cost <= 0) return;
+  c.seq++;
+  c.spent.push({ seq: c.seq, cost });
+  room?.sendComp({ k: 'buy', seq: c.seq, cost });
+  fightSfx.draw('knife');
+  f.hud.setShop(shopOf(f, c));
+}
+
+// Your money in a match: the host's word, less what you've spent since.
+function moneyOf(c: CompCtx): number {
+  const me = room?.you ?? '';
+  const acked = c.s.ack[me] ?? 0;
+  return Math.max(0, (c.s.money[me] ?? 0) - c.spent.filter((x) => x.seq > acked).reduce((n, x) => n + x.cost, 0));
+}
+
+// How long a match's phase has left, ms, by the host's word and the time since.
+const phaseLeft = (c: CompCtx, now = performance.now()) => Math.max(0, c.s.left - (now - c.at));
+
+// The shop in a match: your money, your side, and whether it sells now: in the buy time, alive, in
+// your side's buy zone.
+function shopOf(f: FightCtx, c: CompCtx): Shop {
+  const w = roam?.walk;
+  const now = performance.now();
+  const timeLeft = c.s.buyLeft - (now - c.at);
+  const zone = !!w && inBuyZone(c.s.map, c.side, w.p.x, w.p.z);
+  const open = timeLeft > 0 && f.me.alive && zone && c.s.round === c.round;
+  const why = !f.me.alive ? 'Estás morto: compras na próxima ronda' : timeLeft <= 0 ? 'Acabou o tempo de compra' : !zone ? 'Fora da zona de compra (volta à tua base)' : '';
+  return { money: moneyOf(c), side: c.side, open, why, kit: c.kit };
+}
+
 function toggleBuy(f: FightCtx): void {
-  f.hud.buy(!f.hud.buying, f.kit);
+  if (f.comp) f.hud.setShop(shopOf(f, f.comp));
+  f.hud.buy(!f.hud.buying, f.comp ? carried(f.me) : f.kit);
   render();
   if (!f.hud.buying) mouse.lock();
 }
@@ -1617,25 +1939,30 @@ function fightAction(f: FightCtx, act: string, now: number): void {
   if (act === 'last' && me.select(me.has(me.last) ? me.last : (me.primary ?? me.secondary), t)) drew(f);
   if ((act === 'next' || act === 'prev') && me.cycle(act === 'next' ? 1 : -1, t)) drew(f);
   if (act === 'inspect' && t >= me.drawnAt && !me.reloading) f.inspectAt = now;
+  if (act === 'drop' && f.comp) dropSomething(f, f.comp, t);
 }
 
 // What the right button (on a touch screen, Mira) does with what's in your hand, as its label says.
 const altOf = (me: Soldier): string | null => (me.gun?.scope ? 'Mira' : me.hand === 'knife' ? 'Facada' : isNade(me.hand) ? 'Lançar' : null);
 
-// The trigger this frame, the mouse's and the thumbs': held, pulled since last read (a semi-automatic
-// fires once a pull, and one pull waits for the gun to be ready), and the right button, held and
-// pressed since.
-function trigger(f: FightCtx): { held: boolean; pulls: number; alt: boolean; alts: number } {
+// The trigger this frame, the mouse's (or whatever's bound to fire) and the thumbs': held, and the
+// pulls since last read added to those still kept, as is the right button.
+function trigger(f: FightCtx, now: number): Trig {
   const p = pad.fight(f.started && f.me.alive ? altOf(f.me) : null, f.me.scope > 0);
-  const pulls = Math.min(1, mouse.pulls + p.pulls);
-  const alts = Math.min(1, mouse.alts + p.alts);
-  mouse.pulls = mouse.alts = 0;
-  return { held: mouse.trigger || p.trigger, pulls, alt: mouse.scope, alts };
+  const tr = f.trig;
+  const pulls = keys.take('fire') + p.pulls;
+  const alts = keys.take('alt') + p.alts;
+  if (pulls || alts) tr.at = now;
+  tr.pulls = Math.min(1, tr.pulls + pulls);
+  tr.alts = Math.min(1, tr.alts + alts);
+  tr.held = keys.held('fire') || p.trigger;
+  tr.alt = keys.held('alt');
+  return tr;
 }
 
 // A step of the round at its ms t: your weapon's state, a fall's hurt, and what the buttons do with
 // what's in your hand: a shot, a cut, the scope, a grenade's pin and throw.
-function fightStep(f: FightCtx, w: Walker, trig: { held: boolean; pulls: number; alt: boolean; alts: number }, t: number): void {
+function fightStep(f: FightCtx, w: Walker, trig: Trig, t: number): void {
   const me = f.me;
   me.crouch = w.crouch > 0.5;
   me.step(DT, t);
@@ -1649,12 +1976,17 @@ function fightStep(f: FightCtx, w: Walker, trig: { held: boolean; pulls: number;
     if (v > safe) hurtMe(f, { b: 0, h: 0, l: Math.round((v - safe) * 18) }, 'fall', me.id, null);
     if (v > 4) fightSfx.land(Math.min(1, v / 10));
   }
+  // Frozen at a match's start, or planting or defusing: the trigger's let be.
+  const c = f.comp;
+  if (c && (c.task || (c.s.phase === 'freeze' && c.s.round === c.round))) return;
   const eye = v3(w.p.x, w.p.y + w.eye(), w.p.z);
   const aim = w.dir();
+  // Round the city your shots go through people: nobody's hurt.
+  const them = f.free ? [] : foes();
   if (me.hand === 'knife') {
     if (!trig.pulls && !trig.held && !trig.alts && !trig.alt) return;
     const heavy = (trig.alts > 0 || trig.alt) && !trig.pulls && !trig.held;
-    const ev = stab(me, eye, aim, heavy, t, foes(), seeOn(arena!, block));
+    const ev = stab(me, eye, aim, heavy, t, them, seeNow(block));
     if (!ev) return;
     trig.pulls = trig.alts = 0;
     mine(f, ev, t);
@@ -1667,8 +1999,8 @@ function fightStep(f: FightCtx, w: Walker, trig: { held: boolean; pulls: number;
       f.pin = { at: t, power: trig.pulls && (trig.alts || trig.alt) ? 0.5 : trig.pulls ? 1 : 0 };
       me.throwAt = t;
       fightSfx.nade('pin');
+      trig.pulls = trig.alts = 0;
     }
-    trig.pulls = trig.alts = 0;
     if (!f.pin) return;
     if (trig.held && trig.alt) f.pin.power = 0.5;
     if (trig.held || trig.alt || t < f.pin.at + WINDUP) return;
@@ -1696,13 +2028,21 @@ function fightStep(f: FightCtx, w: Walker, trig: { held: boolean; pulls: number;
     if (me.reload(t)) fightSfx.reload(me.hand, g.reload);
     return;
   }
-  const ev = fire(me, eye, aim, { speed: w.speed(), air: !w.grounded }, t, foes(), seeOn(arena!, block), seed32());
+  const ev = fire(me, eye, aim, { speed: w.speed(), air: !w.grounded }, t, them, seeNow(block), seed32());
   if (!ev) return;
   trig.pulls = 0;
   f.inspectAt = -1e9;
   mine(f, ev, t);
   if (me.mag === 0 && me.reload(t)) fightSfx.reload(me.hand, g.reload);
 }
+
+// How far the world lets a shot go where you are: the round's arena, or round the city the open
+// world's ground; the karts (and whatever else is given) in it.
+function seeNow(blockers: readonly Blocker[] = []): See {
+  if (fight && !fight.free && arena) return seeOn(arena, blockers);
+  return (o, d, max) => sight(world.drive, o, d, max, blockers);
+}
+const groundNow = () => (fight && !fight.free && arena ? arena.ground : world.drive);
 
 // Your shot or cut: drawn, sent, met by the bots, and a mark at the crosshair for each hit.
 function mine(f: FightCtx, ev: ShotEv, t: number): void {
@@ -1715,10 +2055,10 @@ function mine(f: FightCtx, ev: ShotEv, t: number): void {
   }
 }
 
-// A grenade on its way, yours or anyone's: its flight worked out on the round's ground, as every
-// browser works it out, and drawn.
+// A grenade on its way, yours or anyone's: its flight worked out on the ground it's thrown on, as
+// every browser works it out, and drawn.
 function addThrown(f: FightCtx, ev: NadeEv): void {
-  const fl = flyNade(ev, seeOn(arena!));
+  const fl = flyNade(ev, seeNow());
   f.thrown.push({ ev, fl, heard: ev.t, done: false });
   arms?.nades.add(ev, fl);
 }
@@ -1729,7 +2069,8 @@ function addThrown(f: FightCtx, ev: NadeEv): void {
 function goOff(f: FightCtx, n: Thrown, t: number): void {
   const { ev, fl } = n;
   const at = v3(fl.at.x, fl.at.y, fl.at.z);
-  const clearTo = (a: V, b: V) => clear(arena!.ground, a, b);
+  const G = groundNow();
+  const clearTo = (a: V, b: V) => clear(G, a, b);
   const me = f.me;
   const w = roam?.walk;
   const up = f.started && me.alive && !!w;
@@ -1773,14 +2114,7 @@ function goOff(f: FightCtx, n: Thrown, t: number): void {
 // Back at a spawn none of your foes can see, with what you bought, whole and safe for a moment.
 function respawn(f: FightCtx, w: Walker, now: number): void {
   const s = pickSpawn(arena!, foes(), block);
-  w.p = v3(s.x, s.y, s.z);
-  w.v = v3();
-  w.yaw = s.yaw;
-  w.pitch = 0;
-  w.grounded = true;
-  w.crouch = 0;
-  w.landed = 0;
-  if (roam) roam.eye = s.y + EYE;
+  placeAt(w, s);
   f.me.arm(f.kit, now - f.goAt);
   f.pin = null;
   f.blindUntil = 0;
@@ -1792,8 +2126,20 @@ function respawn(f: FightCtx, w: Walker, now: number): void {
   render();
 }
 
-// Once a frame in a round: the start, coming back, the grenades going off and the fires burning, the
-// wheel, and what's on the screen.
+// You, on foot, at a spawn, facing its way, still.
+function placeAt(w: Walker, s: Spawn): void {
+  w.p = v3(s.x, s.y, s.z);
+  w.v = v3();
+  w.yaw = s.yaw;
+  w.pitch = 0;
+  w.grounded = true;
+  w.crouch = 0;
+  w.landed = 0;
+  if (roam) roam.eye = s.y + EYE;
+}
+
+// Once a frame in a round: the start, coming back, the grenades going off and the fires burning, and
+// what's on the screen; in a match, its rounds, the bomb and the shop.
 function fightFrame(f: FightCtx, r: RoamCtx, w: Walker, now: number, dt: number): void {
   const me = f.me;
   const t = now - f.goAt;
@@ -1813,11 +2159,9 @@ function fightFrame(f: FightCtx, r: RoamCtx, w: Walker, now: number, dt: number)
     render();
     mouse.lock();
   }
-  if (f.started && !me.alive && now - f.fell >= RESPAWN) respawn(f, w, now);
-  // The wheel round the weapons.
-  const wheel = mouse.wheel;
-  mouse.wheel = 0;
-  if (wheel && f.started && me.alive && me.cycle(wheel > 0 ? 1 : -1, t)) drew(f);
+  const c = f.comp;
+  if (c) compFrame(f, c, w, now, dt);
+  else if (!f.free && f.started && !me.alive && now - f.fell >= RESPAWN) respawn(f, w, now);
   // A shotgun's shells going in, one by one.
   if (me.gun?.shells && me.mag > f.mags && me.alive) fightSfx.reload(me.hand, 0);
   f.mags = me.mag;
@@ -1832,7 +2176,7 @@ function fightFrame(f: FightCtx, r: RoamCtx, w: Walker, now: number, dt: number)
     goOff(f, n, t);
   }
   f.thrown = f.thrown.filter((n) => !n.done);
-  f.clouds = f.clouds.filter((c) => t - c.t0 < CLOUD.last);
+  f.clouds = f.clouds.filter((cl) => t - cl.t0 < CLOUD.last);
   f.fires = f.fires.filter((b) => t < Math.min(b.out, b.t0 + FIRE.last));
   fightSfx.burning(f.fires.filter((b) => burning(b, t)).map((b) => ({ x: b.x, y: b.y, z: b.z })));
   // Standing in a fire, it burns, a little at a time.
@@ -1864,12 +2208,17 @@ function fightFrame(f: FightCtx, r: RoamCtx, w: Walker, now: number, dt: number)
   const mine2 = board.find((e) => e.id === room?.you);
   const lead = board[0];
   const side = teamOf(room?.you ?? '');
-  const standingText = side !== null || !mine2 ? '' : lead && lead.id !== mine2.id && lead.kills > mine2.kills ? `Tu ${mine2.kills} · 1.º ${lead.name} ${lead.kills}` : `Tu ${mine2.kills} · vais à frente`;
+  const standingText = f.free || side !== null || !mine2 ? '' : lead && lead.id !== mine2.id && lead.kills > mine2.kills ? `Tu ${mine2.kills} · 1.º ${lead.name} ${lead.kills}` : `Tu ${mine2.kills} · vais à frente`;
   const end = Math.max(0, f.endAt - now);
   const wait = Math.max(0, Math.ceil((f.started ? f.fell + RESPAWN - now : -t) / 1000));
   const g = me.gun;
   const spread = spreadOf(me, { speed: w.speed(), air: !w.grounded }, t);
   const kills = (k: number) => board.filter((e) => teamOf(e.id) === k).reduce((s, e) => s + e.kills, 0);
+  const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
+  const cv = c ? compView(f, c, w, now) : null;
+  const clock = c ? compClock(c, now) : f.free ? '' : f.started ? mmss(end) : `Começa em ${left}`;
+  const cross = prefs.crosshair;
+  const gap = cross.dynamic ? cross.gap + (Math.tan(spread) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2) : cross.gap;
   f.hud.set({
     started: f.started,
     alive: me.alive,
@@ -1881,25 +2230,377 @@ function fightFrame(f: FightCtx, r: RoamCtx, w: Walker, now: number, dt: number)
     reserve: me.reserve,
     reloading: me.reloading && g ? clamp(1 - (me.reloadAt - t) / g.reload, 0, 1) : null,
     slots: { primary: me.primary, secondary: me.secondary, nades: me.nades },
-    clock: f.started ? `${Math.floor(end / 60000)}:${String(Math.floor((end % 60000) / 1000)).padStart(2, '0')}` : `Começa em ${left}`,
+    clock,
     standing: standingText,
-    teams: side === null ? null : { a: kills(0), b: kills(1), mine: side as 0 | 1 },
-    cross: { gap: 4 + (Math.tan(spread) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2), show: f.started && me.alive && !me.scope && !(g?.family === 'sniper') },
+    teams: side === null || c ? null : { a: kills(0), b: kills(1), mine: side as 0 | 1 },
+    cross: { gap, show: f.started && me.alive && !me.scope && !(g?.family === 'sniper') },
     scope: me.alive ? me.scope : 0,
     hurt: me.alive ? Math.max(f.hurt, (1 - me.health / 100) * 0.4) : 0.6,
     from: f.from.slice(-4).map((s) => {
       const dx = s.x - w.p.x;
       const dz = s.z - w.p.z;
-      const c = Math.cos(w.yaw);
+      const co = Math.cos(w.yaw);
       const sn = Math.sin(w.yaw);
-      return { angle: Math.atan2(dz * c - dx * sn, dx * c + dz * sn), a: (FROM_FOR - (now - s.at)) / 1000 };
+      return { angle: Math.atan2(dz * co - dx * sn, dx * co + dz * sn), a: (FROM_FOR - (now - s.at)) / 1000 };
     }),
     flash: now < f.blindUntil ? clamp((f.blindUntil - now) / (f.blindFor * 0.5), 0, 1) : 0,
     center: !f.started && left <= 3 ? String(left) : f.center && now < f.center.until ? f.center.text : '',
-    dead: f.started && !me.alive ? { by: nameOf(f.by), w: f.byW, head: f.byHead, wait } : null,
-    buyLeft: !f.started ? Math.ceil(BUY_TIME / 1000) : me.alive ? Math.max(0, Math.ceil((BUY_TIME - (t - me.spawnAt)) / 1000)) : 0,
-    scores: keys.scores || f.scores ? board.map((e) => ({ name: e.bot ? `🤖 ${e.name}` : e.name, color: shade(e.id), kills: e.kills, deaths: e.deaths, hs: e.hs ?? 0, me: e.id === room?.you, team: teamOf(e.id) ?? undefined })) : null,
+    dead: f.started && !me.alive ? { by: nameOf(f.by), w: f.byW, head: f.byHead, wait: c ? -1 : wait } : null,
+    buyLeft: f.free ? 99 : !f.started ? Math.ceil(BUY_TIME / 1000) : c ? Math.max(0, (c.s.buyLeft - (now - c.at)) / 1000) : me.alive ? Math.max(0, Math.ceil((BUY_TIME - (t - me.spawnAt)) / 1000)) : 0,
+    scores: !f.free && (keys.scores || f.scores) ? scoreRows(board, c) : null,
+    comp: cv,
+    free: f.free,
   });
+}
+
+// The scores' rows: in a match each with their side (0 the Counter-Terrorists, 1 the Terrorists),
+// your team-mates' money, and whether they're down.
+function scoreRows(board: Entry[], c: CompCtx | null): ScoreRow[] {
+  const you = room?.you ?? '';
+  return board.map((e) => {
+    const team = teamOf(e.id) ?? undefined;
+    const row: ScoreRow = { name: e.bot ? `🤖 ${e.name}` : e.name, color: shade(e.id), kills: e.kills, deaths: e.deaths, hs: e.hs ?? 0, me: e.id === you, team };
+    if (c && team !== undefined) {
+      row.team = sideOfTeam(c, team) === 'CT' ? 0 : 1;
+      if (mates(e.id, you) || e.id === you) row.money = e.id === you ? moneyOf(c) : (c.s.money[e.id] ?? 0);
+      row.dead = !c.s.alive.includes(e.id);
+    }
+    return row;
+  });
+}
+
+// ---- A competitive match (game/comp.ts), as this browser plays it ----
+
+// The clock in a match: the freeze's seconds, the round's time, the bomb (its timer's not shown, as in
+// Counter-Strike: its beeps say it).
+function compClock(c: CompCtx, now: number): string {
+  const ms = phaseLeft(c, now);
+  const s = c.s;
+  if (s.phase === 'planted') return '💣';
+  if (s.phase === 'end') return 'Fim';
+  if (s.phase === 'over') return '0:00';
+  const sec = Math.ceil(ms / 1000);
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+}
+
+// What the screen shows of the match.
+function compView(f: FightCtx, c: CompCtx, w: Walker, now: number): CompHud {
+  const s = c.s;
+  const you = room?.you ?? '';
+  const rounds = { CT: 0, T: 0 } as Record<Side, number>;
+  const alive = { CT: 0, T: 0 } as Record<Side, number>;
+  for (const team of [0, 1]) rounds[sideOfTeam(c, team)] = s.score[team];
+  for (const id of s.alive) {
+    const t = teamOf(id);
+    if (t !== null) alive[sideOfTeam(c, t)]++;
+  }
+  const buyLeft = Math.ceil((s.buyLeft - (now - c.at)) / 1000);
+  const note =
+    s.phase === 'freeze'
+      ? `Ronda ${s.round} de ${s.half * 2} · compra: ${keyName(keysOf(prefs.binds, 'fight', 'buy')[0] ?? '')}`
+      : s.phase === 'planted'
+        ? `Bomba plantada em ${s.bomb.site}`
+        : s.phase === 'over' && s.round === s.half
+          ? 'Intervalo: trocam de lado'
+          : s.phase === 'end'
+            ? ''
+            : buyLeft > 0
+              ? `Ronda ${s.round} · compra ainda ${buyLeft} s`
+              : `Ronda ${s.round} de ${s.half * 2}`;
+  const task = c.task ? { text: c.task.kind === 'plant' ? 'A plantar a bomba…' : c.kit ? 'A desativar a bomba (com kit)…' : 'A desativar a bomba…', k: (now - c.task.from) / c.task.dur } : null;
+  // What you could do here, said under the crosshair: plant, defuse, pick something up.
+  const hint = !c.task && f.me.alive ? useHint(c, w) : null;
+  return { rounds, alive, mine: c.side, round: s.round, total: s.half * 2, money: moneyOf(c), bomb: s.bomb.at === 'carried' && s.bomb.by === you ? 'mine' : s.bomb.at === 'planted' ? 'planted' : null, task: task ?? (hint ? { text: hint, k: 0 } : null), note, kit: c.kit };
+}
+
+// What the use key does where you stand, if anything.
+function useHint(c: CompCtx, w: Walker): string | null {
+  const s = c.s;
+  const you = room?.you ?? '';
+  const k = keyName(keysOf(prefs.binds, 'fight', 'use')[0] ?? '');
+  if (s.phase === 'live' && s.bomb.at === 'carried' && s.bomb.by === you && siteAt(s.map, w.p.x, w.p.y, w.p.z)) return `Mantém ${k} para plantar a bomba`;
+  if (s.phase === 'planted' && c.side === 'CT' && Math.hypot(s.bomb.x - w.p.x, s.bomb.z - w.p.z) < COMP.reach && Math.abs(s.bomb.y - w.p.y) < 1.5) return `Mantém ${k} para desativar`;
+  const d = nearDrop(c, w);
+  if (d && d.w !== 'c4') return `${k}: trocar por ${GUNS[d.w].name}`;
+  return null;
+}
+
+// The gun on the ground nearest your feet, within reach.
+function nearDrop(c: CompCtx, w: Walker): CompState['drops'][number] | null {
+  let best: CompState['drops'][number] | null = null;
+  let bd = 1.4;
+  for (const d of c.s.drops) {
+    const dd = Math.hypot(d.x - w.p.x, d.z - w.p.z);
+    if (dd < bd && Math.abs(d.y - w.p.y) < 1.5) {
+      bd = dd;
+      best = d;
+    }
+  }
+  return best;
+}
+
+// The host's word on the match: a new round begun here, the guns you were given, the bomb gone off,
+// the round's result shown.
+function onComp(s: CompState): void {
+  const f = fight;
+  const c = matchOn();
+  if (!f || !c) return;
+  const now = performance.now();
+  const was = c.s;
+  c.s = s;
+  c.at = now;
+  const acked = s.ack[room?.you ?? ''] ?? 0;
+  c.spent = c.spent.filter((x) => x.seq > acked);
+  if (s.round !== c.round && s.round > 0) beginRound(f, c, now);
+  // What you picked up.
+  const you = room?.you ?? '';
+  for (const e of s.took) {
+    const key = `${s.round}:${e.d}`;
+    if (e.by !== you || c.taken.has(key)) continue;
+    c.taken.add(key);
+    if (e.w !== 'c4') giveGun(f, e.w, e.mag, e.reserve);
+    else if (f.me.alive) f.center = { text: 'Apanhaste a bomba', until: now + 1400 };
+  }
+  // The bomb planted, gone off, defused.
+  if (s.bomb.at === 'planted' && was.bomb.at !== 'planted') {
+    f.center = { text: `A bomba foi plantada em ${s.bomb.site}`, until: now + 2200 };
+    c.beepAt = now;
+  }
+  if (s.bomb.at === 'exploded' && !c.boomed) {
+    c.boomed = true;
+    bombBlast(f, c, s.bomb, now);
+  }
+  // A round won: who, and how.
+  const shown = s.last ? `${s.round}:${s.last.win}:${s.last.why}:${s.phase}` : '';
+  if (s.phase === 'over' && s.last && shown !== c.shown) {
+    c.shown = shown;
+    const win = sideOfTeam(c, s.last.win);
+    const how = { elim: 'Todos eliminados', bomb: 'A bomba explodiu', defuse: 'A bomba foi desativada', time: 'Acabou o tempo' }[s.last.why];
+    f.center = { text: `Ganham os ${SIDES[win].name} · ${how}${s.round === s.half ? ' · Intervalo: trocam de lado' : ''}`, until: now + COMP.after };
+    if (win === c.side) lapSound(true);
+    else beep(false);
+    c.task = null;
+  }
+  if (s.phase === 'end' && was.phase !== 'end' && s.winner !== null) {
+    const mine = teamOf(you);
+    f.center = { text: s.winner === -1 ? `Empate, ${s.score[0]} a ${s.score[1]}` : s.winner === mine ? 'Vitória! Ganharam a partida' : 'Derrota: perderam a partida', until: now + 6000 };
+    lastMatch = { score: [...s.score], winner: s.winner, half: s.half };
+  }
+  f.hud.setShop(shopOf(f, c));
+}
+
+// A new round here: your side, back at your spawn, whole; what you had if you lived (the guns full),
+// else your side's pistol; the grenades and fires gone, frozen till the freeze is over.
+function beginRound(f: FightCtx, c: CompCtx, now: number): void {
+  const s = c.s;
+  const w = roam?.walk;
+  const you = room?.you ?? '';
+  const team = teamOf(you) ?? f.me.team;
+  const was = c.side;
+  c.round = s.round;
+  c.side = sideOf(team, s.round, s.half);
+  c.task = null;
+  c.boomed = false;
+  c.asked.clear();
+  c.spectate = null;
+  const fresh = s.round === 1 || s.round === s.half + 1;
+  const lived = f.me.alive && was === c.side && !fresh;
+  const kit = lived ? carried(f.me) : startKit(c.side);
+  if (!lived) c.kit = false;
+  const spawns = c.side === 'T' ? s.map.t : s.map.ct;
+  const k = s.spawns[you] ?? 0;
+  if (w && spawns.length) placeAt(w, spawns[k % spawns.length]);
+  const armour = f.me.armour;
+  f.me.arm(kit, now - f.goAt);
+  // Armour you lived with is as worn as you left it.
+  if (lived) f.me.armour = armour;
+  f.me.safeUntil = 0;
+  f.me.team = team;
+  f.started = true;
+  f.pin = null;
+  f.blindUntil = 0;
+  f.burn = 0;
+  f.thrown = [];
+  f.clouds = [];
+  f.fires = [];
+  f.from = [];
+  f.mags = f.me.mag;
+  arms?.nades.clear();
+  arms?.shots.clear();
+  pad.unscope();
+  fightSfx.calm();
+  fightSfx.draw(f.me.hand);
+  const msg = fresh ? (s.round === 1 ? `Ronda de pistolas · és ${SIDES[c.side].name}` : `Segunda parte · agora és ${SIDES[c.side].name}`) : s.score[0] === s.half || s.score[1] === s.half ? `Ronda ${s.round} · ponto de partida` : `Ronda ${s.round}`;
+  f.center = { text: msg, until: now + 2500 };
+  beep(true);
+  if (f.hud.buying) f.hud.buy(true, carried(f.me));
+  // Come in with the round under way: you watch till the next.
+  if (!s.alive.includes(you) && s.phase !== 'freeze') {
+    f.me.alive = false;
+    f.fell = now - 3000;
+  }
+  render();
+}
+
+// A gun picked up: into its slot, as loaded as it was, in your hand.
+function giveGun(f: FightCtx, g: GunId, mag: number, reserve: number): void {
+  const me = f.me;
+  if (!me.alive) return;
+  const t = performance.now() - f.goAt;
+  if (GUNS[g].slot === 'primary') {
+    if (me.primary && me.primary !== g) me.rounds.delete(me.primary);
+    me.primary = g;
+  } else {
+    if (me.secondary !== g) me.rounds.delete(me.secondary);
+    me.secondary = g;
+  }
+  me.rounds.set(g, { mag, reserve });
+  me.hand = 'knife';
+  me.select(g, t);
+  drew(f);
+}
+
+// The drop key: the gun in your hand thrown down in front of you (a primary; a pistol stays), or the
+// bomb if you carry it and hold no gun to drop.
+function dropSomething(f: FightCtx, c: CompCtx, t: number): void {
+  const me = f.me;
+  const w = roam?.walk;
+  if (!w || !me.alive) return;
+  const ahead = { x: w.p.x + Math.cos(w.yaw) * 1.1, y: w.p.y, z: w.p.z + Math.sin(w.yaw) * 1.1 };
+  const fl = groundNow().floor(ahead.x, ahead.z, w.p.y + 0.6);
+  const at = { x: ahead.x, y: fl.buried ? w.p.y : fl.y, z: ahead.z };
+  if (me.hand === me.primary && me.primary) {
+    const g = me.primary;
+    const r = me.rounds.get(g) ?? { mag: 0, reserve: 0 };
+    room?.sendComp({ k: 'drop', w: g, ...at, mag: r.mag, reserve: r.reserve });
+    me.rounds.delete(g);
+    me.primary = null;
+    me.select(me.secondary, t);
+    drew(f);
+    // Not picked up again the moment it's down.
+    c.asked.set('*', performance.now() + 1500);
+  } else if (c.s.bomb.at === 'carried' && c.s.bomb.by === room?.you) {
+    room?.sendComp({ k: 'drop', w: 'c4', ...at, mag: 0, reserve: 0 });
+    c.asked.set('c4', performance.now() + 2500);
+  }
+}
+
+// The bomb gone off: its blast seen and heard, and what it does to you, the nearer the worse; if you
+// host, to the bots too.
+function bombBlast(f: FightCtx, c: CompCtx, b: CompState['bomb'], now: number): void {
+  const at = v3(b.x, b.y + 0.3, b.z);
+  arms?.nades.boom('he', at);
+  arms?.nades.boom('he', v3(b.x + 1.5, b.y + 1.5, b.z));
+  arms?.nades.boom('he', v3(b.x - 1.2, b.y + 2.4, b.z + 1));
+  fightSfx.blast(at);
+  const w = roam?.walk;
+  if (w && roam) roam.shake = Math.max(roam.shake, clamp(1 - Math.hypot(w.p.x - at.x, w.p.z - at.z) / 60, 0.2, 1));
+  if (w && f.me.alive) {
+    const n = blastAt(Math.hypot(w.p.x - b.x, w.p.y - b.y, w.p.z - b.z));
+    if (n > 0) hurtMe(f, { b: n, h: 0, l: 0 }, 'c4', f.me.id, at);
+  }
+  const t = now - f.goAt;
+  for (const bot of f.squad?.bots ?? []) {
+    if (!bot.s.alive) continue;
+    const p = bot.w.p;
+    const n = blastAt(Math.hypot(p.x - b.x, p.y - b.y, p.z - b.z));
+    if (n <= 0 || !bot.s.hurt({ b: n, h: 0, l: 0 }, 'c4', t).down) continue;
+    const d: DownEv = { k: 'down', id: `${bot.id}:c4${c.s.round}`, victim: bot.id, by: bot.id, w: 'c4', head: false, x: p.x, y: p.y, z: p.z };
+    room?.sendEv(d);
+    downFx(d);
+  }
+}
+
+// Once a frame in a match: frozen through the freeze; planting, defusing and picking up as you hold
+// the use key or walk over a gun; the bomb's beeps; and if you host, the match itself and its bots.
+function compFrame(f: FightCtx, c: CompCtx, w: Walker, now: number, dt: number): void {
+  const s = c.s;
+  const me = f.me;
+  const you = room?.you ?? '';
+  const t = now - f.goAt;
+  if (c.match) hostMatch(f, c, now);
+  // The shop's state, while the menu's up.
+  if (f.hud.buying) f.hud.setShop(shopOf(f, c));
+  // Planting and defusing: held, standing; let go, or moved, and it's lost.
+  const use = keys.held('use') || pad.using;
+  const live = s.round === c.round && me.alive;
+  if (c.task) {
+    const done = now - c.task.from >= c.task.dur;
+    const still = use && live && (c.task.kind === 'plant' ? s.phase === 'live' : s.phase === 'planted');
+    if (!still) c.task = null;
+    else if (done) {
+      if (c.task.kind === 'plant') room?.sendComp({ k: 'plant', x: w.p.x, y: w.p.y, z: w.p.z });
+      else room?.sendComp({ k: 'defuse' });
+      c.task = null;
+    } else if (Math.floor((now - c.task.from) / 260) !== Math.floor((now - c.task.from - dt * 1000) / 260)) fightSfx.keypad(c.task.kind === 'plant' ? undefined : s.bomb);
+  } else if (use && live && w.grounded) {
+    if (s.phase === 'live' && s.bomb.at === 'carried' && s.bomb.by === you && siteAt(s.map, w.p.x, w.p.y, w.p.z)) c.task = { kind: 'plant', from: now, dur: COMP.plant };
+    else if (s.phase === 'planted' && c.side === 'CT' && Math.hypot(s.bomb.x - w.p.x, s.bomb.z - w.p.z) < COMP.reach && Math.abs(s.bomb.y - w.p.y) < 1.5) c.task = { kind: 'defuse', from: now, dur: c.kit ? COMP.kitDefuse : COMP.defuse };
+    else if (keys.take('use') || pad.used()) {
+      const d = nearDrop(c, w);
+      if (d && d.w !== 'c4') askFor(c, d.id, GUNS[d.w].slot === 'primary' ? me.primary : me.secondary, me);
+    }
+  }
+  keys.take('use');
+  // Walking over the bomb (a Terrorist) or a gun whose slot is empty: picked up.
+  if (live && !c.task && now > (c.asked.get('*') ?? 0)) {
+    if (c.side === 'T' && s.bomb.at === 'dropped' && Math.hypot(s.bomb.x - w.p.x, s.bomb.z - w.p.z) < 1.2 && Math.abs(s.bomb.y - w.p.y) < 1.6 && now > (c.asked.get('c4') ?? 0)) {
+      c.asked.set('c4', now + 1200);
+      room?.sendComp({ k: 'take', id: 'c4' });
+    }
+    const d = nearDrop(c, w);
+    if (d && d.w !== 'c4' && Math.hypot(d.x - w.p.x, d.z - w.p.z) < 1 && (GUNS[d.w].slot === 'primary' ? !me.primary : false)) askFor(c, d.id, null, me);
+  }
+  // The planted bomb's beeps, faster as its time runs out.
+  if (s.phase === 'planted' && s.bomb.at === 'planted') {
+    const left = phaseLeft(c, now);
+    const every = clamp(left / 40, 120, 1000);
+    if (now - c.beepAt >= every) {
+      c.beepAt = now;
+      fightSfx.bomb(s.bomb, 1 - left / COMP.bomb);
+    }
+  }
+  arms?.comp.update(s, phaseLeft(c, now), now);
+  // Down, after a moment you watch a team-mate who's up (a click for the next).
+  if (!me.alive && now - f.fell > 3000) {
+    const up = s.alive.filter((id) => id !== you && mates(id, you) && standing.has(id));
+    if (keys.take('fire') && up.length) c.spectate = up[(up.indexOf(c.spectate ?? '') + 1) % up.length];
+    if (!c.spectate || !up.includes(c.spectate)) c.spectate = up[0] ?? null;
+  } else c.spectate = null;
+  void t;
+}
+
+// A gun on the ground asked for (and what's given for it, a gun of the same slot), once in a while.
+// Yours, and the one given down in its place, when the host says so (giveGun); till then you keep it.
+function askFor(c: CompCtx, id: string, give: GunId | null, me: Soldier): void {
+  const now = performance.now();
+  if (now < (c.asked.get(id) ?? 0)) return;
+  c.asked.set(id, now + 1200);
+  const r = give ? me.rounds.get(give) : null;
+  room?.sendComp({ k: 'take', id, give: give && r ? { w: give, mag: r.mag, reserve: r.reserve } : undefined });
+}
+
+// If you host, once a frame: the match a step on, what happened in it done here (the bots back at their
+// spawns with what they buy, the bomb's blast, the end), and its state sent when it changed (or every
+// second, for the clocks).
+function hostMatch(f: FightCtx, c: CompCtx, now: number): void {
+  const m = c.match!;
+  // Who's in it, as the room has it.
+  const ids = new Set(room?.lobby.members.map((x) => x.id) ?? []);
+  for (const id of m.ids()) if (!ids.has(id)) m.leave(id, now);
+  for (const mb of room?.lobby.members ?? []) if (mb.team !== undefined && m.side(mb.id) === null) m.join({ id: mb.id, team: mb.team });
+  m.step(now);
+  for (const ev of m.events()) {
+    if (ev.k === 'round') c.bots?.round(ev.fresh, now, now - f.goAt);
+    if (ev.k === 'end') setTimeout(() => room?.isHost && (room as HostRoom).endNow(), 6000);
+  }
+  if (m.dirty || now - c.sentAt > 1000) {
+    m.dirty = false;
+    c.sentAt = now;
+    const s = m.state(now);
+    (room as HostRoom | null)?.broadcastComp(s);
+    onComp(s);
+  }
 }
 
 // How long the arc that says where a shot came from stays (ms), fading over its last second.
@@ -1912,7 +2613,7 @@ const FROM_FOR = 2500;
 // you streaks past a metre short of your eye. A knife's cut: its swish, and what it struck.
 const DUST: Record<string, string[]> = { ground: ['#b8ad99', '#8d8577'], building: ['#ddd6ca', '#b9b1a4'], roof: ['#a8553f', '#8c8c8c'], wall: ['#cfc8bb', '#9f998d'], hedge: ['#5c7a37', '#3f5a26'], tree: ['#6b5641', '#4d3d2c'], kart: ['#ffe14d', '#ffffff'], plastic: ['#e8e2d4', '#c0392b'], sand: ['#c9b48a', '#a8956c'], metal: ['#9aa0a6', '#ffffff'], wood: ['#b08455', '#7a5a38'], concrete: ['#c9c5bc', '#9b978e'], car: ['#c9d2d8', '#ffffff'] };
 function shotFx(ev: ShotEv, mine: boolean): void {
-  if (!arms || !arena) return;
+  if (!arms) return;
   const knife = ev.w === 'knife';
   const quiet = isGun(ev.w) && GUNS[ev.w].silenced;
   const from = new THREE.Vector3();
@@ -1946,7 +2647,7 @@ function shotFx(ev: ShotEv, mine: boolean): void {
     if (s && h.v !== you) standing.get(h.v)?.fig?.hit(s.d, hitTotal(h) / 40);
   }
   const traced = Math.min(2, hits.length);
-  landed(ev, seeOn(arena, block)).forEach((s, i) => {
+  landed(ev, seeNow(block)).forEach((s, i) => {
     if (i + traced < 3 && !knife && !quiet) arms!.shots.tracer(from, s);
     if (!s.what) return;
     arms!.shots.mark(s, { x: s.nx, y: s.ny, z: s.nz });
@@ -1963,14 +2664,15 @@ function shotFx(ev: ShotEv, mine: boolean): void {
 }
 
 // Something from someone else in the round: a shot (and it hit you, by the shooter's say), a grenade
-// thrown, or someone put down.
+// thrown, or someone put down. Round the city, a shot or a grenade only seen and heard.
 function onFightEv(ev: FightEv): void {
   const f = fight;
   if (!f) return;
-  if (ev.k === 'down') return downFx(ev);
+  if (ev.k === 'down') return f.free ? undefined : downFx(ev);
   if (ev.owner === room?.you) return;
   if (ev.k === 'nade') return addThrown(f, ev);
   shotFx(ev, false);
+  if (f.free) return;
   for (const h of ev.hits) if (h.v === f.me.id) hurtMe(f, h, ev.w, ev.owner, { x: ev.x, z: ev.z });
   botsShot(f, ev, performance.now() - f.goAt);
 }
@@ -1980,6 +2682,7 @@ function onFightEv(ev: FightEv): void {
 // everyone, as yours does, and what it hit is decided here, as yours is in your browser.
 function stepBots(f: FightCtx, w: Walker, t: number): void {
   const squad = f.squad!;
+  f.comp?.bots?.step(t, performance.now());
   const players: Mark[] = [...standing.entries()].filter(([id, a]) => a.fighting && !a.downAt && !squad.bots.some((b) => b.id === id)).map(([id, a]) => ({ id, x: a.x, y: a.y, z: a.z, spd: a.spd, yaw: a.yaw, c: a.c, team: teamOf(id) ?? undefined }));
   if (f.me.alive && f.started) players.push({ id: f.me.id, x: w.p.x, y: w.p.y, z: w.p.z, spd: w.speed(), yaw: w.yaw, c: w.crouch, team: teamOf(f.me.id) ?? undefined });
   for (const ev of squad.step(DT, t, players, block, { clouds: f.clouds, fires: f.fires })) {
@@ -1996,9 +2699,15 @@ function stepBots(f: FightCtx, w: Walker, t: number): void {
 }
 
 // A shot, anyone's, as the host's bots meet it: heard, and those it hit hurt; one put down, everyone
-// told, as a player's browser tells them.
+// told, as a player's browser tells them. In a match, with the gun it drops.
 function botsShot(f: FightCtx, ev: ShotEv, t: number): void {
   for (const d of f.squad?.shot(ev, t) ?? []) {
+    if (f.comp) {
+      const b = f.squad!.bots.find((x) => x.id === d.victim);
+      const g = b?.s.primary ?? null;
+      const r = g ? b!.s.rounds.get(g) : null;
+      if (g && r) d.drop = { w: g, mag: r.mag, reserve: r.reserve };
+    }
     room?.sendEv(d);
     downFx(d);
   }
@@ -2011,10 +2720,14 @@ function botSnap(b: FootBot, fl: number): Snap {
 }
 
 // Hurt by a hit (each part's damage before your armour), with a weapon, by someone, from somewhere
-// (or nowhere to point at: a fall, a fire): the red, the arc, the flinch; and down, everyone told.
+// (or nowhere to point at: a fall, a fire): the red, the arc, the flinch; and down, everyone told (in a
+// match, with the gun you drop). Round the city nothing hurts.
 function hurtMe(f: FightCtx, h: Pick<Hit, 'b' | 'h' | 'l'>, w: Cause, by: string, from: { x: number; z: number } | null): void {
+  if (f.free) return;
   const me = f.me;
   const now = performance.now();
+  const g = me.primary ?? null;
+  const rounds = g ? me.rounds.get(g) : null;
   const { lost, down } = me.hurt(h, w, now - f.goAt);
   if (!lost) return;
   f.hurt = Math.min(1, f.hurt + 0.3 + lost / 100);
@@ -2024,28 +2737,31 @@ function hurtMe(f: FightCtx, h: Pick<Hit, 'b' | 'h' | 'l'>, w: Cause, by: string
   if (!down) return;
   const p = roam?.walk?.p ?? v3();
   const d: DownEv = { k: 'down', id: `${me.id}:d${++f.downs}`, victim: me.id, by, w, head: h.h > 0, x: p.x, y: p.y, z: p.z };
+  if (f.comp && g && rounds) d.drop = { w: g, mag: rounds.mag, reserve: rounds.reserve };
   f.fell = now;
   f.by = by;
   f.byW = w;
   f.byHead = d.head;
   f.pin = null;
+  if (f.comp) f.comp.task = null;
   pad.unscope();
   room?.sendEv(d);
   downFx(d);
   render();
 }
 
-// Someone down: in the kill feed, and for whoever did it, the word.
+// Someone down: in the kill feed, and for whoever did it, the word; in a match, the host's Match told.
 function downFx(ev: DownEv): void {
   const f = fight;
   if (!f) return;
   const me = room?.you;
   const self = ev.by === ev.victim;
+  f.comp?.match?.down(ev, performance.now());
   f.hud.kill({ by: self ? '' : nameOf(ev.by), byColor: shade(ev.by), victim: nameOf(ev.victim), victimColor: shade(ev.victim), w: ev.w, head: ev.head, mine: ev.by === me || ev.victim === me });
   if (ev.by === me && !self) {
     fightSfx.down();
     f.hud.hit(ev.head, true);
-    f.center = { text: `Eliminaste ${nameOf(ev.victim)}${ev.head ? ' com um tiro na cabeça' : ''}`, until: performance.now() + 1600 };
+    f.center = { text: `Eliminaste ${nameOf(ev.victim)}${ev.head ? ' com um tiro na cabeça' : ''}${f.comp ? ` · +${killReward(ev.w)} €` : ''}`, until: performance.now() + 1600 };
   }
 }
 
@@ -2058,11 +2774,11 @@ function zoomOf(f: FightCtx | null): number {
 // What your hands hold when there's nothing to show.
 const IDLE: HandState = { hand: null, draw: 1, reload: null, speed: 0, grounded: true, crouch: 0, scope: 0, punch: { x: 0, y: 0 }, pin: false, inspect: false, walk: false };
 
-// Your weapon in your hands this frame, as the round has it.
+// Your weapon in your hands this frame, as the round has it; planting or defusing, none.
 function hands(f: FightCtx, w: Walker, now: number): HandState {
   const me = f.me;
   const t = now - f.goAt;
-  if (!f.started || !me.alive) return IDLE;
+  if (!f.started || !me.alive || f.comp?.task) return IDLE;
   const g = me.gun;
   return {
     hand: me.hand,
@@ -2445,7 +3161,7 @@ function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local
   for (const [id, snaps] of room ? room.cars : []) {
     if (local(id)) continue;
     const m = room!.lobby.members.find((x) => x.id === id);
-    if (!m || snaps.length === 0 || (roaming && m.bot && !fight)) continue;
+    if (!m || snaps.length === 0 || (roaming && m.bot && !inRound())) continue;
     seen.add(id);
     let i = snaps.length - 1;
     while (i > 0 && snaps[i - 1].at > at) i--;
@@ -2480,7 +3196,7 @@ function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local
       // In a round: as a fighter, the weapon in their hands, crouched or not, down, falling and
       // fading; out of one, the driver they picked, walking. Their footsteps when they run (walking,
       // as crouched, is quiet, as in Counter-Strike).
-      const fl = fight ? fighterOf(b.fl) : null;
+      const fl = fighterOf(b.fl);
       const armed = !!fl?.armed;
       if (!k.walker) {
         k.walker = buildWalker(driverById(m.driver));
@@ -2493,9 +3209,9 @@ function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local
       }
       if (k.fighter) k.fighter.group.visible = armed;
       let s = standing.get(id);
-      if (!s) standing.set(id, (s = { x, y, z, yaw, spd: 0, c: 0, fighting: false, downAt: 0, stride: 0, fig: null }));
+      if (!s) standing.set(id, (s = { x, y, z, yaw, pitch: 0, spd: 0, c: 0, fighting: false, downAt: 0, stride: 0, fig: null }));
       s.c = clamp(s.c + (fl?.crouch ? dt : -dt) / 0.16, 0, 1);
-      Object.assign(s, { x, y, z, yaw, spd: b.spd, fighting: armed, fig: armed ? k.fighter : null });
+      Object.assign(s, { x, y, z, yaw, pitch: L(a.pi, b.pi), spd: b.spd, fighting: armed, fig: armed ? k.fighter : null });
       s.downAt = armed && fl!.down ? s.downAt || now : 0;
       const since = s.downAt ? now - s.downAt : 0;
       if (armed) {
@@ -2534,7 +3250,7 @@ function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local
       over.add(k.tag);
       k.tag.position.y = foot ? 2.2 : 3.4;
     }
-    if (k.tag) k.tag.visible = !fight || mates(id, room!.you);
+    if (k.tag) k.tag.visible = !inRound() || mates(id, room!.you);
   }
   for (const [id, k] of karts) {
     if (local(id) || seen.has(id)) continue;
@@ -2732,13 +3448,14 @@ function chase(r: Driving, dt: number): void {
   camPos.lerp(want, 1 - Math.exp(-dt * (close ? 14 : 8)));
   camLook.set(c.p.x, c.p.y + 1.3, c.p.z).addScaledVector(f, 5);
   camera.position.copy(camPos);
+  if (!prefs.shake) r.shake = 0;
   if (r.shake > 0.01) {
     const s = r.shake * 0.35;
     camera.position.add(new THREE.Vector3((Math.random() - 0.5) * s, (Math.random() - 0.5) * s, (Math.random() - 0.5) * s));
     r.shake *= Math.exp(-dt * 6);
   }
   camera.lookAt(camLook);
-  widen(66 + Math.min(20, spd * 0.32) + (c.boost > 0 ? 6 : 0) + r.me.slip * 4, dt);
+  widen(66 + prefs.driveFov + Math.min(20, spd * 0.32) + (c.boost > 0 ? 6 : 0) + r.me.slip * 4, dt);
 }
 
 // With the menu open: the camera turns slowly round your kart, which stands on the right of the
@@ -2779,6 +3496,17 @@ function walkCam(r: RoamCtx, w: Walker, dt: number): void {
   }
   const f = fight;
   const down = !!f && f.started && !f.me.alive;
+  // Down in a match, watching a team-mate: from their eyes, the way they look.
+  const spec = f?.comp?.spectate ? standing.get(f.comp.spectate) : null;
+  if (spec) {
+    const ey = spec.y + EYE - spec.c * 0.45;
+    const cp = Math.cos(spec.pitch);
+    camera.position.set(spec.x, ey, spec.z);
+    camera.lookAt(spec.x + Math.cos(spec.yaw) * cp, ey + Math.sin(spec.pitch), spec.z + Math.sin(spec.yaw) * cp);
+    camPos.copy(camera.position);
+    widen(prefs.fov, dt, 18);
+    return;
+  }
   const want = w.p.y + (down ? 0.35 : w.eye());
   // Crouching, it goes down with you at once; up a kerb or a tread, it eases.
   const ducking = f && Math.abs(want - r.eye) < 0.6 && w.grounded && w.crouch > 0 && w.crouch < 1;
@@ -2803,13 +3531,14 @@ function walkCam(r: RoamCtx, w: Walker, dt: number): void {
     }
     camera.rotateZ(0.7 * Math.min(1, since / 500) * (k && since > 900 ? 1 - Math.min(1, (since - 900) / 600) * 0.8 : 1));
   }
+  if (!prefs.shake) r.shake = 0;
   if (r.shake > 0.01) {
     camera.rotateX((Math.random() - 0.5) * r.shake * 0.04);
     r.shake *= Math.exp(-dt * 8);
   }
   camPos.copy(camera.position);
   const zoom = zoomOf(f);
-  widen(72 / zoom, dt, f ? 18 : 4);
+  widen(prefs.fov / zoom, dt, f ? 18 : 4);
 }
 
 // How much of a spray's kick the view shows: the bullets go further, so the crosshair isn't where they
@@ -2847,7 +3576,7 @@ let last = performance.now();
 // If the game runs slowly, step the graphics down a level (as far as Low), and say so.
 const slow = { frames: 0, time: 0 };
 function watchSpeed(dt: number): void {
-  if ((!race && !roam) || quality === 'low' || AUTODRIVE) return;
+  if ((!race && !roam) || quality === 'low' || AUTODRIVE || !prefs.autoQuality) return;
   slow.frames++;
   slow.time += dt;
   if (slow.time < 6) return;
@@ -2868,6 +3597,7 @@ function frame(now: number): void {
   const t = now / 1000;
   world.update(t);
   watchSpeed(dt);
+  keys.mode = inputMode();
 
   if (race) {
     stepRace(race, now, dt);
@@ -2884,6 +3614,9 @@ function frame(now: number): void {
     const r = roam;
     stepRoam(r, now, dt);
     if (r.walk) walkCam(r, r.walk, dt);
+    else if (r.fly) flyCam(r.fly, dt);
+    else if (menu || results) orbit(r.me.car, t, dt);
+    else chase(r, dt);
     // Your gun, once the camera's set; the shots' tracers and flashes.
     if (arms) {
       const f = fight;
@@ -2891,9 +3624,6 @@ function frame(now: number): void {
       arms.shots.update(dt);
       arms.nades.update(f ? now - f.goAt : 0, dt, camera);
     }
-    else if (r.fly) flyCam(r.fly, dt);
-    else if (menu || results) orbit(r.me.car, t, dt);
-    else chase(r, dt);
     fitTags(r.karts.values());
     look.follow(r.walk ? r.walk.p : r.fly ? lookedAt(r.fly) : r.me.car.p);
     if (AUTODRIVE) {
@@ -2915,7 +3645,7 @@ function frame(now: number): void {
         members: room?.lobby.members.filter((m) => !m.bot).map((m) => m.name) ?? [],
         others: [...r.cars.values()].map((o) => ({ id: o.id, name: o.name, x: o.x, y: o.y, z: o.z })),
         street: r.street,
-        fight: fight ? { started: fight.started, alive: fight.me.alive, health: fight.me.health, armour: fight.me.armour, hand: fight.me.hand, mag: fight.me.mag, reserve: fight.me.reserve, scope: fight.me.scope, crouch: roam?.walk?.crouch ?? 0, kit: fight.kit, buying: fight.hud.buying, team: teamOf(fight.me.id), kills: room?.board.find((e) => e.id === room?.you)?.kills ?? 0, deaths: room?.board.find((e) => e.id === room?.you)?.deaths ?? 0, foes: foes(), nades: fight.thrown.length, clouds: fight.clouds.length, fires: fight.fires.length, bots: fight.squad?.bots.map((b) => ({ id: b.id, x: b.w.p.x, y: b.w.p.y, z: b.w.p.z, alive: b.s.alive, health: b.s.health, hand: b.s.hand, shots: b.shots, stuck: b.stuck })) ?? null } : null,
+        fight: fight ? { started: fight.started, alive: fight.me.alive, health: fight.me.health, armour: fight.me.armour, hand: fight.me.hand, mag: fight.me.mag, reserve: fight.me.reserve, scope: fight.me.scope, crouch: roam?.walk?.crouch ?? 0, kit: fight.kit, buying: fight.hud.buying, team: teamOf(fight.me.id), kills: room?.board.find((e) => e.id === room?.you)?.kills ?? 0, deaths: room?.board.find((e) => e.id === room?.you)?.deaths ?? 0, foes: foes(), nades: fight.thrown.length, clouds: fight.clouds.length, fires: fight.fires.length, bots: fight.squad?.bots.map((b) => ({ id: b.id, x: b.w.p.x, y: b.w.p.y, z: b.w.p.z, alive: b.s.alive, health: b.s.health, hand: b.s.hand, shots: b.shots, stuck: b.stuck })) ?? null, free: fight.free, shots: fight.me.shots, comp: fight.comp ? { round: fight.comp.s.round, phase: fight.comp.s.phase, side: fight.comp.side, money: moneyOf(fight.comp), score: fight.comp.s.score, bomb: fight.comp.s.bomb, alive: fight.comp.s.alive, sites: fight.comp.s.map.sites, spawns: { t: fight.comp.s.map.t, ct: fight.comp.s.map.ct }, plants: fight.comp.bots?.plants ?? 0, defuses: fight.comp.bots?.defuses ?? 0 } : null } : null,
         calls: renderer.info.render.calls,
         tris: renderer.info.render.triangles,
         audio: { city: cityHeard },
@@ -2927,6 +3657,14 @@ function frame(now: number): void {
   glow.update(dt);
   smoke.update(dt);
   look.render(t);
+  if (prefs.fps) {
+    fpsCount.frames++;
+    if (now - fpsCount.since > 500) {
+      fpsEl.textContent = `${Math.round((fpsCount.frames * 1000) / (now - fpsCount.since))} fps`;
+      fpsCount.frames = 0;
+      fpsCount.since = now;
+    }
+  }
   stats?.frame(quality, race ? 'race' : roam ? (fight ? 'fight' : roam.walk ? 'walk' : 'roam') : null);
   requestAnimationFrame(frame);
 }
@@ -2990,14 +3728,18 @@ if (AUTODRIVE) {
 }
 
 addEventListener('keydown', (e) => {
-  if (e.code === 'KeyM' && !(e.target instanceof HTMLInputElement)) toggleMute();
+  if (keys.capturing || capturing()) return;
+  if (!e.repeat && keys.works(e.code, 'mute') && !(e.target instanceof HTMLInputElement)) {
+    toggleMute();
+    if (page === 'settings' && menu) render();
+  }
   // Esc opens the menu over the world, and closes it (or the results, or goes back from the race's
   // settings).
   // On foot, the Esc that let the pointer go has opened the menu already (mouse.onLost).
   if (e.code === 'Escape' && roam && !race && performance.now() - mouse.lostAt > 500) {
     e.preventDefault();
     if (results) results = null;
-    else if (menu && page === 'race') page = 'main';
+    else if (menu && (page === 'race' || page === 'settings')) page = 'main';
     else if (menu) return closeMenu();
     else menu = true;
     render();

@@ -32,17 +32,22 @@ change things, read [making-changes.md](making-changes.md).
 | `src/game/field.ts` | sim | An arena as a round is played in (`field`): its ground with the edge and its cover, its spawns, the bots' paths, its railings and barriers; `pickSpawn` |
 | `src/world/cover.ts` | sim | A round's cover in an arena (braga-map's decision 060): the cars the LiDAR saw parked there (`loadParked`), and road works' things placed to break its long looks |
 | `src/game/footbot.ts` | sim | The bots on foot (braga-map's task 075): `FootBot`, one bot's senses, plans, aim and trigger, as good as its level (`skillOf`, `SKILLS`); `Squad`, a round's bots as the host runs them (their steps, their coming back, the shots they fire and meet) |
+| `src/game/comp.ts` | sim | The competitive mode, after Counter-Strike 2's: its numbers (`COMP`: the freeze, the buy time, the round, the bomb, the money), each side's guns (`sells`, `startKit`), a buy's price (`priceOf`), a kill's money (`killReward`), an arena's spawns and bomb sites (`compMap`, `siteAt`, `inBuyZone`), the bomb's blast (`blastAt`), the match as the host runs it (`Match`: its rounds and phases, the score, everyone's money, who's up, the bomb, the guns on the ground, its state `CompState` and what a player tells it `CompAct`), and what a bot buys (`botBuy`) |
+| `src/game/matchbots.ts` | sim | `MatchBots`: the host's bots in a match: what each buys at a round's start, where each goes (the Terrorists to the round's site with the bomb, the Counter-Terrorists to the sites), and their planting, defusing and picking the bomb up |
 | `src/world/sight.ts` | sim | Line of sight: how far a ray goes before the world stops it (`sight`, `clear`), for a shot and a look |
 | `src/world/paths.ts` | sim | `Paths`: where someone on foot can walk in an area, points 2 m apart joined where a walker gets from one to the next (several over each other in a tower, and ways joined by hand through doors and up flights); the way between two (A*), the points round one, whether a straight line is walkable. For the bots |
 | `src/world/interiors.ts` | sim | The arenas' buildings' insides (braga-map's task 079), made up: which buildings get a room (`furnish`), its doors and windows where its facade draws them, a tower's floors, stairwell, parapet and hut; what's underfoot in a room (`roomFloor`), what a look meets there (`roomSolid`), the walls it stands (`roomWalls`) |
 | `src/world/storeys.ts` | sim | How a building's walls are laid out: its storeys, its bays, which walls face a street; for the facades and the rooms' openings |
 | `src/session.ts` | browser | Rooms over PeerJS: `HostRoom` and `ClientRoom` |
+| `src/binds.ts` | sim | Every control of each way of playing (`CONTROLS`: driving, flying, on foot, in a round) with its default keys, the keys as changed (`Binds`, `keysOf`, `cleanBinds`), and a key's name on the screen (`keyName`, as the keyboard's layout prints it where the browser says) |
+| `src/prefs.ts` | sim | The settings (`Prefs`), kept in the browser (`pk-settings`): the graphics, the sound's levels, the mouse and the touch screen, the crosshair, what the screen shows, and the keys |
+| `src/settingsScreen.ts` | browser | ⚙️ Definições: its tabs (graphics, sound, mouse and crosshair, screen, controls), and binding a key by pressing it |
 | `src/main.ts` | browser | Free roam, the menu over it, the race and its screens, the loop, the cameras, and the glue between all of it |
 | `src/hud.ts` | browser | What's on the screen while you drive: in a race (`Hud`: place, lap, item slot, clock, minimap, order, feed), round the city (`RoamHud`: speed, the street's name, a minimap round you, feed; on foot, a dot for the speed), and in a round (`FightHud`, after Counter-Strike 2's: health and armour, the ammunition and the weapon slots, the clock and the teams' scores, the crosshair and hit marker, the kill feed, the red edge and the arcs to whoever shot you, the scope, a flash's white, the buy menu and the scoreboard) |
 | `src/stats.ts` | browser | `?stats`: what the game costs on this screen, in a corner, for measuring it on a phone |
 | `src/audio.ts` | browser | Every sound and the mix it goes through (buses, a limiter, places): synthesized with Web Audio, but the city's, recorded (`src/sounds/`) |
 | `src/ambience.ts` | sim | What's round any point of the city on a grid every 10 m (traffic, town, park, woods), each point worked out the first time it's needed, and where the churches, the rivers, the bus stops and the stadium are, from the map, for the city's sound |
-| `src/input.ts` | browser | The keyboard, the mouse (a drag looks round while flying; on foot it looks round with the pointer locked, and in a round its buttons are the trigger and the scope) and the touch screen (its layouts for driving, flying, on foot and in a round): held controls, plus actions counted once per press. While you play, every key but F11 and F12 is the game's (none opens a browser's dialog, menu or page), and the mouse's side and middle buttons, its right button off a link or a field, and Ctrl with the wheel do nothing of the browser's |
+| `src/input.ts` | browser | The keyboard, the mouse (a drag looks round while flying; on foot it looks round with the pointer locked; its buttons and wheel are keys like any other, `Mouse0` to `Mouse4`, `WheelUp` and `WheelDown`) and the touch screen (its layouts for driving, flying, on foot and in a round): the controls of the mode you're in as `binds.ts` binds them (`Keyboard.mode`), held ones read every step (`held`), pressed ones queued (`actions`) and counted (`take`), so a click shorter than a frame is never lost. While you play, every key but F11 and F12 is the game's (none opens a browser's dialog, menu or page), and the mouse's side and middle buttons, its right button off a link or a field, and Ctrl with the wheel do nothing of the browser's |
 | `src/render/` | browser | three.js: the look, the city round the track (`city.ts`, its land on `lattice.ts`, what its ground is from `cover.ts`), every street in the open world's area (`streets.ts`, laid on the ground by `tin.ts`), what the race adds to them (`road.ts`), the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs, trees, karts and drivers, items, particles, skid marks |
 
 The **sim** files never import three.js or touch the DOM, so `node --test` can load them. The
@@ -293,7 +298,8 @@ To the host (`ToHost` in `session.ts`):
 | `pos` | `Snap` | Where my car is; on foot, where I am and where it waits. Clients send at most 15 a second |
 | `lap` | ms | I finished a lap in this time |
 | `fin` | ms | I finished the race at this race time |
-| `ev` | `ItemEv`, `FightEv` | Something I threw or that happened to me; in a round, a shot I fired or my going down |
+| `ev` | `ItemEv`, `FightEv` | Something I threw or that happened to me; in a round, a shot I fired or my going down. A shot or a grenade goes round the city too, out of a round (on foot, armed): seen and heard, hurting nobody |
+| `comp` | `CompAct` | In a match: a buy (its cost, numbered), the bomb planted or defused, a gun or the bomb dropped, one picked up |
 | `honk` | | |
 | `ping` | | Every second. A client silent for 15 s is dropped |
 
@@ -307,6 +313,7 @@ To the clients (`ToClient`):
 | `start` | goIn, endIn, grid | The race starts in `goIn` ms and ends at the latest in `endIn` ms. `grid` gives each id's slot |
 | `end` | `Entry[]` | The results |
 | `ev` | `ItemEv`, `FightEv` | Someone else's event, relayed |
+| `comp` | `CompState` | A match as the host has it, whenever it changes and every second: the round, its phase and the time it has left, the score, everyone's money, who's up, the bomb, the guns on the ground and who took which |
 | `honk` | id | |
 | `bye` | why | You're out: the room is full, or the host has closed it |
 
@@ -561,6 +568,29 @@ waiting kart and the ground stop it; a fence's mesh, a railing's or a gate's bar
 wall, a handrail, the edge and the barriers, and the trees' crowns let it through. A look costs about
 36 µs between two spawns 300 m apart on the desktop, 72 with every test file running at once (`test/fight.test.ts`), so every shot and every
 bot's look can afford one.
+
+**On foot round the city, armed**: out of your kart in free roam you carry what you last bought
+(`startFree`, a `FightCtx` with `free`), the buy menu open whenever you want it and the money
+unlimited, and you move as in a round (`Walker.fighter`). Your shots and grenades go to the others
+(`room.sendEv` relays a `shot` or a `nade` out of a round), and those on foot see and hear them; but
+nobody's hurt: your bullets pass through people (`fire` is given nobody to hit), and nothing hurts you
+(`hurtMe` does nothing). Back in your kart, the guns are put away (`endFight`).
+
+**The competitive mode** (`src/game/comp.ts`, `src/game/matchbots.ts`): Counter-Strike 2's, the
+round's "Modo: Competitivo". The host makes the match as the round starts (`Match`, with the room's
+two teams), runs it in its loop (`hostMatch`: `Match.step`, its events, its state sent as `comp` when
+it changes and every second), and its bots play it (`MatchBots`). Everyone's browser starts each round
+as the host's state says (`beginRound`): your side by your team and the round (`sideOf`: team 1 the
+Terrorists in the first half), your place at your side's spawn, what you had if you lived (the guns
+full) or your side's pistol, frozen through the freeze. You buy with the money the host says you have,
+less what you've spent and it hasn't counted yet (`moneyOf`), in the buy time, alive, in your side's
+buy zone; each buy is sent (`comp` `buy`) and the host takes it off. Planting and defusing are timed
+in your browser, holding the use key, still, and the host takes your word when they're done; a kill's
+money is the host's from the `down` (which in a match carries the gun the victim drops). The bomb's
+blast is worked out in each browser for its own player, and in the host's for its bots, as a grenade's.
+The arena's spawns and sites (`compMap`) come from its bots' paths: each side's spawn at either end of
+its longest way across, the two sites a third of the way from the Counter-Terrorists' end, as far
+apart across it as it lets them (`test/comp.test.ts`: 36 to 58 m apart in the three arenas).
 
 **Race**: 1 to 3 laps from a random starting grid, with positions. Power-ups and catch-up can each
 be turned off in the race's settings.

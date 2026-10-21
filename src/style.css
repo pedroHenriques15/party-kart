@@ -1352,7 +1352,8 @@ body.touch .tc {
   }
 }
 
-/* The deathmatch (braga-map's task 074): over the screen on foot, the crosshair where the dot was. */
+/* The deathmatch (braga-map's task 074), after Counter-Strike 2's screen: over the screen on foot, the
+   crosshair where the dot was. */
 body.fighting #hud .dot {
   display: none !important;
 }
@@ -1362,24 +1363,52 @@ body.fighting #hud .dot {
   inset: 0;
 }
 
-/* Four lines round the middle, as far out as the shots would spread. */
+/* The silhouettes (hud.ts's icon()): as tall as the text, as wide as their shape. */
+.fight .ic {
+  display: inline-block;
+  flex: none;
+  height: 1em;
+  width: calc(1em * var(--w, 1));
+  fill: currentColor;
+  vertical-align: -0.12em;
+  overflow: visible;
+}
+
+.fight kbd {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font: 700 0.85em/1.4 system-ui, sans-serif;
+  text-align: center;
+}
+
+/* Counter-Strike's crosshair: four short lines with a dark edge round the middle, as far out as the
+   next shot could go. */
 .cross {
-  --gap: 8px;
+  --gap: 6px;
+  display: none;
   position: absolute;
   left: 50%;
   top: 50%;
 }
 
+.cross.on {
+  display: block;
+}
+
 .cross i {
   position: absolute;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  background: #5bff7a;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75);
 }
 
 .cross i:nth-child(1),
 .cross i:nth-child(2) {
   width: 2px;
-  height: 9px;
+  height: 8px;
   left: -1px;
 }
 
@@ -1393,7 +1422,7 @@ body.fighting #hud .dot {
 
 .cross i:nth-child(3),
 .cross i:nth-child(4) {
-  width: 9px;
+  width: 8px;
   height: 2px;
   top: -1px;
 }
@@ -1406,30 +1435,53 @@ body.fighting #hud .dot {
   left: var(--gap);
 }
 
-/* Your shot hit: an X at the crosshair, red for the head. */
+/* Your shot hit: four short strokes on the diagonals, red for the head, longer for a kill. */
 .hitmark {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 22px;
-  height: 22px;
-  margin: -11px 0 0 -11px;
+  width: 0;
+  height: 0;
   opacity: 0;
-  background:
-    linear-gradient(45deg, transparent 45%, #fff 45%, #fff 55%, transparent 55%),
-    linear-gradient(-45deg, transparent 45%, #fff 45%, #fff 55%, transparent 55%);
-  -webkit-mask: radial-gradient(circle, transparent 4px, #000 5px);
-  mask: radial-gradient(circle, transparent 4px, #000 5px);
 }
 
-.hitmark.on {
-  opacity: 1;
+.hitmark i {
+  position: absolute;
+  left: -1px;
+  top: -4px;
+  width: 2px;
+  height: 8px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+  transform: rotate(var(--r)) translateY(-11px);
 }
 
-.hitmark.head {
-  background:
-    linear-gradient(45deg, transparent 42%, #ff4b3e 42%, #ff4b3e 58%, transparent 58%),
-    linear-gradient(-45deg, transparent 42%, #ff4b3e 42%, #ff4b3e 58%, transparent 58%);
+.hitmark i:nth-child(1) {
+  --r: 45deg;
+}
+
+.hitmark i:nth-child(2) {
+  --r: 135deg;
+}
+
+.hitmark i:nth-child(3) {
+  --r: 225deg;
+}
+
+.hitmark i:nth-child(4) {
+  --r: 315deg;
+}
+
+.hitmark.head i {
+  background: #ff4b3e;
+}
+
+.hitmark.kill i {
+  top: -6px;
+  width: 3px;
+  left: -1.5px;
+  height: 12px;
+  transform: rotate(var(--r)) translateY(-14px);
 }
 
 /* Hurt: the screen's edge red. */
@@ -1438,6 +1490,14 @@ body.fighting #hud .dot {
   inset: 0;
   opacity: 0;
   background: radial-gradient(ellipse at center, transparent 45%, rgba(200, 16, 30, 0.55) 80%, rgba(140, 0, 10, 0.85) 100%);
+}
+
+/* A flashbang: the screen white. */
+.flashed {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: #fff;
 }
 
 /* Shot: a red arc round the crosshair for each shooter, the way the shot came from, turning as you
@@ -1462,220 +1522,1020 @@ body.fighting #hud .dot {
   filter: drop-shadow(0 0 6px rgba(255, 0, 0, 0.85));
 }
 
-/* Through the scope: black round a circle, its cross hairs. */
+/* Through the scope, as a sniper's rifle's in Counter-Strike: black round a round lens darkening at
+   its rim, and thin black lines across it. */
 .scope {
   display: none;
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(#000, #000) center / 1px 100% no-repeat,
-    linear-gradient(#000, #000) center / 100% 1px no-repeat,
-    radial-gradient(circle at center, transparent 0, transparent min(42vh, 42vw), #000 calc(min(42vh, 42vw) + 2px));
+  overflow: hidden;
 }
 
-.health,
-.ammo {
+.scope.on {
+  display: block;
+}
+
+.scope .lens {
   position: absolute;
-  bottom: calc(18px + var(--sb));
+  left: 50%;
+  top: 50%;
+  width: min(94vh, 94vw);
+  height: min(94vh, 94vw);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, transparent 58%, rgba(0, 0, 0, 0.25) 80%, rgba(0, 0, 0, 0.8) 98%, #000 100%);
+  box-shadow: 0 0 0 100vmax #000;
+}
+
+.scope::before,
+.scope::after {
+  content: '';
+  position: absolute;
+  background: rgba(0, 0, 0, 0.92);
+}
+
+.scope::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1.5px;
+  margin-top: -0.75px;
+}
+
+.scope::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1.5px;
+  margin-left: -0.75px;
+}
+
+/* The panels' common look: dark glass, as the race's feed. */
+.fight-top .mid,
+.fight-top .team,
+.vital,
+.ammo,
+.killfeed .kl,
+.deadpanel {
+  background: rgba(10, 12, 18, 0.55);
+  border-radius: 10px;
+}
+
+/* The clock at the top, the teams' kills either side of it in a round of teams, or where you stand
+   under it. */
+.fight-top {
+  position: absolute;
+  top: calc(12px + var(--st));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.fight-top .mid {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 150px;
+  align-items: center;
+  justify-content: center;
+  min-width: 92px;
+  padding: 3px 14px 5px;
 }
 
-.health {
-  left: calc(20px + var(--sl));
+.fight-top .roundtime {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1.1;
 }
 
-.health b,
-.ammo b {
-  font-size: 38px;
+.fight-top .standing {
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.fight-top .standing:empty {
+  display: none;
+}
+
+.fight-top .team {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 12px;
+  border-bottom: 3px solid var(--t);
+}
+
+.fight-top.teams .team {
+  display: flex;
+}
+
+.fight-top .team.a {
+  --t: #4aa8ff;
+  background: linear-gradient(90deg, rgba(10, 12, 18, 0.55), rgba(74, 168, 255, 0.4));
+}
+
+.fight-top .team.b {
+  --t: #ff9636;
+  background: linear-gradient(270deg, rgba(10, 12, 18, 0.55), rgba(255, 150, 54, 0.4));
+}
+
+.fight-top .team b {
+  font-size: 28px;
   font-weight: 900;
   line-height: 1;
 }
 
-.health .meter {
-  display: block;
-  height: 7px;
-  border-radius: 4px;
-  background: rgba(10, 12, 18, 0.55);
-  overflow: hidden;
+.fight-top .team small {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--t);
 }
 
-.health .meter i {
-  display: block;
-  height: 100%;
-  background: #f4f7fb;
+.fight-top .team.mine {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.75);
 }
 
-.health.low b {
-  color: #ff6b5e;
-}
-
-.health.low .meter i {
-  background: #ff4b3e;
-}
-
-.ammo {
-  right: calc(24px + var(--sr));
+/* The kill feed, top right under the bar: who put whom down, with what. */
+.killfeed {
+  position: absolute;
+  top: calc(60px + var(--st));
+  right: calc(16px + var(--sr));
+  display: flex;
+  flex-direction: column;
   align-items: flex-end;
+  gap: 4px;
 }
 
-.ammo small {
+.killfeed .kl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  border: 2px solid transparent;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 750;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  animation:
+    feedIn 0.2s ease-out,
+    fadeOut 0.4s ease-in 4.6s forwards;
+}
+
+.killfeed .kl.mine {
+  border-color: #e8322c;
+  background: rgba(36, 8, 10, 0.68);
+}
+
+.killfeed .who {
+  max-width: 11em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.killfeed .w .ic {
+  font-size: 15px;
+  color: #f4f7fb;
+}
+
+.killfeed .ic.hs {
+  font-size: 15px;
+  color: #ff5a4f;
+  margin-left: -3px;
+}
+
+/* Health and armour, bottom left. */
+.vitals {
+  position: absolute;
+  left: calc(20px + var(--sl));
+  bottom: calc(16px + var(--sb));
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.vital {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: center;
+  align-content: center;
+  column-gap: 7px;
+  padding: 6px 12px 7px;
+}
+
+.vital .ic {
+  font-size: 22px;
   opacity: 0.85;
 }
 
-.ammo.empty b {
-  color: #ff6b5e;
+.vital b {
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1;
+  min-width: 2.1ch;
 }
 
-.roundclock {
+.vital.hp {
+  grid-template-columns: auto 1fr;
+  min-width: 128px;
+}
+
+.vital .meter {
+  grid-column: 1 / -1;
+  display: block;
+  height: 5px;
+  margin-top: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+.vital .meter i {
+  display: block;
+  height: 100%;
+  background: #f4f7fb;
+  transform-origin: left;
+  transition: transform 0.15s;
+}
+
+.vital.hp.low b,
+.vital.hp.low .ic {
+  color: #ff5a4f;
+}
+
+.vital.hp.low .meter i {
+  background: #ff4b3e;
+}
+
+.vital.ap.none {
+  opacity: 0.45;
+}
+
+.vital .helm {
+  display: none;
+  font-size: 13px;
+}
+
+.vital .helm.on {
+  display: block;
+}
+
+.vital .helm .ic {
+  font-size: 16px;
+  opacity: 0.9;
+}
+
+/* The ammunition, bottom right: the magazine big, the reserve beside it, the weapon's name, and a
+   reload's progress. */
+.ammo {
   position: absolute;
-  top: calc(14px + var(--st));
-  left: 50%;
-  transform: translateX(-50%);
+  right: calc(20px + var(--sr));
+  bottom: calc(16px + var(--sb));
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
+  min-width: 140px;
+  padding: 6px 14px 7px;
 }
 
-.roundclock b {
-  font-size: 30px;
+.ammo .count {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1;
+}
+
+.ammo .count:has(.mag:empty) {
+  display: none;
+}
+
+.ammo .mag {
+  font-size: 38px;
   font-weight: 900;
 }
 
-.roundclock small {
-  font-size: 14px;
+.ammo .reserve {
+  font-size: 18px;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.ammo .gun {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.ammo.low .mag {
+  color: #ffb648;
+}
+
+.ammo.empty .mag {
+  color: #ff5a4f;
+}
+
+.ammo .reload {
+  display: none;
+  align-self: stretch;
+  margin-top: 4px;
+}
+
+.ammo.reloading .reload {
+  display: block;
+}
+
+.ammo .reload .meter {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+.ammo .reload .meter i {
+  display: block;
+  height: 100%;
+  background: #ffd34d;
+  transform-origin: left;
+}
+
+/* Your weapons, above the ammunition: Counter-Strike's slots, the one in your hand lit. */
+.slots {
+  position: absolute;
+  right: calc(20px + var(--sr));
+  bottom: calc(102px + var(--sb));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 750;
+  opacity: 0.55;
+}
+
+.slot .ic {
+  font-size: 18px;
+}
+
+.slot .key {
+  font-size: 10px;
+  font-weight: 800;
+  opacity: 0.8;
+}
+
+.slot .name {
+  letter-spacing: 0.5px;
+}
+
+.slot.on {
+  opacity: 1;
+  background: rgba(10, 12, 18, 0.45);
+  color: #ffd34d;
+}
+
+.slot .pips {
+  display: flex;
+  gap: 3px;
+}
+
+.fight .pip {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--n);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+
+.fight .he {
+  --n: #6fbf4a;
+}
+
+.fight .flash {
+  --n: #f4f7fb;
+}
+
+.fight .smoke {
+  --n: #9aa3ad;
+}
+
+.fight .molotov {
+  --n: #ff6a2b;
+}
+
+.slot .pip:not(.on) {
+  opacity: 0.6;
+}
+
+/* Down, the ammunition and the weapons go: what's left is the panel saying who did it. */
+.fight.dead .ammo,
+.fight.dead .slots {
+  display: none;
+}
+
+.fight .center.big {
+  top: 20%;
+  font-size: 110px;
+  letter-spacing: -3px;
+}
+
+.deadpanel {
+  display: none;
+  position: absolute;
+  left: 50%;
+  bottom: calc(96px + var(--sb));
+  transform: translateX(-50%);
+  min-width: 280px;
+  padding: 12px 22px 14px;
+  text-align: center;
+  border-top: 3px solid #e8322c;
+  pointer-events: auto;
+}
+
+.deadpanel.on {
+  display: block;
+}
+
+.deadpanel p {
+  margin: 0;
+}
+
+.deadpanel .dp-tag {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #ff6b5e;
+}
+
+.deadpanel h2 {
+  margin: 2px 0 4px;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.deadpanel h2 b {
+  color: #ffd34d;
+}
+
+.deadpanel .dp-how {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
   font-weight: 700;
 }
 
-body.fighting #hud .tc {
-  top: calc(84px + var(--st));
+.deadpanel .dp-how > .ic {
+  font-size: 18px;
 }
 
-body.fighting #hud .keys {
-  bottom: calc(86px + var(--sb));
+.deadpanel .headshot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #ff6b5e;
 }
 
-/* The scores, Tab held. */
+.deadpanel .dp-wait {
+  margin-top: 6px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.deadpanel .dp-hint {
+  margin-top: 6px;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.deadpanel button {
+  margin-top: 8px;
+  color: #fff;
+  background: rgba(255, 211, 77, 0.2);
+  border: 1px solid #ffd34d;
+  text-shadow: none;
+}
+
+/* While you're down, the screen's panels are over the touch controls, to be tapped; buying, over the
+   bar too, as the menu fills a phone's screen. */
+#hud:has(.fight.dead),
+#hud:has(.scores.on) {
+  z-index: 2;
+}
+
+#hud:has(.fight.buying) {
+  z-index: 3;
+}
+
+/* The scores, Tab held: Counter-Strike's table, two side by side in a round of teams. */
 .scores {
+  display: none;
   position: absolute;
-  top: 18%;
+  top: 14%;
   left: 50%;
   transform: translateX(-50%);
-  min-width: 320px;
-  padding: 10px;
+  max-width: calc(100vw - 24px);
+  max-height: 80%;
+  overflow: auto;
+  padding: 14px;
   border-radius: 14px;
-  background: rgba(10, 12, 18, 0.72);
+  background: rgba(10, 12, 18, 0.82);
   text-shadow: none;
+}
+
+.scores.on {
+  display: block;
+}
+
+.scores .tables {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.scores .table {
+  min-width: 380px;
+}
+
+.scores .title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px 6px;
+  margin-bottom: 4px;
+  border-bottom: 2px solid var(--team, #ffd34d);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.scores .title span {
+  color: var(--team, #fff);
+}
+
+.scores .title b {
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.scores .title small {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.6;
 }
 
 .scores .row {
   display: grid;
-  grid-template-columns: 1fr 70px 70px;
-  gap: 8px;
+  grid-template-columns: 1fr 62px 62px 80px;
+  gap: 6px;
   padding: 5px 10px;
-  border-left: 4px solid var(--c, transparent);
-  font-size: 16px;
-  font-weight: 650;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 700;
   text-align: right;
 }
 
+.scores .row:nth-child(odd):not(.head) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .scores .row .who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   text-align: left;
 }
 
+.scores .row .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scores .row .sw {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--c);
+}
+
 .scores .row.head {
-  font-size: 12px;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 1px;
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 .scores .row.me {
-  background: rgba(255, 211, 77, 0.18);
+  background: rgba(255, 211, 77, 0.2);
+  box-shadow: inset 3px 0 0 #ffd34d;
 }
 
-/* The kits, before the start and while you're down: above the touch controls, to be tapped. */
-body.picking #hud {
-  z-index: 2;
-}
-
-.picker {
+/* The buy menu (B, or the dead panel's button): the families on the left, the chosen family's guns as
+   cards, and what you'll come back with at the bottom. Money is no object; the prices say what a gun
+   is worth. */
+.buy {
+  display: none;
   position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: min(560px, calc(100vw - 32px));
-  padding: 18px;
-  border-radius: 18px;
-  background: rgba(10, 12, 18, 0.78);
+  inset: 0;
+  place-items: center;
+  padding: max(16px, var(--st)) max(16px, var(--sr)) max(16px, var(--sb)) max(16px, var(--sl));
+  background: rgba(4, 5, 8, 0.5);
   pointer-events: auto;
-  text-align: center;
   text-shadow: none;
 }
 
-.picker h2 {
-  margin: 0 0 4px;
-  font-size: 24px;
-}
-
-.picker .sub {
-  margin: 0 0 12px;
-  opacity: 0.85;
-}
-
-.picker .until {
-  margin: 12px 0 0;
-  font-weight: 700;
-}
-
-.picker .until:empty {
-  display: none;
-}
-
-.picker .kits {
+.buy.on {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
 }
 
-.picker .kit {
+.buy-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(1000px, 100%);
+  max-height: 100%;
+  border-radius: 16px;
+  background: rgba(14, 16, 22, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.buy button {
+  color: #f4f7fb;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-weight: 700;
+  text-align: left;
+}
+
+@media (hover: hover) {
+  .buy button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 211, 77, 0.7);
+  }
+}
+
+.buy header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px 12px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.buy h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+}
+
+.buy .till {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #2fd27a;
+}
+
+.buy .till.later {
+  color: #ffb648;
+}
+
+.buy .money {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 22px;
+  font-weight: 900;
+  color: #ffd34d;
+}
+
+.buy .money small {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.buy .close {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  text-align: center;
+  font-size: 16px;
+}
+
+.buy-body {
+  display: grid;
+  grid-template-columns: 252px 1fr;
+  min-height: 0;
+  flex: 1;
+}
+
+.buy .fams {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: auto;
+}
+
+.buy .fam {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.buy .fam .ic {
+  width: 52px;
+  font-size: 15px;
+  opacity: 0.75;
+}
+
+.buy .fam .name {
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.buy .key {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  font-size: 11px;
+  font-weight: 800;
+  opacity: 0.8;
+}
+
+.buy .fam.on {
+  color: #ffd34d;
+  background: rgba(255, 211, 77, 0.14);
+  border-color: rgba(255, 211, 77, 0.8);
+}
+
+.buy .fam.on .key {
+  border-color: #ffd34d;
+}
+
+.buy .items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  /* Rows as tall as their cards: as plain auto rows, Chrome sizes a row of buttons for one line of
+     blurb, and a second spills out of the card. */
+  grid-auto-rows: min-content;
+  align-content: start;
+  gap: 10px;
+  padding: 12px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.buy .sect {
+  grid-column: 1 / -1;
+  margin: 4px 2px -2px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.buy .sect small {
+  margin-left: 6px;
+  font-size: 11px;
+  color: #ffd34d;
+}
+
+.buy .card {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  padding: 10px 12px;
+  gap: 1px;
+  padding: 12px 14px;
   border-radius: 12px;
-  text-align: left;
-  text-transform: none;
-  letter-spacing: 0;
+  min-height: 128px;
 }
 
-.picker .kit.on {
-  outline: 3px solid #ffd34d;
+.buy .card > .ic {
+  font-size: 26px;
+  margin: 2px 0 8px;
+  color: #e8edf4;
 }
 
-.picker .kit small {
+.buy .card .name {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.buy .card .price {
+  font-size: 14px;
+  font-weight: 800;
+  color: #ffd34d;
+}
+
+.buy .card .blurb {
+  font-size: 12.5px;
   font-weight: 500;
-  opacity: 0.8;
+  line-height: 1.3;
+  opacity: 0.75;
 }
 
-.picker .kit .key {
+.buy .card .spec {
+  margin-top: auto;
+  padding-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.5;
+}
+
+.buy .card > .key {
   position: absolute;
-  top: 8px;
+  top: 10px;
   right: 10px;
+}
+
+.buy .items.picking .card > .key {
+  color: #14161b;
+  background: #ffd34d;
+  border-color: #ffd34d;
+  opacity: 1;
+}
+
+.buy .card.have {
+  border-color: rgba(47, 210, 122, 0.85);
+  background: rgba(47, 210, 122, 0.1);
+}
+
+.buy .card .tick {
+  position: absolute;
+  top: 10px;
+  right: 38px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #2fd27a;
+  color: #0b1a10;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.buy .card.nade > .ic {
+  color: var(--n);
+}
+
+.buy .card.nade .blurb {
+  padding-right: 34px;
+}
+
+.buy .card.full {
+  opacity: 0.45;
+}
+
+.buy .card .pips {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.buy .card .pip {
+  width: 10px;
+  height: 10px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.4);
+}
+
+.buy .card .pip.on {
+  background: var(--n);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+
+.buy .card .minus {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+@media (hover: hover) {
+  .buy .card .minus:hover {
+    border-color: #ff5a4f;
+    color: #ff5a4f;
+  }
+}
+
+.buy footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 20px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.buy footer .lbl {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.buy footer .kit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.buy .carry {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.buy .carry .ic {
+  font-size: 13px;
+  color: var(--n, currentColor);
+}
+
+.buy .carry.none {
+  opacity: 0.6;
+}
+
+.buy .carry .x {
+  margin: 0 -4px 0 2px;
+  padding: 0 4px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+@media (hover: hover) {
+  .buy .carry .x:hover {
+    opacity: 1;
+    color: #ff5a4f;
+  }
+}
+
+.buy footer .hint {
+  margin-left: auto;
+  font-size: 12px;
   opacity: 0.6;
 }
 
 /* On a touch screen in a round: Fogo under the right thumb, Saltar below it, Recarregar and Mira
-   beside them. */
+   beside them, and Agachar and Trocar beside those. */
 .t-fire,
 .t-reload,
-.t-scope {
+.t-scope,
+.t-crouch,
+.t-swap {
   display: none;
 }
 
@@ -1695,7 +2555,9 @@ body.picking #hud {
 .t-pad[data-mode='fight'] .t-fire,
 .t-pad[data-mode='fight'] .t-reload,
 .t-pad[data-mode='fight'] .t-scope,
-.t-pad[data-mode='fight'] .t-jump {
+.t-pad[data-mode='fight'] .t-jump,
+.t-pad[data-mode='fight'] .t-crouch,
+.t-pad[data-mode='fight'] .t-swap {
   display: grid;
 }
 
@@ -1734,41 +2596,302 @@ body.picking #hud {
   font-size: 12px;
 }
 
-.t-scope.on {
+/* Agachar and Trocar a column further in, clear of the ammunition along the bottom. */
+.t-pad[data-mode='fight'] .t-crouch,
+.t-pad[data-mode='fight'] .t-swap {
+  right: calc(232px + var(--sr));
+  width: 58px;
+  height: 58px;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.t-pad[data-mode='fight'] .t-crouch {
+  bottom: calc(72px + var(--sb));
+}
+
+.t-pad[data-mode='fight'] .t-swap {
+  bottom: calc(150px + var(--sb));
+}
+
+.t-scope.on,
+.t-crouch.on {
   background: rgba(255, 211, 77, 0.35);
   border-color: #ffd34d;
 }
 
-/* With the touch controls, the ammunition up out of the buttons' way. */
-body.touch .ammo {
-  bottom: auto;
-  top: calc(60px + var(--st));
-  right: calc(16px + var(--sr));
-}
-
-body.touch .ammo b,
-body.touch .health b {
-  font-size: 26px;
-}
-
-body.touch .health {
-  bottom: auto;
-  top: calc(60px + var(--st));
-  left: auto;
-  right: calc(180px + var(--sr));
-  min-width: 110px;
-}
-
-/* In a round the minimap goes top left, out of the way of your health, and the keys to the middle. */
+/* In a round the minimap goes top left, out of the way of your health, and the keys to the middle,
+   two lines, gone after the round's first 20 s (RoamHud.keys). */
 body.fighting #hud .minimap.round {
   bottom: auto;
   top: calc(14px + var(--st));
   width: 170px;
 }
 
+body.fighting #hud .tc {
+  top: calc(84px + var(--st));
+}
+
 body.fighting #hud .keys {
   left: 50%;
   bottom: calc(14px + var(--sb));
   transform: translateX(-50%);
-  white-space: nowrap;
+  max-width: calc(100vw - 640px);
+  white-space: pre-line;
+  text-align: center;
+  font-size: 11.5px;
+  line-height: 1.5;
+  transition: opacity 1.2s;
+}
+
+body.fighting #hud .keys.gone {
+  opacity: 0;
+}
+
+/* With the touch controls: the clock and the kill feed below the bar, health and the ammunition
+   together along the bottom between the thumbs, and the weapons as a row of silhouettes above them. */
+body.touch .fight-top {
+  top: calc(54px + var(--st));
+}
+
+body.touch .killfeed {
+  top: calc(54px + var(--st));
+  right: calc(12px + var(--sr));
+}
+
+body.touch .killfeed .kl {
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+body.touch .killfeed .kl:nth-last-child(n + 4) {
+  display: none;
+}
+
+body.touch .vitals {
+  left: auto;
+  right: calc(50% + 4px);
+  bottom: calc(8px + var(--sb));
+  gap: 4px;
+}
+
+body.touch .vital {
+  padding: 4px 8px 5px;
+  column-gap: 5px;
+}
+
+body.touch .vital.hp {
+  min-width: 96px;
+}
+
+body.touch .vital b {
+  font-size: 22px;
+}
+
+body.touch .vital .ic {
+  font-size: 15px;
+}
+
+body.touch .ammo {
+  right: auto;
+  left: calc(50% + 4px);
+  bottom: calc(8px + var(--sb));
+  min-width: 0;
+  padding: 4px 10px 5px;
+  align-items: flex-start;
+}
+
+body.touch .ammo .mag {
+  font-size: 24px;
+}
+
+body.touch .ammo .reserve {
+  font-size: 13px;
+}
+
+body.touch .ammo .gun {
+  font-size: 10px;
+}
+
+body.touch .slots {
+  right: calc(50% + 4px);
+  bottom: calc(60px + var(--sb));
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+}
+
+body.touch .slot {
+  padding: 3px 6px;
+}
+
+body.touch .slot .name {
+  display: none;
+}
+
+body.touch .slot .ic {
+  font-size: 14px;
+}
+
+body.touch .deadpanel {
+  bottom: auto;
+  top: 50%;
+  transform: translate(-50%, -30%);
+}
+
+/* A phone on its side: the panels smaller, the buy menu filling the screen with its families in a row
+   along the top, and the scores' tables one above the other. */
+@media (max-height: 500px), (max-width: 720px) {
+  .fight-top .roundtime {
+    font-size: 20px;
+  }
+  .fight-top .team b {
+    font-size: 20px;
+  }
+  .fight-top .team small {
+    display: none;
+  }
+  .fight .center.big {
+    font-size: 72px;
+  }
+  body.fighting #hud .minimap.round {
+    width: 112px;
+  }
+  .buy .fam .ic {
+    width: auto;
+  }
+  .buy .fam .name {
+    white-space: nowrap;
+  }
+  .buy {
+    padding: max(6px, var(--st)) max(6px, var(--sr)) max(6px, var(--sb)) max(6px, var(--sl));
+  }
+  .buy-panel {
+    width: 100%;
+    height: 100%;
+    border-radius: 12px;
+  }
+  .buy header {
+    gap: 10px;
+    padding: 6px 8px 6px 14px;
+  }
+  .buy h2 {
+    font-size: 17px;
+  }
+  .buy .till {
+    font-size: 12px;
+  }
+  .buy .money {
+    font-size: 17px;
+  }
+  .buy .close {
+    width: 34px;
+    height: 34px;
+  }
+  .buy-body {
+    grid-template-columns: none;
+    grid-template-rows: auto 1fr;
+  }
+  .buy .fams {
+    flex-direction: row;
+    padding: 6px 8px;
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    overflow-x: auto;
+    touch-action: pan-x;
+    scrollbar-width: none;
+  }
+  .buy .fam {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+  .buy .items {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 6px;
+    padding: 8px;
+  }
+  .buy .card {
+    min-height: 0;
+    padding: 8px 10px;
+  }
+  .buy .card > .ic {
+    font-size: 18px;
+    margin: 0 0 4px;
+  }
+  .buy .card .name {
+    font-size: 14px;
+  }
+  .buy .card .price {
+    font-size: 12px;
+  }
+  .buy .card .blurb {
+    font-size: 11px;
+  }
+  .buy .card .tick {
+    top: 8px;
+    right: 8px;
+  }
+  .buy footer {
+    padding: 6px 12px 8px;
+    gap: 6px;
+  }
+  .buy .carry {
+    padding: 2px 8px;
+    font-size: 12px;
+  }
+  .scores {
+    top: calc(52px + var(--st));
+    padding: 8px;
+  }
+  .scores .tables {
+    gap: 10px;
+  }
+  .scores .table {
+    min-width: min(340px, calc(100vw - 40px));
+  }
+  .scores .title {
+    font-size: 15px;
+  }
+  .scores .title b {
+    font-size: 19px;
+  }
+  .scores .row {
+    grid-template-columns: 1fr 50px 50px 60px;
+    gap: 4px;
+    padding: 3px 8px;
+    font-size: 13px;
+  }
+  .scores .row.head {
+    font-size: 9.5px;
+    letter-spacing: 0.5px;
+  }
+  .deadpanel {
+    min-width: 0;
+    padding: 8px 16px 10px;
+  }
+  .deadpanel h2 {
+    font-size: 18px;
+  }
+  .deadpanel .dp-wait {
+    font-size: 15px;
+    margin-top: 2px;
+  }
+  .deadpanel button {
+    margin-top: 6px;
+    padding: 6px 14px;
+  }
+}
+
+@media (max-width: 760px) {
+  .scores .tables {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* In a round of teams the scores either side of the clock are wide enough to run under the bar on
+   the right: on a screen narrower than they'd clear it, they sit below it. */
+@media (max-width: 1600px) {
+  .fight-top.teams {
+    top: calc(60px + var(--st));
+  }
 }

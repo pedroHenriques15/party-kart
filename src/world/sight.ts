@@ -5,13 +5,14 @@
 // steps, the decks). A fence's mesh, a railing's or a gate's bars, the railing on a low wall, a
 // handrail, the area's edge and the barriers across its streets let it through, as does a tree's
 // crown: leaves hide someone but don't stop a bullet, and a shot through them is a shot the shooter
-// chose.
+// chose. In a round, its cover (world/cover.ts: the parked cars, the skips, crates and pallets) stops
+// it as boxes, saying what each is made of; a site fence's mesh lets it through.
 //
 // The walls and trunks are looked up cell by cell along the ray (the ground's cells of 10 m), the
 // nearest first, stopping at the first cell past what stopped it; then the ground is looked at every
 // 30 cm up to there, quickly where the ray is well over the land and nothing stands on it.
 import type { Building } from 'braga-map';
-import { Cells, DEEP, HOLD, inRing, type Wall, type WorldGround } from './ground.ts';
+import { Cells, DEEP, HOLD, inRing, type Solid, type Wall, type WorldGround } from './ground.ts';
 import { roomSolid } from './interiors.ts';
 
 const CELL = 10;
@@ -32,7 +33,10 @@ export interface Sighted {
   nx: number;
   ny: number;
   nz: number;
-  what: 'wall' | 'hedge' | 'building' | 'roof' | 'tree' | 'ground' | 'kart' | null;
+  // What stopped it: the map's, or in a round one of its cover's materials (a car's body, a skip's
+  // steel, a crate's boards, a barrier's concrete, a portable toilet's plastic, a sandbag), for the
+  // mark's dust and its sound.
+  what: 'wall' | 'hedge' | 'building' | 'roof' | 'tree' | 'ground' | 'kart' | Solid['mat'] | null;
 }
 
 // Something round the game puts in the world for a while: a kart waiting, as two circles.
@@ -116,6 +120,7 @@ export function sight(g: WorldGround, o: { x: number; y: number; z: number }, d:
         }
       }
       for (const p of g.d.posts.at(cx, cz) ?? []) round(o, d, p, best.t, (t, nx, nz) => hit(t, nx, 0, nz, 'tree'));
+      for (const b of g.solids.at(cx, cz) ?? []) if (!b.see) boxed(o, d, b, best.t, hit);
       const out = Math.min(ti, tj);
       if (best.t <= out || out >= max) break;
       if (ti < tj) {
@@ -126,6 +131,9 @@ export function sight(g: WorldGround, o: { x: number; y: number; z: number }, d:
         j += sj;
       }
     }
+  } else {
+    // Straight up or down: the box under or over the eye.
+    for (const b of g.solids.at(o.x, o.z) ?? []) if (!b.see) boxed(o, d, b, best.t, hit);
   }
   for (const b of blockers) round(o, d, b, best.t, (t, nx, nz) => hit(t, nx, 0, nz, 'kart'));
 
@@ -148,7 +156,7 @@ export function sight(g: WorldGround, o: { x: number; y: number; z: number }, d:
       const roof = roofAt(R, g, x, y, z);
       if (roof) hit(b, 0, 1, 0, 'roof');
       else {
-        const f = g.floor(x, z, y + 0.05);
+        const f = g.floor(x, z, y + 0.05, false);
         const n = f.buried ? { x: 0, y: 1, z: 0 } : g.normal(f, x, z);
         hit(b, n.x, n.y, n.z, 'ground');
       }
@@ -178,7 +186,7 @@ function solid(g: WorldGround, R: Cells<Roof>, x: number, y: number, z: number):
   const blocks = d.blocks.at(x, z);
   if (roofAt(R, g, x, y, z)) return true;
   if (!pieces?.length && !treads?.length && !blocks?.length && y > d.land.firm(x, z) + CLEAR) return false;
-  const f = g.floor(x, z, y);
+  const f = g.floor(x, z, y, false);
   if (f.buried || f.y > y) return true;
   for (const p of pieces ?? []) if (p.rings.has(x, z) && y <= p.height(x, z) && y >= p.height(x, z) - DEEP) return true;
   for (const b of blocks ?? []) if (y < b.y && inRing(b.pts, x, z)) return true;
@@ -230,4 +238,41 @@ function round(o: { x: number; y: number; z: number }, d: { x: number; y: number
   const y = o.y + d.y * t;
   if (y < c.y0 || y > c.y1) return;
   then(t, (fx + d.x * t) / c.r, (fz + d.z * t) / c.r);
+}
+
+// Where the ray from o the way d first meets a box (a solid), if before `before`: the slabs either
+// side of it along its length, across it and up it, in the box's own frame.
+function boxed(o: { x: number; y: number; z: number }, d: { x: number; y: number; z: number }, b: Solid, before: number, then: (t: number, nx: number, ny: number, nz: number, what: Solid['mat']) => void): void {
+  const c = Math.cos(b.yaw);
+  const s = Math.sin(b.yaw);
+  const px = o.x - b.x;
+  const pz = o.z - b.z;
+  const ou = px * c + pz * s;
+  const ov = pz * c - px * s;
+  const du = d.x * c + d.z * s;
+  const dv = d.z * c - d.x * s;
+  let t0 = -Infinity;
+  let t1 = before;
+  let axis = -1;
+  let sign = 0;
+  const slab = (q: number, dq: number, lo: number, hi: number, k: number) => {
+    if (Math.abs(dq) < 1e-12) return q >= lo && q <= hi;
+    let a = (lo - q) / dq;
+    let e = (hi - q) / dq;
+    const sg = dq > 0 ? -1 : 1;
+    if (a > e) [a, e] = [e, a];
+    if (a > t0) {
+      t0 = a;
+      axis = k;
+      sign = sg;
+    }
+    t1 = Math.min(t1, e);
+    return t0 <= t1;
+  };
+  if (!slab(ou, du, -b.L / 2, b.L / 2, 0) || !slab(ov, dv, -b.W / 2, b.W / 2, 1) || !slab(o.y, d.y, b.y0, b.y1, 2)) return;
+  // From inside it already, or behind.
+  if (t0 < 0 || t0 >= before) return;
+  if (axis === 2) then(t0, 0, sign, 0, b.mat);
+  else if (axis === 0) then(t0, c * sign, 0, s * sign, b.mat);
+  else then(t0, -s * sign, 0, c * sign, b.mat);
 }

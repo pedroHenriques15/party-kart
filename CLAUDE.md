@@ -6,7 +6,8 @@ TypeScript, three.js and PeerJS (WebRTC), built with Vite and served from GitHub
 server and no accounts, and hardly an asset file of its own: every texture the game makes is drawn
 on a canvas, and every sound is synthesized but the city's round the track, eight short CC0
 recordings in `src/sounds/` (braga-map's decision 016 allows recordings for the engines and the
-city, and nothing else). Photos may texture the city (braga-map's decision 002): they belong to
+city), and the deathmatch's CC0 models and recordings in `src/fight/` (its decision 060: the guns, the
+fighters, the cover's props and their sounds, each on record in `src/fight/ASSETS.md`). Photos may texture the city (braga-map's decision 002): they belong to
 the place, so they live in braga-map with the world, made by its `tools/textures.mjs` as KTX2
 files that stay compressed on the graphics card (its decision 030), and `render/photos.ts` draws
 them. The ground is drawn as braga-map says it is (its task 016, decision 034): each kind in its
@@ -79,16 +80,20 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   city at walking distance, as the shooter is played (braga-map's SHOOTER-AREA.md). Under
   `?autodrive`, `__kart.walk` says where you are on foot, and `__walk(x, z, tx, ty, tz, y)` puts you at
   (x, z) looking at (tx, ty, tz), on the floor at height y if it's given (a tower's upper floors).
-- The menu's "🎯 Tiroteio" is the deathmatch (braga-map's task 074, `src/game/fight.ts`): the host
+- The menu's "🎯 Tiroteio" is the deathmatch (braga-map's task 074, after Counter-Strike 2's since its
+  decision 060: `src/game/arsenal.ts`, `fight.ts`, `nades.ts`, `field.ts`): the host
   starts a round, as a race, in the arena it chose (braga-map's task 079: one of three, about 80 m
-  across, `world.arenas`), and everyone in the room is on foot there with a kit, the empty places
+  across, `world.arenas`), everyone for themselves or in two teams, and everyone in the room is on
+  foot there with what they bought (the buy menu, B, open till the start), the empty places
   filled with bots on foot (braga-map's task 075, `src/game/footbot.ts`, run by the host) at the
   level the host chose. Most of an arena's buildings open on their ground floor, and one in two of
   them up to its roof (`src/world/interiors.ts`). Alone with no bots it's a round of one, for looking at the edge or the
   guns. To try shots, two browser contexts in a room (as for a race), each put face to face with
-  `__walk`, or one put facing a bot; under `?autodrive`, `__kart.fight` has your health, kit,
+  `__walk`, or one put facing a bot; under `?autodrive`, `__kart.fight` has your health, armour, the
+  weapon in hand, its magazine and reserve, the scope, the loadout, your team,
   ammunition, kills and deaths, the others as you'd shoot at them (`foes`), and if you host, the
-  bots (where, up or down, health, kit, shots, times put back on their paths). With
+  bots (where, up or down, health, weapon, shots, times put back on their paths), and the grenades,
+  clouds and fires up. With
   the pointer locked, Playwright's mouse buttons can turn the view (a movement comes with them):
   dispatch `mousedown`/`mouseup` on the document instead to hold the trigger.
 - `?view=x,y,z,tx,ty,tz` holds the race's camera at (x, y, z), looking at (tx, ty, tz), to look at
@@ -158,7 +163,7 @@ victim's browser taking the damage, the host keeping the kills and deaths. Its b
 task 075) are the host's: it steps them with you (`Squad`), finds their ways on the arena's walkable
 ground (`Paths`, `src/world/paths.ts`), decides their shots as a player's browser does theirs, takes
 their hits and says when they're down; everyone draws them from their snapshots, the host too. A
-round is played in an arena (braga-map's task 079, `field` in `fight.ts`), whose buildings have
+round is played in an arena (braga-map's task 079, `field` in `field.ts`), whose buildings have
 insides: made up, by `src/world/interiors.ts`, the world's always (walked round the city too), the
 ground's walls and floors in them (`roomAt`, `roomFloor`), looks through their windows, the city
 cutting their facades' openings and drawing them (`render/interiors.ts`).
@@ -267,7 +272,12 @@ How a race runs:
   rolls dice.
   A shot's spread is drawn from its `seed`, sent with it, so every browser draws the same pellets.
 - **A round's snapshot reuses `fl`.** On foot in a round, a snapshot's `fl` is the fighter's flags
-  (`FIGHT` in `src/game/fight.ts`: down, kit, scoped, reloading, safe, armed), not the kart's.
+  (`FIGHT` in `src/game/fight.ts`: down, armed, scoped, reloading, safe, crouched, team, and the weapon
+  in hand as `WEAPON_IDS`' index in the top bits), not the kart's. `WEAPON_IDS` (arsenal.ts) is only
+  ever added to at its end: its order is in every snapshot.
+- **A grenade's flight is worked out in every browser** (`fly` in `src/game/nades.ts`), from its throw,
+  on the round's ground without the karts (they're drawn where they are a little differently in each
+  browser), so it bounces the same everywhere. Keep anything that differs between browsers out of it.
 - **The eight-bot race test rolls dice.** "eight bots race a lap…" asserts that the lead changes
   at least once. Its item rolls are random, so it could still fail now and then, though since the
   bots spread across the road to pass (`steerLine` in `src/game/bot.ts`) it rarely does. Rerun it

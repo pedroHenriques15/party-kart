@@ -5,6 +5,7 @@
 // eggs, the river, the bells) is heard from there, left or right, near or far, by a listener on
 // the camera; your own are heard in your head. M mutes.
 import { surroundAt, type Ambience, type Spot } from './ambience.ts';
+import { GUNS, isGun, type WeaponId } from './game/arsenal.ts';
 
 let ctx: AudioContext | null = null;
 // The mute, after the limiter; what the speakers get, and what's measured and recorded.
@@ -1086,89 +1087,676 @@ function echoes(): GainNode | null {
   return (echo = send);
 }
 
-// Each kit's report: the crack's pitch and length, the body's, the thump's, and how loud.
+// A gunshot's report by the weapon's family, and how a suppressor muffles it: a crack, a burst of
+// noise falling away and a thump. Synthesized, for until the recordings are in, or if one isn't.
 const REPORT: Record<string, { crack: number; snap: number; body: number; len: number; thump: number; gain: number }> = {
   rifle: { crack: 3200, snap: 0.05, body: 2600, len: 0.22, thump: 95, gain: 0.55 },
+  smg: { crack: 3800, snap: 0.035, body: 3000, len: 0.15, thump: 120, gain: 0.42 },
+  heavy: { crack: 2900, snap: 0.05, body: 2300, len: 0.24, thump: 85, gain: 0.55 },
   shotgun: { crack: 1900, snap: 0.07, body: 1500, len: 0.4, thump: 70, gain: 0.7 },
   sniper: { crack: 2600, snap: 0.08, body: 2000, len: 0.5, thump: 60, gain: 0.8 },
   pistol: { crack: 3600, snap: 0.04, body: 3000, len: 0.16, thump: 120, gain: 0.45 },
+  silenced: { crack: 2200, snap: 0.02, body: 1200, len: 0.09, thump: 140, gain: 0.22 },
 };
 // A gunshot is as loud as in your head within 40 m, and heard across the whole area and further.
 const SHOT_REF = 40;
 const SHOT_HEARD = 1500;
+const reportOf = (w: WeaponId) => (!isGun(w) ? REPORT.pistol : GUNS[w].silenced ? REPORT.silenced : REPORT[GUNS[w].family]);
+
+// ---- The fight's recordings: CC0, from Freesound (src/fight/ASSETS.md says from where) ----
+
+const FIGHT = {
+  'body-fall': new URL('./fight/sounds/body-fall.mp3', import.meta.url).href,
+  'dry-fire': new URL('./fight/sounds/dry-fire.mp3', import.meta.url).href,
+  'explosion-he': new URL('./fight/sounds/explosion-he.mp3', import.meta.url).href,
+  'fire-loop': new URL('./fight/sounds/fire-loop.mp3', import.meta.url).href,
+  'flashbang-bang': new URL('./fight/sounds/flashbang-bang.mp3', import.meta.url).href,
+  'footstep-concrete-1': new URL('./fight/sounds/footstep-concrete-1.mp3', import.meta.url).href,
+  'footstep-concrete-2': new URL('./fight/sounds/footstep-concrete-2.mp3', import.meta.url).href,
+  'footstep-concrete-3': new URL('./fight/sounds/footstep-concrete-3.mp3', import.meta.url).href,
+  'footstep-concrete-4': new URL('./fight/sounds/footstep-concrete-4.mp3', import.meta.url).href,
+  'grenade-bounce': new URL('./fight/sounds/grenade-bounce.mp3', import.meta.url).href,
+  'grenade-pin': new URL('./fight/sounds/grenade-pin.mp3', import.meta.url).href,
+  'grenade-throw': new URL('./fight/sounds/grenade-throw.mp3', import.meta.url).href,
+  'headshot-dink': new URL('./fight/sounds/headshot-dink.mp3', import.meta.url).href,
+  'impact-concrete': new URL('./fight/sounds/impact-concrete.mp3', import.meta.url).href,
+  'impact-flesh': new URL('./fight/sounds/impact-flesh.mp3', import.meta.url).href,
+  'impact-metal': new URL('./fight/sounds/impact-metal.mp3', import.meta.url).href,
+  'impact-wood': new URL('./fight/sounds/impact-wood.mp3', import.meta.url).href,
+  'jump-land': new URL('./fight/sounds/jump-land.mp3', import.meta.url).href,
+  'knife-hit-flesh': new URL('./fight/sounds/knife-hit-flesh.mp3', import.meta.url).href,
+  'knife-hit-wall': new URL('./fight/sounds/knife-hit-wall.mp3', import.meta.url).href,
+  'knife-swing': new URL('./fight/sounds/knife-swing.mp3', import.meta.url).href,
+  'molotov-break': new URL('./fight/sounds/molotov-break.mp3', import.meta.url).href,
+  'reload-bolt': new URL('./fight/sounds/reload-bolt.mp3', import.meta.url).href,
+  'reload-mag-in': new URL('./fight/sounds/reload-mag-in.mp3', import.meta.url).href,
+  'reload-mag-out': new URL('./fight/sounds/reload-mag-out.mp3', import.meta.url).href,
+  'reload-pistol-slide': new URL('./fight/sounds/reload-pistol-slide.mp3', import.meta.url).href,
+  'reload-pump': new URL('./fight/sounds/reload-pump.mp3', import.meta.url).href,
+  'reload-shell-insert': new URL('./fight/sounds/reload-shell-insert.mp3', import.meta.url).href,
+  'reload-sniper-bolt': new URL('./fight/sounds/reload-sniper-bolt.mp3', import.meta.url).href,
+  'shot-awp': new URL('./fight/sounds/shot-awp.mp3', import.meta.url).href,
+  'shot-deagle': new URL('./fight/sounds/shot-deagle.mp3', import.meta.url).href,
+  'shot-distant': new URL('./fight/sounds/shot-distant.mp3', import.meta.url).href,
+  'shot-lmg': new URL('./fight/sounds/shot-lmg.mp3', import.meta.url).href,
+  'shot-pistol': new URL('./fight/sounds/shot-pistol.mp3', import.meta.url).href,
+  'shot-pistol-suppressed': new URL('./fight/sounds/shot-pistol-suppressed.mp3', import.meta.url).href,
+  'shot-rifle-ak': new URL('./fight/sounds/shot-rifle-ak.mp3', import.meta.url).href,
+  'shot-rifle-m4': new URL('./fight/sounds/shot-rifle-m4.mp3', import.meta.url).href,
+  'shot-rifle-suppressed': new URL('./fight/sounds/shot-rifle-suppressed.mp3', import.meta.url).href,
+  'shot-shotgun': new URL('./fight/sounds/shot-shotgun.mp3', import.meta.url).href,
+  'shot-smg': new URL('./fight/sounds/shot-smg.mp3', import.meta.url).href,
+  'shot-ssg': new URL('./fight/sounds/shot-ssg.mp3', import.meta.url).href,
+  'smoke-hiss': new URL('./fight/sounds/smoke-hiss.mp3', import.meta.url).href,
+  'ui-buy': new URL('./fight/sounds/ui-buy.mp3', import.meta.url).href,
+  'weapon-draw': new URL('./fight/sounds/weapon-draw.mp3', import.meta.url).href,
+};
+type FightSound = keyof typeof FIGHT;
+// Each as it's decoded; until then (or if it fails), what it's for is synthesized.
+const fightRec: Partial<Record<FightSound, AudioBuffer>> = {};
+let fightAsked = false;
+
+// Fetched the first time the fight makes a sound, long after the city's, each on its own, so a
+// round never waits for them and one that fails costs only itself.
+function fightSounds(): void {
+  if (fightAsked || !ctx) return;
+  fightAsked = true;
+  const c = ctx;
+  for (const [k, url] of Object.entries(FIGHT) as [FightSound, string][]) {
+    fetch(url)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.arrayBuffer();
+      })
+      .then((b) => c.decodeAudioData(b))
+      .then((b) => (fightRec[k] = b))
+      .catch((e: unknown) => console.warn(`The fight's sound ${k} didn't load:`, e));
+  }
+}
+
+// The fight's way into the effects' bus: through a low-pass and a level a flashbang closes down,
+// leaving its ringing in your ears over everything else.
+let fightMix: { in: GainNode; lp: BiquadFilterNode } | null = null;
+function fightBus(): GainNode | null {
+  if (!ctx || !bus) return null;
+  if (fightMix) return fightMix.in;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 20000;
+  lp.Q.value = 0.5;
+  const g = ctx.createGain();
+  g.connect(lp).connect(bus.fx);
+  fightMix = { in: g, lp };
+  return g;
+}
+
+// Where a fight's sound plays into, as out() does it for the others: through a panner at its place
+// if it has one, or null when it isn't to be played. It counts as playing for `busy` seconds, less
+// than it lasts when the next shot cuts it short.
+function fightOut(what: string, dur: number, at?: Place, ref = REF, heard = HEARD, busy = dur): AudioNode | null {
+  const into = fightBus();
+  if (!ctx || !into || playing >= MAX_PLAYING) return null;
+  let node: AudioNode = into;
+  if (at) {
+    if (Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z) > heard) return null;
+    const p = panner(ctx);
+    p.refDistance = ref;
+    place(p, at, ctx.currentTime, true);
+    p.connect(node);
+    node = p;
+    setTimeout(() => p.disconnect(), (dur + 0.5) * 1000);
+  }
+  playing++;
+  setTimeout(() => playing--, busy * 1000);
+  played[what] = (played[what] ?? 0) + 1;
+  return node;
+}
+
+interface RecOpts {
+  // When it starts, in the context's time; now if not given.
+  t?: number;
+  rate?: number;
+  gain?: number;
+  // Where in the recording to start, and how much of it to play (to its end if not given), in its
+  // own seconds; cut short, it fades out over the last `fade`.
+  from?: number;
+  len?: number;
+  fade?: number;
+  // Fading in over this long rather than starting at full level.
+  attack?: number;
+  // A low-pass's cutoff, for something heard through something or far away.
+  cutoff?: number;
+}
+// A recording playing, to be cut short.
+interface Rec {
+  src: AudioBufferSourceNode;
+  g: GainNode;
+  end: number;
+}
+
+// Plays a recording into o; null if it isn't decoded yet.
+function rec(o: AudioNode, k: FightSound, opt: RecOpts = {}): Rec | null {
+  const b = fightRec[k];
+  if (!ctx || !b) return null;
+  const c = ctx;
+  const t = opt.t ?? c.currentTime;
+  const rate = opt.rate ?? 1;
+  const from = opt.from ?? 0;
+  const len = Math.min(opt.len ?? b.duration, b.duration - from) / rate;
+  const gain = opt.gain ?? 1;
+  const src = c.createBufferSource();
+  src.buffer = b;
+  src.playbackRate.value = rate;
+  const g = c.createGain();
+  if (opt.attack) {
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + opt.attack);
+  } else g.gain.setValueAtTime(gain, t);
+  if (opt.len !== undefined) {
+    const fade = Math.min(len / 2, opt.fade ?? 0.05);
+    g.gain.setValueAtTime(gain, t + len - fade);
+    g.gain.linearRampToValueAtTime(0, t + len);
+  }
+  if (opt.cutoff && opt.cutoff < 18000) {
+    const lp = c.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = opt.cutoff;
+    src.connect(lp).connect(g);
+  } else src.connect(g);
+  g.connect(o);
+  src.start(t, from);
+  src.stop(t + len + 0.01);
+  return { src, g, end: t + len };
+}
+
+// How long a recording lasts at a rate, or `or` if it isn't in yet.
+const lengthOf = (k: FightSound, rate = 1, or = 0.3) => (fightRec[k] ? fightRec[k].duration / rate : or);
+// A little either way, so no two of a sound are quite alike.
+const vary = (x: number, by: number) => x * (1 + (Math.random() * 2 - 1) * by);
+const fightClamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
+const distanceTo = (at?: Place) => (at ? Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z) : 0);
+// A low-pass into o, for a sound duller the further off it is; a node of its own even when it
+// isn't, for the sound's share of the echo to be taken from.
+function dulled(o: AudioNode, cutoff: number): AudioNode {
+  if (!ctx) return o;
+  const f = ctx.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.value = Math.min(20000, cutoff);
+  f.connect(o);
+  return f;
+}
+// A share of a sound sent to the streets' echo, coming back later the further off it was fired.
+function echoed(from: AudioNode, share: number, far: number): void {
+  const send = echoes();
+  if (!send || !ctx || share <= 0) return;
+  const g = ctx.createGain();
+  g.gain.value = share;
+  const late = ctx.createDelay(0.5);
+  late.delayTime.value = Math.min(0.3, far / 500);
+  from.connect(g).connect(late).connect(send);
+  setTimeout(() => from.disconnect(g), 3000);
+}
+
+// Each gun's recording, the pitch it's played at (guns that share one a little apart) and how loud,
+// evened out between the recordings.
+const SHOT: Partial<Record<WeaponId, { k: FightSound; rate: number; gain: number }>> = {
+  glock: { k: 'shot-pistol', rate: 1.08, gain: 0.7 },
+  usp: { k: 'shot-pistol-suppressed', rate: 1, gain: 0.55 },
+  p250: { k: 'shot-pistol', rate: 0.96, gain: 0.75 },
+  deagle: { k: 'shot-deagle', rate: 1, gain: 1 },
+  mac10: { k: 'shot-smg', rate: 1.06, gain: 0.7 },
+  mp9: { k: 'shot-smg', rate: 1.12, gain: 0.65 },
+  ump: { k: 'shot-smg', rate: 0.9, gain: 0.75 },
+  p90: { k: 'shot-smg', rate: 1, gain: 0.7 },
+  galil: { k: 'shot-rifle-ak', rate: 1.06, gain: 0.8 },
+  famas: { k: 'shot-rifle-m4', rate: 1.07, gain: 0.85 },
+  ak47: { k: 'shot-rifle-ak', rate: 1, gain: 0.85 },
+  m4a4: { k: 'shot-rifle-m4', rate: 1, gain: 0.9 },
+  m4a1s: { k: 'shot-rifle-suppressed', rate: 0.92, gain: 0.6 },
+  sg553: { k: 'shot-rifle-m4', rate: 0.93, gain: 0.9 },
+  aug: { k: 'shot-rifle-m4', rate: 0.97, gain: 0.85 },
+  ssg08: { k: 'shot-ssg', rate: 1, gain: 0.85 },
+  awp: { k: 'shot-awp', rate: 1, gain: 1 },
+  nova: { k: 'shot-shotgun', rate: 1, gain: 0.95 },
+  xm1014: { k: 'shot-shotgun', rate: 1.08, gain: 0.85 },
+  negev: { k: 'shot-lmg', rate: 1, gain: 0.75 },
+};
+// The working of the action after a shot: the recording, how long after the shot it starts, and its
+// rate, fitted inside the time before the next shot.
+const CYCLE: Partial<Record<WeaponId, { k: FightSound; after: number; rate: number }>> = {
+  awp: { k: 'reload-sniper-bolt', after: 0.28, rate: 1.15 },
+  ssg08: { k: 'reload-sniper-bolt', after: 0.22, rate: 1.3 },
+  nova: { k: 'reload-pump', after: 0.3, rate: 1.1 },
+};
+// Shots still ringing, so a gun's next cuts its last short: an automatic at ten a second would
+// otherwise pile a dozen tails up. Others' shots from about the same place are the same gun's.
+const ringing: { w: WeaponId; at: Place | null; rec: Rec }[] = [];
+const MAX_SHOTS = 10;
+function cutShots(w: WeaponId, at: Place | null, t: number): void {
+  const same = (x: Place | null) => (!x || !at ? x === at : Math.hypot(x.x - at.x, x.y - at.y, x.z - at.z) < 4);
+  for (let i = ringing.length - 1; i >= 0; i--) {
+    const r = ringing[i];
+    const over = r.rec.end <= t;
+    if (!over && !(r.w === w && same(r.at))) continue;
+    if (!over) cut(r.rec, t);
+    ringing.splice(i, 1);
+  }
+  // Too many guns at once, the oldest give way.
+  while (ringing.length >= MAX_SHOTS) cut(ringing.shift()!.rec, t);
+}
+// Stops a recording quickly but without a click.
+function cut(r: Rec, t: number): void {
+  r.g.gain.cancelScheduledValues(t);
+  r.g.gain.setTargetAtTime(0, t, 0.025);
+  try {
+    r.src.stop(t + 0.15);
+  } catch {
+    // Already stopped.
+  }
+}
+
+// Your own reload's and bolt's sounds still to come, stopped when you take something else out.
+let pending: Rec[] = [];
+function later(r: Rec | null): void {
+  if (!r) return;
+  pending = pending.filter((x) => x.end > now());
+  pending.push(r);
+}
+function stopPending(): void {
+  const t = now();
+  for (const r of pending) if (r.end > t) cut(r, t);
+  pending = [];
+}
+
+// The fires burning, each a crackle near it.
+let fireLoop: { src: AudioBufferSourceNode; gain: GainNode; pan: PannerNode; real: boolean } | null = null;
+let lastStep = -1;
+let impacts: number[] = [];
+
+// The synthesized shot, for until its recording is in.
+function synthShot(w: WeaponId, at?: Place): void {
+  const r = reportOf(w);
+  const quiet = isGun(w) && GUNS[w].silenced;
+  const o = fightOut('shot', r.len + 0.1, at, quiet ? 12 : SHOT_REF, quiet ? 120 : SHOT_HEARD);
+  if (!o || !ctx) return;
+  const t = now();
+  const far = distanceTo(at);
+  const dull = dulled(o, 16000 / (1 + far / 60));
+  if (!quiet) echoed(dull, Math.min(1, 0.4 + far / 200), far);
+  noise(dull, t, r.snap, r.gain * 0.9, r.crack * 1.6, r.crack, 'bandpass', 0.9, 0.001);
+  noise(dull, t, r.len, r.gain, r.body, 180, 'lowpass', 0.7, 0.002);
+  note(dull, r.thump, t, r.len * 0.8, r.gain * 0.7, { to: r.thump * 0.45, attack: 0.002 });
+  if (isGun(w) && (GUNS[w].family === 'sniper' || w === 'nova')) clack(o, t + 0.45, GUNS[w].family === 'sniper' ? [1700, 2400] : [900, 1300]);
+}
+
+// A reload's stages by the gun's family: each a recording, where its main sound is in it (s), and
+// when in the reload that's heard (a share of its time).
+const STAGES: Record<string, [FightSound, number, number][]> = {
+  pistol: [
+    ['reload-mag-out', 0.21, 0.15],
+    ['reload-mag-in', 0.31, 0.55],
+    ['reload-pistol-slide', 0.25, 0.86],
+  ],
+  rifle: [
+    ['reload-mag-out', 0.21, 0.18],
+    ['reload-mag-in', 0.31, 0.6],
+    ['reload-bolt', 0.6, 0.9],
+  ],
+  heavy: [
+    ['reload-bolt', 0.2, 0.08],
+    ['reload-mag-out', 0.21, 0.3],
+    ['reload-mag-in', 0.31, 0.65],
+    ['reload-bolt', 0.6, 0.92],
+  ],
+  sniper: [
+    ['reload-mag-out', 0.21, 0.15],
+    ['reload-mag-in', 0.31, 0.45],
+    ['reload-sniper-bolt', 0.55, 0.8],
+  ],
+};
 
 export const fightSfx = {
-  // A shot: a crack, a burst of noise falling away and a thump, from where it's fired (yours in your
-  // head), duller the further off, and echoing in the streets.
-  shot: (kit: string, at?: Place) => {
-    const r = REPORT[kit] ?? REPORT.rifle;
-    const o = out('fx', 'shot', r.len + 0.1, at, SHOT_REF, SHOT_HEARD);
-    if (!o || !ctx) return;
+  // A shot: its gun's recording from where it's fired (yours in your head), a little different each
+  // time; further off duller, its echo later, and far away the distant crack over it. A sniper's
+  // rifle's bolt and a pump gun's slide are worked after it.
+  shot: (w: WeaponId, at?: Place) => {
+    fightSounds();
+    const s = SHOT[w];
+    if (!s || !isGun(w) || !fightRec[s.k] || !ctx) return synthShot(w, at);
+    const g = GUNS[w];
+    const quiet = g.silenced;
+    const rate = vary(s.rate, 0.025);
+    const len = lengthOf(s.k, rate);
+    const o = fightOut('shot', len, at, quiet ? 12 : SHOT_REF, quiet ? 150 : SHOT_HEARD, Math.min(len, g.every / 1000 + 0.1));
+    if (!o) return;
     const t = now();
-    const far = at ? Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z) : 0;
-    const dull = ctx.createBiquadFilter();
-    dull.type = 'lowpass';
-    dull.frequency.value = 16000 / (1 + far / 60);
-    dull.connect(o);
-    const send = echoes();
-    if (send) {
-      const g = ctx.createGain();
-      g.gain.value = Math.min(1, 0.4 + far / 200);
-      dull.connect(g).connect(send);
-      setTimeout(() => g.disconnect(), 2500);
+    const far = distanceTo(at);
+    cutShots(w, at ?? null, t);
+    const dull = dulled(o, at ? 20000 / (1 + far / 45) : 20000);
+    // Yours with a little of the street's echo, others' more the further off they are.
+    echoed(dull, (quiet ? 0.4 : 1) * (at ? Math.min(0.9, 0.3 + far / 150) : 0.25), far);
+    // Past 50 m the distant shot takes over, fully by 200 m.
+    const away = quiet ? 0 : fightClamp((far - 50) / 150, 0, 1);
+    const gain = vary(s.gain, 0.1);
+    const near = rec(dull, s.k, { t, rate, gain: gain * (1 - 0.7 * away) });
+    if (near) ringing.push({ w, at: at ?? null, rec: near });
+    if (away > 0 && fightRec['shot-distant']) {
+      const d = rec(dulled(o, 9000 / (1 + far / 300)), 'shot-distant', { t, rate: vary(g.family === 'pistol' || g.family === 'smg' ? 1.1 : 0.95, 0.03), gain: 0.9 * away });
+      if (d) ringing.push({ w, at: at ?? null, rec: d });
     }
-    noise(dull, t, r.snap, r.gain * 0.9, r.crack * 1.6, r.crack, 'bandpass', 0.9, 0.001);
-    noise(dull, t, r.len, r.gain, r.body, 180, 'lowpass', 0.7, 0.002);
-    note(dull, r.thump, t, r.len * 0.8, r.gain * 0.7, { to: r.thump * 0.45, attack: 0.002 });
+    const cy = CYCLE[w];
+    if (cy && fightRec[cy.k]) {
+      const by = fightOut('bolt', cy.after + lengthOf(cy.k, cy.rate), at, 6, 50);
+      const r = by && rec(by, cy.k, { t: t + cy.after, rate: cy.rate, gain: at ? 0.6 : 0.45 });
+      if (!at) later(r);
+    }
   },
   // An empty magazine: a dry click.
   dry: () => {
-    const o = out('fx', 'dry', 0.05);
-    if (o) noise(o, now(), 0.03, 0.12, 4000, 2500, 'bandpass', 3, 0.001);
+    fightSounds();
+    const o = fightOut('dry', lengthOf('dry-fire', 1, 0.05));
+    if (o && !rec(o, 'dry-fire', { gain: 0.45 })) noise(o, now(), 0.03, 0.12, 4000, 2500, 'bandpass', 3, 0.001);
   },
-  // A reload: the magazine out, in, and the bolt; spread over its time.
-  reload: (ms: number, at?: Place) => {
-    const o = out('fx', 'reload', ms / 1000, at);
+  // A weapon taken out: drawn from its holster, a knife with a ring of its blade; whatever was
+  // still to come of the last one's reload is stopped.
+  draw: (w: WeaponId) => {
+    fightSounds();
+    stopPending();
+    const gun = isGun(w);
+    const rate = w === 'knife' ? 1.35 : !gun ? 1.25 : GUNS[w].family === 'pistol' ? 1.1 : 0.95;
+    const o = fightOut('draw', Math.max(0.3, lengthOf('weapon-draw', rate)));
     if (!o) return;
+    const drawn = rec(o, 'weapon-draw', { rate: vary(rate, 0.03), gain: w === 'knife' ? 0.18 : gun ? 0.35 : 0.22 });
+    if (!drawn) noise(o, now(), 0.12, 0.05, 1800, 600, 'bandpass', 0.8, 0.01);
+    if (w === 'knife') noise(o, now() + 0.05, 0.18, 0.06, 7000, 3000, 'highpass', 1, 0.02);
+    else if (gun && !drawn) clack(o, now() + 0.12, [2200]);
+  },
+  // A reload over its ms: the magazine out, in, and the bolt or slide, by the gun's family; a
+  // shotgun's shells go in one at a time, each a reload of ms 0.
+  reload: (w: WeaponId, ms: number, at?: Place) => {
+    fightSounds();
+    const fam = isGun(w) ? GUNS[w].family : 'pistol';
     const t = now();
-    for (const [f, k] of [[0.15, 1800], [0.55, 1300], [0.85, 2600]] as const) {
-      noise(o, t + (f * ms) / 1000, 0.05, 0.16, k, k * 0.6, 'bandpass', 4, 0.001);
-      note(o, k / 4, t + (f * ms) / 1000, 0.04, 0.05, { type: 'triangle', attack: 0.001 });
+    if (!ms) {
+      const o = fightOut('reload', 0.25, at, 6, 40);
+      if (o && !rec(o, 'reload-shell-insert', { rate: vary(1, 0.04), gain: 0.6 })) clack(o, t, [1300, 2000]);
+      return;
+    }
+    if (fam === 'shotgun') return;
+    const o = fightOut('reload', ms / 1000 + 0.5, at, 6, 40);
+    if (!o) return;
+    const s = ms / 1000;
+    for (const [k, hit, f] of STAGES[fam] ?? STAGES.rifle) {
+      // The sniper's bolt is a long one, sped up to finish before the reload does.
+      const rate = k === 'reload-sniper-bolt' ? fightClamp((lengthOf(k) - hit) / (s * (1 - f)), 1, 1.4) : vary(1, 0.03);
+      const when = t + Math.max(0, s * f - hit / rate);
+      const r = rec(o, k, { t: when, rate, gain: at ? 0.7 : 0.5 });
+      if (!at) later(r);
+      if (!r) clack(o, t + s * f, [k === 'reload-mag-out' ? 1800 : k === 'reload-mag-in' ? 1300 : 2600]);
     }
   },
-  // A bullet striking a wall or the ground: a short smack.
-  impact: (at: Place) => {
-    const o = out('fx', 'impact', 0.12, at);
-    if (o) noise(o, now(), 0.08, 0.16, 2500, 600, 'bandpass', 1.5, 0.001);
+  // The scope up or down.
+  zoom: (up: boolean) => {
+    const o = fightOut('zoom', 0.08);
+    if (o) noise(o, now(), 0.04, 0.05, up ? 5000 : 3500, 2500, 'bandpass', 4, 0.001);
   },
-  // Hit: a thud in your head.
-  hurt: () => {
-    const o = out('fx', 'hurt', 0.25);
+  // Coming down hard on your feet.
+  land: (k: number) => {
+    fightSounds();
+    const o = fightOut('land', lengthOf('jump-land', 1, 0.2));
+    if (!o || rec(o, 'jump-land', { rate: vary(1, 0.04), gain: 0.2 + 0.4 * k })) return;
+    noise(o, now(), 0.1, 0.12 * k, 900, 150, 'lowpass', 1, 0.002);
+    note(o, 60, now(), 0.12, 0.2 * k, { to: 35, attack: 0.002 });
+  },
+  // The knife: its swish through the air, and into someone; against a wall (called besides the
+  // swish), the blade's knock alone.
+  knife: (what: 'air' | 'hit' | 'wall', at?: Place) => {
+    fightSounds();
+    const o = fightOut('knife', 0.6, at, 6, 40);
     if (!o) return;
-    note(o, 70, now(), 0.22, 0.4, { to: 40, attack: 0.003 });
-    noise(o, now(), 0.15, 0.2, 900, 200, 'lowpass', 1, 0.002);
+    const t = now();
+    if (what === 'wall') {
+      if (!rec(o, 'knife-hit-wall', { rate: vary(1, 0.05), gain: 0.55 })) clack(o, t, [3200, 4100]);
+      return;
+    }
+    if (!rec(o, 'knife-swing', { rate: vary(1, 0.06), gain: 0.45 })) noise(o, t, 0.16, 0.09, 6000, 1800, 'bandpass', 1.4, 0.03);
+    if (what === 'hit' && !rec(o, 'knife-hit-flesh', { t: t + 0.05, rate: vary(1, 0.05), gain: 0.65 })) noise(o, t + 0.06, 0.12, 0.22, 700, 200, 'lowpass', 1, 0.002);
   },
-  // Your shot hit someone: a tick, higher for the head.
-  marker: (head: boolean) => {
-    const o = out('fx', 'marker', 0.08);
-    if (o) note(o, head ? 2600 : 1900, now(), 0.06, 0.12, { type: 'triangle', cutoff: 6000, attack: 0.001 });
+  // A grenade: its pin pulled, thrown, bouncing (as hard as k), going off: the HE grenade's blast
+  // and the flash's bang, echoing down the streets; the smoke's hiss; the molotov's glass breaking
+  // and its fire catching.
+  nade: (what: 'pin' | 'throw' | 'bounce' | 'he' | 'flash' | 'smoke' | 'fire', at?: Place, k = 1) => {
+    fightSounds();
+    const big = what === 'he' || what === 'flash';
+    const dur = what === 'smoke' ? 3.9 : what === 'he' ? 2.1 : what === 'fire' ? 1.7 : big ? 1.1 : 0.3;
+    const o = fightOut(`nade-${what}`, dur, at, big ? SHOT_REF : 10, big ? SHOT_HEARD : 80);
+    if (!o) return;
+    const t = now();
+    if (what === 'pin') {
+      if (!rec(o, 'grenade-pin', { gain: 0.45 })) clack(o, t, [2600, 3400]);
+      return;
+    }
+    if (what === 'throw') {
+      if (!rec(o, 'grenade-throw', { rate: vary(1, 0.05), gain: 0.4 })) noise(o, t, 0.2, 0.06, 2500, 800, 'bandpass', 0.8, 0.03);
+      return;
+    }
+    if (what === 'bounce') {
+      if (!rec(o, 'grenade-bounce', { rate: vary(1.02, 0.12), gain: 0.1 + 0.55 * k })) clack(o, t, [1500 + 600 * k]);
+      return;
+    }
+    const far = distanceTo(at);
+    if (big) {
+      const dull = dulled(o, 20000 / (1 + far / 60));
+      echoed(dull, Math.min(1, 0.5 + far / 150), far);
+      if (what === 'he') {
+        if (!rec(dull, 'explosion-he', { rate: vary(1, 0.03), gain: 0.85 })) noise(dull, t, 1.2, 0.9, 1200, 60, 'lowpass', 0.7, 0.002);
+        // The weight under it, which the recording's small microphone lost.
+        note(dull, 55, t, 0.8, 0.45, { to: 28, attack: 0.002 });
+      } else if (!rec(dull, 'flashbang-bang', { rate: vary(1, 0.03), gain: 0.85 })) noise(dull, t, 0.3, 0.8, 5000, 1200, 'bandpass', 0.6, 0.001);
+      return;
+    }
+    if (what === 'smoke') {
+      if (!rec(o, 'smoke-hiss', { attack: 0.08, gain: 0.4, len: 3.75, fade: 1.2 })) noise(o, t, 2.8, 0.12, 4000, 2000, 'highpass', 0.5, 0.2);
+      return;
+    }
+    // The molotov: glass, and the fire catching with a whoosh before it settles to its crackle.
+    if (!rec(o, 'molotov-break', { rate: vary(1, 0.04), gain: 0.65 })) noise(o, t, 0.15, 0.3, 4500, 3000, 'bandpass', 1.5, 0.001);
+    rec(o, 'fire-loop', { t: t + 0.08, from: 0.5, attack: 0.3, gain: 0.5, len: 1.5, fade: 0.8 });
+    noise(o, t + 0.05, 0.8, 0.25, 900, 300, 'lowpass', 0.6, 0.05);
   },
-  // You put someone down: two notes going up.
+  // The fires burning now, a crackle from the nearest; none, quiet.
+  burning: (fires: Place[]) => {
+    fightSounds();
+    const into = fightBus();
+    if (!ctx || !into) return;
+    const c = ctx;
+    if (!fires.length) {
+      if (fireLoop) {
+        const f = fireLoop;
+        f.gain.gain.setTargetAtTime(0, now(), 0.2);
+        setTimeout(() => {
+          f.src.stop();
+          f.pan.disconnect();
+        }, 800);
+        fireLoop = null;
+      }
+      return;
+    }
+    let near = fires[0];
+    for (const f of fires) if (distanceTo(f) < distanceTo(near)) near = f;
+    const real = fightRec['fire-loop'];
+    // The synthesized crackle gives way to the recording once it's in.
+    if (fireLoop && !fireLoop.real && real) {
+      fireLoop.src.stop();
+      fireLoop.pan.disconnect();
+      fireLoop = null;
+    }
+    if (!fireLoop) {
+      const src = c.createBufferSource();
+      if (real) {
+        src.buffer = real;
+        // The loop is seamless in what it holds; MP3 pads its ends with a few milliseconds.
+        src.loopStart = 0.025;
+        src.loopEnd = real.duration - 0.025;
+      } else {
+        const len = c.sampleRate * 2;
+        const buf = c.createBuffer(1, len, c.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (Math.random() < 0.003 ? 1 : 0.25);
+        src.buffer = buf;
+      }
+      src.loop = true;
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = real ? 12000 : 2200;
+      const gain = c.createGain();
+      gain.gain.value = 0;
+      const pan = panner(c);
+      pan.refDistance = 4;
+      place(pan, near, c.currentTime, true);
+      src.connect(lp).connect(gain).connect(pan).connect(into);
+      src.start(c.currentTime, real ? 0.025 + Math.random() * (real.duration - 0.1) : 0);
+      fireLoop = { src, gain, pan, real: !!real };
+      played.fire = (played.fire ?? 0) + 1;
+    }
+    place(fireLoop.pan, near, c.currentTime, false);
+    fireLoop.gain.gain.setTargetAtTime(fireLoop.real ? 0.55 : 0.3, now(), 0.1);
+  },
+  // A flash's ringing in your ears: a high whine over everything else, which goes dull and quiet,
+  // both coming back as it fades.
+  ring: (ms: number) => {
+    fightSounds();
+    const s = Math.max(0.3, ms / 1000);
+    const o = out('fx', 'ring', s);
+    if (!o || !ctx || !bus) return;
+    const t = now();
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.09, t + 0.02);
+    g.gain.setValueAtTime(0.09, t + s * 0.3);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + s);
+    g.connect(o);
+    for (const f of [3520, 3527]) {
+      const osc = ctx.createOscillator();
+      osc.frequency.value = f;
+      osc.connect(g);
+      osc.start(t);
+      osc.stop(t + s + 0.05);
+    }
+    fightBus();
+    if (!fightMix) return;
+    const hold = t + s * 0.3;
+    const lp = fightMix.lp.frequency;
+    lp.cancelScheduledValues(t);
+    lp.setTargetAtTime(400, t, 0.015);
+    lp.setValueAtTime(400, hold);
+    lp.exponentialRampToValueAtTime(20000, t + s);
+    const lv = fightMix.in.gain;
+    lv.cancelScheduledValues(t);
+    lv.setTargetAtTime(0.3, t, 0.015);
+    lv.setValueAtTime(0.3, hold);
+    lv.linearRampToValueAtTime(1, t + s);
+    const city = bus.ambience.gain;
+    city.cancelScheduledValues(t);
+    city.setTargetAtTime(LEVEL.ambience * 0.3, t, 0.015);
+    city.setValueAtTime(LEVEL.ambience * 0.3, hold);
+    city.linearRampToValueAtTime(LEVEL.ambience, t + s);
+  },
+  // A bullet striking something, by what it is: stone, metal, wood; plastic a lighter knock, a hedge
+  // and sand duller. A shotgun's pellets or a spray land many at once, so a few at most are heard.
+  impact: (at: Place & { what?: string | null }) => {
+    fightSounds();
+    const t = now();
+    impacts = impacts.filter((x) => t - x < 0.15);
+    if (impacts.length >= 5) return;
+    const o = fightOut('impact', 0.45, at, 8, 150);
+    if (!o) return;
+    impacts.push(t);
+    const what = at.what ?? 'wall';
+    const metal = what === 'metal' || what === 'car' || what === 'kart';
+    const soft = what === 'hedge' || what === 'tree' || what === 'wood' || what === 'plastic';
+    const k: FightSound = metal ? 'impact-metal' : soft ? 'impact-wood' : 'impact-concrete';
+    const opt: RecOpts = { rate: vary(what === 'plastic' ? 1.25 : what === 'sand' ? 0.75 : 1, 0.07), gain: metal ? 0.5 : 0.45 };
+    if (what === 'hedge' || what === 'sand') opt.cutoff = 1500;
+    if (rec(o, k, opt)) return;
+    if (metal) return clack(o, t, [2800, 3900]);
+    noise(o, t, 0.08, 0.16, 2500, 600, 'bandpass', 1.5, 0.002);
+  },
+  // Hit: a thud in your head; in the head, the helmet's ring too.
+  hurt: (head = false) => {
+    fightSounds();
+    const o = fightOut('hurt', 0.3);
+    if (!o) return;
+    const t = now();
+    note(o, 70, t, 0.22, 0.3, { to: 40, attack: 0.003 });
+    if (!rec(o, 'impact-flesh', { rate: vary(0.95, 0.05), gain: 0.55 })) noise(o, t, 0.15, 0.2, 900, 200, 'lowpass', 1, 0.002);
+    if (head && !rec(o, 'headshot-dink', { rate: vary(0.85, 0.03), gain: 0.45 })) note(o, 2900, t, 0.25, 0.06, { type: 'triangle', attack: 0.001 });
+  },
+  // Your shot hit someone: a soft smack; in the head, the dink; a kill, a ding.
+  marker: (head: boolean, kill = false) => {
+    fightSounds();
+    const o = fightOut('marker', 0.3);
+    if (!o) return;
+    const hit = head ? rec(o, 'headshot-dink', { rate: vary(1, 0.02), gain: 0.5 }) : rec(o, 'impact-flesh', { rate: vary(1.15, 0.04), gain: 0.3 });
+    if (!hit) note(o, head ? 2600 : 1900, now(), 0.06, 0.12, { type: 'triangle', cutoff: 6000, attack: 0.001 });
+    if (kill) bell(o, C6, now() + 0.05, 0.2, 0.1);
+  },
+  // You put someone down: two notes going up, and their fall under them.
   down: () => {
-    const o = out('fx', 'down', 0.4);
+    fightSounds();
+    const o = fightOut('down', 0.8);
     if (!o) return;
     bell(o, E5, now(), 0.3, 0.14);
     bell(o, C6, now() + 0.08, 0.36, 0.14);
+    rec(o, 'body-fall', { t: now() + 0.1, gain: 0.22, cutoff: 2500 });
   },
-  // A footstep on the paving, from wherever it is; running, harder. Yours quieter, in your head.
+  // A footstep on the paving, from wherever it is, one of four takes and never the same twice
+  // running; running, harder. Yours quieter, in your head.
   step: (run: boolean, at?: Place) => {
-    const o = out('fx', 'step', 0.12, at, 6, 60);
+    fightSounds();
+    const o = fightOut('step', 0.45, at, 6, 60, 0.15);
     if (!o) return;
-    const g = (run ? 0.16 : 0.09) * (at ? 1 : 0.6);
-    noise(o, now(), 0.07, g, run ? 1400 : 1000, 250, 'lowpass', 1.2, 0.003);
-    noise(o, now() + 0.015, 0.05, g * 0.5, 3500, 1800, 'bandpass', 2, 0.002);
+    let n = Math.floor(Math.random() * 3);
+    if (n >= lastStep) n++;
+    lastStep = n;
+    const k = `footstep-concrete-${n + 1}` as FightSound;
+    const g = (run ? 0.5 : 0.3) * (at ? 1 : 0.55);
+    if (rec(o, k, { rate: vary(1, 0.05), gain: vary(g, 0.1) })) return;
+    const sg = (run ? 0.16 : 0.09) * (at ? 1 : 0.6);
+    noise(o, now(), 0.07, sg, run ? 1400 : 1000, 250, 'lowpass', 1.2, 0.003);
+    noise(o, now() + 0.015, 0.05, sg * 0.5, 3500, 1800, 'bandpass', 2, 0.002);
+  },
+  // A buy in the menu.
+  buy: () => {
+    fightSounds();
+    const o = fightOut('buy', 0.2);
+    if (o && !rec(o, 'ui-buy', { gain: 0.4 })) clack(o, now(), [1800, 2600]);
+  },
+  // The round over: anything still going quiet, and the ears clear.
+  calm: () => {
+    fightSfx.burning([]);
+    stopPending();
+    if (!ctx || !bus || !fightMix) return;
+    const t = now();
+    for (const [p, v] of [
+      [fightMix.lp.frequency, 20000],
+      [fightMix.in.gain, 1],
+      [bus.ambience.gain, LEVEL.ambience],
+    ] as const) {
+      p.cancelScheduledValues(t);
+      p.setTargetAtTime(v, t, 0.05);
+    }
   },
 };
+
+// Metal on metal: a click or two, at these pitches.
+function clack(o: AudioNode, t: number, pitches: number[]): void {
+  pitches.forEach((k, i) => {
+    noise(o, t + i * 0.06, 0.04, 0.14, k, k * 0.6, 'bandpass', 4, 0.001);
+    note(o, k / 4, t + i * 0.06, 0.03, 0.04, { type: 'triangle', attack: 0.001 });
+  });
+}
+
 // ---- Listening to it: what the speakers get, measured and recorded, to judge the sound by ----
 
 // The loudest sample since the race began, on each side, and how many went over full scale and

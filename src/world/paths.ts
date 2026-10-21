@@ -1,11 +1,12 @@
 // Where someone on foot can walk in an area (braga-map's task 075, for the bots in a round): a lattice
 // of points 2 m apart over its ground (the streets, pavements, paths and steps, the land, a passage
 // under a building, a room's floor), each with room to stand, joined to its eight neighbours where a
-// walker gets from one to the other: no wall, hedge, fence, building or trunk between them, no rise a
-// walker can't climb (a flight's treads one by one, a bank up to 45°), and a retaining wall only off
-// its top. Where a building has floors over its ground floor (a tower, braga-map's task 079), a point
-// on each, and the ways no lattice lines up with joined by hand: through each door of a room, and up
-// each flight of a tower's stairs. Only the points the area's places reach are kept. A bot finds its
+// walker gets from one to the other: no wall, hedge, fence, building, trunk or a round's cover (a
+// parked car, a skip, a crate: world/cover.ts) between them or round a point, no rise a walker can't
+// climb (a flight's treads one by one, a bank up to 45°), and a retaining wall only off its top. Where a
+// building has floors over its ground floor (a tower, braga-map's task 079), a point on each, and the
+// ways no lattice lines up with joined by hand: through each door of a room, and up each flight of a
+// tower's stairs. Only the points the area's places reach are kept. A bot finds its
 // way on it (A*) and looks for cover round it.
 import { overTop, Rings, STEP, type Floor, type Post, type Wall, type WorldGround } from './ground.ts';
 import { inside as inRoom, type Room } from './interiors.ts';
@@ -120,7 +121,7 @@ export class Paths {
             if (here.some((r) => r.stair && inRoom(r.stair.pts, x, z))) continue;
             const y0 = Number.isNaN(level) ? g.groundAt(x, z) : level;
             const f = g.floor(x, z, y0 + 0.5);
-            if (f.buried || this.wet(x, z, f.y) || g.circle(x, z, x, z, f.y, ROOM, TALL, true)) continue;
+            if (f.buried || this.wet(x, z, f.y) || g.circle(x, z, x, z, f.y, ROOM, TALL, true) || g.inSolid(x, z, f.y, f.y + TALL)) continue;
             if ((this.cells.get(c) ?? []).some((q) => Math.abs(ys[q] - f.y) < 1)) break;
             add(c, x, f.y, z, f.kind);
             break;
@@ -171,7 +172,8 @@ export class Paths {
       }
     };
     for (const r of here) {
-      for (const [o, i] of r.doors) {
+      // Each door, and each doorway between the rooms of a floor (interiors.ts).
+      for (const [o, i] of [...r.doors, ...r.gaps]) {
         const a = hand(o);
         const b = hand(i);
         link(a, b);

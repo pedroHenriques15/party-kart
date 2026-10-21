@@ -3,6 +3,7 @@
 // corner to its (i, j + 1). A Surface is heights on it: the land's mesh is one, and what meets the
 // land (a street's retaining wall) reads the land's height on it where it's drawn.
 import type { Box } from 'braga-map';
+import { convexPieces } from './roofs.ts';
 
 export type Height = (x: number, z: number) => number;
 
@@ -120,4 +121,209 @@ export class Surface {
     cross(ax + az, bx + bz, x0 + z0);
     return ts.sort((p, q) => p - q);
   }
+}
+
+type XZ = [number, number];
+
+// The land's holes (braga-map's task 079): the outlines it isn't drawn inside, the rooms'. A room's
+// floors are drawn in its place, and the land under a building stands up through its ground floor
+// where the ground rises under it. Each outline as convex pieces (its triangles merged), in cells of
+// 10 m. A triangle of the land is cut to what's outside them: the land outside a room is just as it
+// was, to the outline, where the facade stands on it.
+export class Holes {
+  private parts: { pts: XZ[]; ring: number; x0: number; z0: number; x1: number; z1: number }[] = [];
+  private cells = new Map<number, number[]>();
+
+  constructor(rings: readonly (readonly XZ[])[]) {
+    rings.forEach((ring, k) => {
+      for (const pts of convexOf(ring as XZ[])) {
+        const xs = pts.map((p) => p[0]);
+        const zs = pts.map((p) => p[1]);
+        const n = this.parts.push({ pts, ring: k, x0: Math.min(...xs), z0: Math.min(...zs), x1: Math.max(...xs), z1: Math.max(...zs) }) - 1;
+        const p = this.parts[n];
+        for (const c of cellsOf(p.x0, p.z0, p.x1, p.z1)) {
+          const l = this.cells.get(c);
+          if (l) l.push(n);
+          else this.cells.set(c, [n]);
+        }
+      }
+    });
+  }
+
+  // The pieces of holes whose box meets this one.
+  private near(x0: number, z0: number, x1: number, z1: number): number[] {
+    const out = new Set<number>();
+    for (const c of cellsOf(x0, z0, x1, z1)) for (const n of this.cells.get(c) ?? []) out.add(n);
+    return [...out].filter((n) => {
+      const p = this.parts[n];
+      return p.x1 > x0 && p.x0 < x1 && p.z1 > z0 && p.z0 < z1;
+    });
+  }
+
+  // Whether a hole may meet the box.
+  touches(x0: number, z0: number, x1: number, z1: number): boolean {
+    for (const c of cellsOf(x0, z0, x1, z1)) {
+      for (const n of this.cells.get(c) ?? []) {
+        const p = this.parts[n];
+        if (p.x1 > x0 && p.x0 < x1 && p.z1 > z0 && p.z0 < z1) return true;
+      }
+    }
+    return false;
+  }
+
+  // A triangle (its corners, wound either way) less the holes: the convex pieces of it outside them
+  // all, wound as it is; and those inside each, with its ring's number. Null where no hole meets it.
+  cut(t: XZ[]): { out: XZ[][]; in: { ring: number; pts: XZ[] }[] } | null {
+    const xs = t.map((p) => p[0]);
+    const zs = t.map((p) => p[1]);
+    const near = this.near(Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)).filter((n) => overlaps(t, this.parts[n].pts));
+    if (!near.length) return null;
+    let out: XZ[][] = [t];
+    const ins: { ring: number; pts: XZ[] }[] = [];
+    for (const n of near) {
+      const q = this.parts[n];
+      const next: XZ[][] = [];
+      for (const p of out) {
+        if (!overlaps(p, q.pts)) {
+          next.push(p);
+          continue;
+        }
+        const m = minus(p, q.pts);
+        next.push(...m.out);
+        if (m.inside.length >= 3 && Math.abs(area(m.inside)) > 1e-6) ins.push({ ring: q.ring, pts: m.inside });
+      }
+      out = next;
+    }
+    return { out, in: ins };
+  }
+}
+
+// The 10 m cells a box is in.
+function cellsOf(x0: number, z0: number, x1: number, z1: number): number[] {
+  const out: number[] = [];
+  for (let j = Math.floor(z0 / 10); j <= Math.floor(z1 / 10); j++) for (let i = Math.floor(x0 / 10); i <= Math.floor(x1 / 10); i++) out.push(j * 100003 + i);
+  return out;
+}
+
+// Twice a ring's area, positive one way round and negative the other.
+function area(r: XZ[]): number {
+  let a = 0;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][0] - r[i][0]) * (r[j][1] + r[i][1]);
+  return a;
+}
+
+// Sutherland-Hodgman: a convex polygon cut down to where `keep` is positive (or nothing), wound as it is.
+function half(poly: XZ[], keep: (p: XZ) => number): XZ[] {
+  const out: XZ[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    const kp = keep(p);
+    const kq = keep(q);
+    const add = (r: XZ) => {
+      const l = out[out.length - 1];
+      if (!l || Math.abs(l[0] - r[0]) + Math.abs(l[1] - r[1]) > 1e-9) out.push(r);
+    };
+    if (kp >= 0) add(p);
+    if (kp >= 0 !== kq >= 0) {
+      const t = kp / (kp - kq);
+      add([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]);
+    }
+  }
+  while (out.length > 1 && Math.abs(out[0][0] - out[out.length - 1][0]) + Math.abs(out[0][1] - out[out.length - 1][1]) <= 1e-9) out.pop();
+  return out.length >= 3 && Math.abs(area(out)) > 1e-7 ? out : [];
+}
+
+// A convex polygon less a convex one: what's outside each of its sides in turn and inside those before
+// (convex pieces that don't overlap), and what's inside it all.
+function minus(a: XZ[], q: XZ[]): { out: XZ[][]; inside: XZ[] } {
+  const s = area(q) > 0 ? 1 : -1;
+  const out: XZ[][] = [];
+  let rest = a;
+  for (let i = 0; i < q.length; i++) {
+    const [ax, az] = q[i];
+    const [bx, bz] = q[(i + 1) % q.length];
+    const f = (p: XZ) => s * ((bx - ax) * (p[1] - az) - (bz - az) * (p[0] - ax));
+    const o = half(rest, (p) => -f(p));
+    if (o.length) out.push(o);
+    rest = half(rest, f);
+    if (!rest.length) break;
+  }
+  return { out, inside: rest };
+}
+
+// Whether two convex polygons overlap by more than a hair (separating axes).
+function overlaps(A: XZ[], B: XZ[]): boolean {
+  for (const P of [A, B]) {
+    for (let i = 0; i < P.length; i++) {
+      const a = P[i];
+      const b = P[(i + 1) % P.length];
+      const nx = b[1] - a[1];
+      const nz = a[0] - b[0];
+      if (Math.abs(nx) + Math.abs(nz) < 1e-9) continue;
+      let a0 = Infinity;
+      let a1 = -Infinity;
+      let b0 = Infinity;
+      let b1 = -Infinity;
+      for (const p of A) [a0, a1] = [Math.min(a0, p[0] * nx + p[1] * nz), Math.max(a1, p[0] * nx + p[1] * nz)];
+      for (const p of B) [b0, b1] = [Math.min(b0, p[0] * nx + p[1] * nz), Math.max(b1, p[0] * nx + p[1] * nz)];
+      const eps = 1e-6 * Math.hypot(nx, nz);
+      if (a1 <= b0 + eps || b1 <= a0 + eps) return false;
+    }
+  }
+  return true;
+}
+
+// A ring as convex pieces: its triangles (ears clipped off it one by one), merged where they stay
+// convex (roofs.ts's convexPieces).
+function convexOf(ring: XZ[]): XZ[][] {
+  const turn = (a: XZ, b: XZ, c: XZ) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  // Without a corner twice over, or one on a straight line between its neighbours.
+  let pts = ring.slice();
+  for (let again = true; again && pts.length > 3; ) {
+    again = false;
+    for (let k = 0; k < pts.length && pts.length > 3; k++) {
+      const a = pts[(k + pts.length - 1) % pts.length];
+      const b = pts[k];
+      const c = pts[(k + 1) % pts.length];
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-6 || Math.abs(turn(a, b, c)) < 1e-9) {
+        pts = pts.filter((_, i) => i !== k);
+        again = true;
+      }
+    }
+  }
+  // Which way a convex corner turns, as the corner at its lowest point does.
+  const sgn = turn(...lowest(pts)) > 0 ? 1 : -1;
+  const idx = pts.map((_, i) => i);
+  const tris: number[][] = [];
+  let guard = 0;
+  while (idx.length > 3 && guard++ < 1000) {
+    let cut = false;
+    for (let k = 0; k < idx.length; k++) {
+      const [i, j, l] = [idx[(k + idx.length - 1) % idx.length], idx[k], idx[(k + 1) % idx.length]];
+      if (sgn * turn(pts[i], pts[j], pts[l]) <= 1e-12) continue;
+      if (idx.some((m) => m !== i && m !== j && m !== l && inTri(pts[m], pts[i], pts[j], pts[l]))) continue;
+      tris.push([i, j, l]);
+      idx.splice(k, 1);
+      cut = true;
+      break;
+    }
+    if (!cut) break;
+  }
+  if (idx.length === 3) tris.push([...idx]);
+  return convexPieces(pts, tris).map((p) => p.map((i) => pts[i]));
+
+  // The corner at the ring's lowest point and its two neighbours: convex, whichever way it's wound.
+  function lowest(r: XZ[]): [XZ, XZ, XZ] {
+    let m = 0;
+    for (let i = 1; i < r.length; i++) if (r[i][0] < r[m][0] || (r[i][0] === r[m][0] && r[i][1] < r[m][1])) m = i;
+    return [r[(m + r.length - 1) % r.length], r[m], r[(m + 1) % r.length]];
+  }
+}
+
+function inTri(p: XZ, a: XZ, b: XZ, c: XZ): boolean {
+  const d1 = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+  const d2 = (c[0] - b[0]) * (p[1] - b[1]) - (c[1] - b[1]) * (p[0] - b[0]);
+  const d3 = (a[0] - c[0]) * (p[1] - c[1]) - (a[1] - c[1]) * (p[0] - c[0]);
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
 }

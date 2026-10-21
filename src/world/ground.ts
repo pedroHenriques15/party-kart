@@ -85,6 +85,45 @@ export interface Tread {
   box: { x0: number; z0: number; x1: number; z1: number };
 }
 
+// A box a round stands on its ground (world/cover.ts: a parked car, a skip, a pallet of bricks, a
+// crate): its middle at (x, z), L long the way yaw points ((cos yaw, sin yaw), as a car faces), W wide,
+// from y0 up to y1. Someone on foot meets its sides and stands on its top; a look and a shot stop at
+// it (sight.ts), which says what it's made of for the mark and the sound; but one they see through (a
+// site fence's mesh, as the map's fences) is only something in the way, and never a floor.
+export interface Solid {
+  x: number;
+  z: number;
+  yaw: number;
+  L: number;
+  W: number;
+  y0: number;
+  y1: number;
+  mat: 'metal' | 'wood' | 'concrete' | 'car' | 'plastic' | 'sand';
+  see?: boolean;
+}
+
+// How far past a solid's top's edge the feet still stand on it: a walker's middle can be over the
+// edge with most of its foot on the top.
+const LEDGE = 0.2;
+
+// Whether (x, z) is over a solid's top, grown by m all round.
+export function onSolid(b: { x: number; z: number; yaw: number; L: number; W: number }, x: number, z: number, m = 0): boolean {
+  const dx = x - b.x;
+  const dz = z - b.z;
+  const c = Math.cos(b.yaw);
+  const s = Math.sin(b.yaw);
+  return Math.abs(dx * c + dz * s) <= b.L / 2 + m && Math.abs(dz * c - dx * s) <= b.W / 2 + m;
+}
+
+// A box's corners seen from above, in order round it, grown by m all round.
+export function corners(b: { x: number; z: number; yaw: number; L: number; W: number }, m = 0): [number, number][] {
+  const c = Math.cos(b.yaw);
+  const s = Math.sin(b.yaw);
+  const l = b.L / 2 + m;
+  const w = b.W / 2 + m;
+  return [[l, w], [l, -w], [-l, -w], [-l, w]].map(([u, v]) => [b.x + c * u - s * v, b.z + s * u + c * v]);
+}
+
 // A tree's trunk, or anything round: at (x, z), r wide, from y0 to y1.
 export interface Post {
   x: number;
@@ -401,9 +440,13 @@ export class WorldGround implements Ground {
   // The world's walls a race takes down while it runs (braga-map's `cleared`, its task 057): pieces of
   // `d.walls`, which stand for every other ground.
   down: Set<Wall>;
+  // The boxes a round stands on its ground (cover.ts), in cells as the walls are: this ground's only,
+  // never the world's, so round the city they aren't there.
+  solids = new Cells<Solid>();
   private state = new WeakMap<Car, State>();
   private seen: Wall[] = [];
   private seenPosts: Post[] = [];
+  private seenSolids: Solid[] = [];
 
   constructor(d: Data, track: Track | null = null, extra: Wall[] = [], slopes: Slope[] = [], road: Rings | null = null, down: Set<Wall> = new Set()) {
     this.d = d;
@@ -464,8 +507,9 @@ export class WorldGround implements Ground {
     return d.land.land(x, z);
   };
 
-  // What a car at height y stands on at (x, z): the highest surface no more than a step over it.
-  floor(x: number, z: number, y: number): Floor {
+  // What a car at height y stands on at (x, z): the highest surface no more than a step over it; with
+  // `solids` false, never a round's cover (whose boxes a look meets as boxes, sight.ts).
+  floor(x: number, z: number, y: number, solids = true): Floor {
     const d = this.d;
     // In a room: its floors, treads and landings, not the land under it.
     const room = this.roomAt(x, z);
@@ -500,6 +544,10 @@ export class WorldGround implements Ground {
     for (const b of d.blocks.at(x, z) ?? []) {
       if (b.y > y + STEP || (best && b.y <= best.y) || !inRing(b.pts, x, z)) continue;
       best = { y: b.y, kind: 'block', raise: 0, piece: null, buried: false };
+    }
+    for (const b of (solids && this.solids.at(x, z)) || []) {
+      if (b.see || b.y1 > y + STEP || (best && b.y1 <= best.y) || !onSolid(b, x, z, LEDGE)) continue;
+      best = { y: b.y1, kind: 'block', raise: 0, piece: null, buried: false };
     }
     for (const s of this.slopes) {
       const along = (x - s.fx) * s.ux + (z - s.fz) * s.uz;
@@ -752,6 +800,29 @@ export class WorldGround implements Ground {
       const [bx, bz] = pts[(k + 1) % pts.length];
       this.wall({ ax, az, bx, bz, y0: foot, y1: y - STEP });
     }
+  }
+
+  // Boxes this ground stands that no other has (a round's cover, cover.ts): each in the cells, for its
+  // top and a look, and its four sides walls of this ground's own (`extra`), which a walker and a bot's
+  // way meet as any other. A look passes those sides (open), and stops at the box itself (sight.ts).
+  addSolids(list: readonly Solid[]): void {
+    for (const b of list) {
+      const p = corners(b);
+      const xs = p.map((q) => q[0]);
+      const zs = p.map((q) => q[1]);
+      this.solids.add(Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs), b);
+      for (let k = 0; k < 4; k++) {
+        const [ax, az] = p[k];
+        const [bx, bz] = p[(k + 1) % 4];
+        this.extra.add(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), { ax, az, bx, bz, y0: b.y0, y1: b.y1, kind: 'prop', open: true });
+      }
+    }
+  }
+
+  // Whether something standing at (x, z) from y0 to y1, r round, is in one of the solids.
+  inSolid(x: number, z: number, y0: number, y1: number, r = 0): boolean {
+    for (const b of this.solids.near(x - r, z - r, x + r, z + r, this.seenSolids)) if (b.y1 > y0 && b.y0 < y1 && onSolid(b, x, z, r)) return true;
+    return false;
   }
 
   // A wall the game adds, shared as the block is.

@@ -7,17 +7,24 @@ import { autopilot } from './car/autopilot.ts';
 import { carAt, clampSteer, newCar, speedOf, stopInput, type Car, type Input } from './car/car.ts';
 import { Arena, FLAG, type ArenaFx, type CarInfo, type Rules } from './game/arena.ts';
 import { botControls, newBrain, type Brain } from './game/bot.ts';
-import { field, fighterOf, fire, KIT_IDS, KITS, landed, pickSpawn, RESPAWN, seeOn, Soldier, spreadOf, struck, type Body, type DownEv, type Field, type FightEv, type KitId, type ShotEv } from './game/fight.ts';
+import { drawOf, GUNS, isGun, isNade, nameOf as weaponName, speedWith, START, type Cause, type Loadout } from './game/arsenal.ts';
+import { BUY_TIME, fighterOf, fire, hitTotal, landed, RESPAWN, Soldier, spreadOf, stab, struck, type Body, type DownEv, type FightEv, type Hit, type ShotEv } from './game/fight.ts';
+import { field, pickSpawn, seeOn, type Field } from './game/field.ts';
+import { along, blast, blinding, burning, CLOUD, douse, FIRE, fly as flyNade, inFire, thickness, toss, WINDUP, type Blaze, type Cloud, type Flight, type NadeEv } from './game/nades.ts';
 import { Flyer, landing, type Bound, type FlyInput } from './game/flyer.ts';
 import { SKILLS, Squad, type FootBot, type Mark } from './game/footbot.ts';
 import { ITEMS } from './game/items.ts';
 import { NO_CONTROLS, Racer, type Controls, type Note } from './game/racer.ts';
 import { Roamer } from './game/roamer.ts';
-import { alight, EYE, STAND, type WalkInput, Walker } from './game/walker.ts';
-import { FightHud, fmt, fmtDiff, Hud, ordinal, RoamHud } from './hud.ts';
+import { alight, EYE, FALL, STAND, type WalkInput, Walker } from './game/walker.ts';
+import { FightHud, fmt, fmtDiff, Hud, ordinal, RoamHud, TEAMS } from './hud.ts';
 import { Keyboard, Mouse, TouchPad } from './input.ts';
 import { addScaled, clamp, v3, type V } from './math.ts';
-import { buildEdge, ShotsView, Viewmodel } from './render/arms.ts';
+import { buildEdge, ShotsView, Viewmodel, type HandState } from './render/arms.ts';
+import { buildProps } from './render/props.ts';
+import { loadParked, type Parked } from './world/cover.ts';
+import { NadesView } from './render/nades.ts';
+import { buildFighter, type Fighter } from './render/soldier.ts';
 import { buildKart, buildWalker, driverById, DRIVERS, type KartModel, type WalkerModel } from './render/drivers.ts';
 import { Particles } from './render/fx.ts';
 import { ItemsView } from './render/items3d.ts';
@@ -31,7 +38,7 @@ import { Stats, textureBytes } from './stats.ts';
 import { buildTrack, locate, type Track } from './track/track.ts';
 import { courseById, HOME, km, TRACKS } from './tracks.ts';
 import { streetNames } from './world/names.ts';
-import type { Blocker } from './world/sight.ts';
+import { clear, type Blocker } from './world/sight.ts';
 
 const DT = 1 / 120;
 // ?autodrive: the autopilot drives your car in a race (for testing the game in a browser), and
@@ -142,6 +149,7 @@ interface Shown {
   driver: string;
   label: string | null;
   walker: WalkerModel | null; // another player out of their kart, standing (braga-map's task 073)
+  fighter: Fighter | null; // and in a round, as a fighter
 }
 
 function showKart(driverId: string, label: string | null, ghost = false): Shown {
@@ -164,13 +172,14 @@ function showKart(driverId: string, label: string | null, ghost = false): Shown 
     model.group.add(tag);
   }
   scene.add(model.group);
-  return { model, tag, driver: driverId, label, walker: null };
+  return { model, tag, driver: driverId, label, walker: null, fighter: null };
 }
 
 function hide(s: Shown | null | undefined): void {
   if (!s) return;
   scene.remove(s.model.group);
   if (s.walker) scene.remove(s.walker.group);
+  if (s.fighter) scene.remove(s.fighter.group);
 }
 
 // Name tags keep to a readable size: never bigger on screen than they are 18 m away, and gone when
@@ -295,31 +304,6 @@ interface RoamCtx {
 
 let roam: RoamCtx | null = null;
 
-// The deathmatch (braga-map's task 074): a round on foot in Fujacal, in free roam, your kart waiting
-// where it was; started by the host as a race is. You, the round's clock, the kit to come back with,
-// and what's on the screen.
-interface FightCtx {
-  goAt: number; // performance.now() of the start: the round's clock is ms since
-  endAt: number;
-  me: Soldier;
-  hud: FightHud;
-  kit: KitId; // to come back with
-  chose: boolean; // chosen while the kits are up, this time
-  by: string; // who put you down last
-  fell: number; // performance.now() when you went down
-  hurt: number; // how red the screen's edge is, fading
-  from: { id: string; x: number; z: number; at: number }[]; // who shot you lately, from where, when (performance.now())
-  center: { text: string; until: number } | null;
-  lastBeep: number;
-  started: boolean;
-  scores: boolean; // shown, by the bar's button on a touch screen
-  downs: number;
-  squad: Squad | null; // the bots, if you host (braga-map's task 075)
-}
-
-let fight: FightCtx | null = null;
-// The kit you last chose, for the next round.
-let lastKit: KitId = 'rifle';
 // Where you were when the race started, to go back to when it's over.
 let before: Car | null = null;
 // Whether a friend who has just joined has been put beside the host yet.
@@ -579,7 +563,7 @@ function howTo(): HTMLElement {
       h('li', { class: 'touch-only' }, h('b', {}, 'Voar:'), ' Voar lá em cima, ou 🎥 Voar pela cidade no menu, deixa o kart à espera e leva a câmara por cima da cidade e dos montes, até ao horizonte. O polegar esquerdo anda para onde o arrastares, arrastar na metade direita olha à volta, e ▲ Subir e ▼ Descer. Voltar ao kart põe-no na rua por baixo da câmara.'),
       h('li', {}, h('b', {}, 'Amigos:'), ' Convidar amigos dá-te uma ligação para lhes mandares; quem a abrir aparece ao teu lado, no teu mundo.'),
       h('li', {}, h('b', {}, 'Corrida:'), ` ${TRACKS.length > 1 ? 'numa das pistas' : `a ${HOME.name}`}, com toda a gente da sala e bots nos lugares vazios. O anfitrião escolhe ${TRACKS.length > 1 ? 'a pista, ' : ''}as voltas e os itens e dá a partida; no fim voltas para onde estavas.`),
-      h('li', {}, h('b', {}, 'Tiroteio:'), ' a pé no Fujacal, com toda a gente da sala, cada um por si. Escolhes a arma sempre que voltas: ', KIT_IDS.map((k) => KITS[k].name.toLowerCase()).join(', '), '. Ganha quem abater mais até acabar o tempo; no fim voltas ao kart, onde ficou.'),
+      h('li', {}, h('b', {}, 'Tiroteio:'), ' a pé no Fujacal, com toda a gente da sala, cada um por si ou em duas equipas, como no Counter-Strike: compras as armas que quiseres (o dinheiro não acaba), vinte armas, a faca, granadas, colete e capacete, e ficam contigo sempre que voltas. Ganha quem abater mais até acabar o tempo; no fim voltas ao kart, onde ficou.'),
       h('li', { class: 'keys-only' }, h('b', {}, 'No tiroteio:'), ' WASD anda, o rato aponta, o clique dispara, o botão direito mira (com a espingarda de precisão), ', h('b', {}, 'R'), ' recarrega, ', h('b', {}, 'Tab'), ' mostra a pontuação, e ', h('b', {}, '1'), ' a ', h('b', {}, '4'), ' escolhem a arma.'),
       h('li', { class: 'touch-only' }, h('b', {}, 'No tiroteio:'), ' o polegar esquerdo anda, arrastar na metade direita aponta, Fogo dispara (e aponta, se o arrastares), Recarregar, e Mira com a espingarda de precisão. Toca na arma para a escolher.'),
       h('li', { class: 'keys-only' }, h('b', {}, 'Itens, na corrida:'), ' passa pelas caixas ?; ', h('b', {}, 'E'), ' ou ', h('b', {}, 'Shift'), ' usa o que te saiu (com ↓ atiras para trás). Quanto mais atrás fores, melhor o que te sai.'),
@@ -693,20 +677,23 @@ function raceScreen(r: Room): HTMLElement {
 // long a round lasts and starts it, the others see what's chosen and wait.
 function fightScreen(r: Room): HTMLElement {
   const L = r.lobby;
+  // The arena chosen, made now while the settings are up (half a second), not as the round starts.
+  if (L.arena && !arenas.has(L.arena)) setTimeout(() => page === 'fight' && arenaFor(room?.lobby.arena ?? L.arena), 400);
   const host = r.isHost ? (r as HostRoom) : null;
   const humans = L.members.filter((m) => !m.bot).length;
   const minutes = h('select', { disabled: !host, onchange: () => host?.configure({ round: Number(minutes.value) }) }, ...[3, 5, 10].map((n) => h('option', { value: String(n), selected: n === L.round }, `${n} min`)));
   const bots = h('select', { disabled: !host, onchange: () => host?.configure({ bots: Number(bots.value) }) }, ...Array.from({ length: MAX_RACERS - humans + 1 }, (_, n) => h('option', { value: String(n), selected: n === L.bots }, String(n))));
   const skill = h('select', { disabled: !host || !L.bots, onchange: () => host?.configure({ skill: Number(skill.value) }) }, ...SKILLS.map((s, n) => h('option', { value: String(n), selected: n === L.skill }, s)));
   const where = h('select', { disabled: !host, onchange: () => host?.configure({ arena: where.value }) }, ...world.drive.d.world.arenas.map((a) => h('option', { value: a.id, selected: a.id === L.arena }, a.name)));
+  const teams = h('select', { disabled: !host, onchange: () => host?.configure({ teams: teams.value === 'teams' }) }, h('option', { value: 'ffa', selected: !L.teams }, 'Cada um por si'), h('option', { value: 'teams', selected: L.teams }, 'Duas equipas'));
   return h(
     'div',
     { class: 'panel lobby' },
     h('h2', {}, '🎯 Tiroteio'),
-    h('p', { class: 'tag' }, 'A pé, numa de três arenas pequenas no Fujacal e no Conselheiro Lobato, com portas abertas nos rés-do-chão e um prédio que se sobe até ao telhado: toda a gente da sala, cada um por si, com a arma que escolher sempre que volta, e bots nos lugares vazios. Ganha quem abater mais até acabar o tempo, e no fim cada um volta ao seu kart.'),
+    h('p', { class: 'tag' }, 'A pé, como no Counter-Strike, numa de três arenas pequenas no Fujacal e no Conselheiro Lobato, entre carros estacionados e obras, com portas abertas nos rés-do-chão e prédios que se sobem até ao telhado: toda a gente da sala, cada um por si ou em duas equipas, com as armas que comprar (o dinheiro não acaba), e bots nos lugares vazios. Ganha quem abater mais até acabar o tempo, e no fim cada um volta ao seu kart.'),
     h('div', { class: 'room' }, h('div', {}, h('span', { class: 'label' }, 'Sala'), h('b', { class: 'code' }, L.code)), inviteButton(L.code)),
     members(r, true),
-    h('div', { class: 'settings' }, h('label', { class: 'inline' }, 'Arena ', where), h('label', { class: 'inline' }, 'Duração ', minutes), h('label', { class: 'inline' }, 'Bots ', bots), h('label', { class: 'inline' }, 'Nível ', skill)),
+    h('div', { class: 'settings' }, h('label', { class: 'inline' }, 'Arena ', where), h('label', { class: 'inline' }, 'Modo ', teams), h('label', { class: 'inline' }, 'Duração ', minutes), h('label', { class: 'inline' }, 'Bots ', bots), h('label', { class: 'inline' }, 'Nível ', skill)),
     host
       ? h(
           'button',
@@ -774,10 +761,15 @@ function fightResults(r: Room, list: Entry[]): HTMLElement {
     results = null;
     render();
   };
+  // In two teams, which won, by their kills together.
+  const sums = [0, 1].map((k) => list.filter((e) => e.team === k).reduce((s, e) => s + e.kills, 0));
+  const mine = list.find((e) => e.id === r.you)?.team;
+  const won = !list.some((e) => e.team !== undefined) ? '' : sums[0] === sums[1] ? `Empate, ${sums[0]} a ${sums[1]}` : `Ganhou a ${TEAMS[sums[0] > sums[1] ? 0 : 1].name}, ${Math.max(...sums)} a ${Math.min(...sums)}${mine === undefined ? '' : (sums[0] > sums[1]) === (mine === 0) ? ' — a tua!' : ''}`;
   return h(
     'div',
     { class: 'panel results' },
     h('h2', {}, 'O tiroteio acabou'),
+    won && h('p', { class: 'tag' }, won),
     h(
       'ol',
       { class: 'podium' },
@@ -786,8 +778,8 @@ function fightResults(r: Room, list: Entry[]): HTMLElement {
           'li',
           { class: e.id === r.you ? 'me' : '' },
           h('span', { class: 'pos' }, String(k + 1)),
-          h('span', { class: 'swatch', style: `--c:${driverById(e.driver).color};--t:${driverById(e.driver).trim}` }),
-          h('span', { class: 'who' }, e.bot ? `🤖 ${e.name}` : e.name, h('small', {}, `${e.deaths} ${e.deaths === 1 ? 'morte' : 'mortes'}`)),
+          h('span', { class: 'swatch', style: `--c:${e.team === undefined ? driverById(e.driver).color : TEAMS[e.team].color};--t:${driverById(e.driver).trim}` }),
+          h('span', { class: 'who' }, e.bot ? `🤖 ${e.name}` : e.name, h('small', {}, `${e.deaths} ${e.deaths === 1 ? 'morte' : 'mortes'}${e.kills ? ` · ${Math.round((100 * (e.hs ?? 0)) / e.kills)}% na cabeça` : ''}`)),
           h('span', { class: 'time' }, `${e.kills} ${e.kills === 1 ? 'abate' : 'abates'}`),
         ),
       ),
@@ -824,6 +816,7 @@ function bar(): HTMLElement {
       { class: 'bar' },
       h('button', { class: 'small ghost', title: 'Menu (Esc)', onclick: openMenu }, '☰ Menu'),
       h('span', { class: 'room-code' }, 'Sala ', h('b', {}, room?.lobby.code ?? '')),
+      touchBtn('🛒 Armas', 'Comprar armas', () => fight && toggleBuy(fight)),
       touchBtn('Pontuação', 'Pontuação', () => fight && (fight.scores = !fight.scores)),
       sound,
       wholeBtn(),
@@ -859,7 +852,7 @@ function render(): void {
   holdPage();
   // On foot, the mouse looks round with the pointer locked, and lets it go under a menu; in a round,
   // also while the kits are up to choose from, so they can be clicked.
-  mouse.aim = driving && walking && !(fight && picking(fight) && !fight.chose);
+  mouse.aim = driving && walking && !fight?.hud.buying;
   if (!mouse.aim) mouse.unlock();
   pad.show(driving ? (race ? race.rules.mode : flying ? 'fly' : fight ? 'fight' : walking ? 'walk' : 'roam') : null);
   document.body.classList.toggle('flying', flying);
@@ -1021,7 +1014,7 @@ function wire(r: Room): void {
     if (m) horn(driverById(m.driver).horn, k ? 1 : 0.6, k?.model.group.position);
   };
   r.onBoard = () => {};
-  r.onEv = (ev) => (ev.k === 'shot' || ev.k === 'down' ? onFightEv(ev) : race?.arena.apply(ev));
+  r.onEv = (ev) => (ev.k === 'shot' || ev.k === 'down' || ev.k === 'nade' ? onFightEv(ev) : race?.arena.apply(ev));
   r.onClose = (why) => {
     room = null;
     endFight();
@@ -1185,6 +1178,8 @@ function steps(fine = 1): WalkInput {
     look: { x: m.x + p.look.x * fine, y: m.y + p.look.y * fine },
     run: k.run || p.run,
     jump: k.jump || p.jump,
+    walk: k.walk || p.walk,
+    crouch: k.crouch || p.crouch,
   };
 }
 
@@ -1221,7 +1216,7 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
   }
   // On foot: where you look turns at once, every frame; the rest goes in steps. With the menu open you
   // stand (or come down). In a round, you stand till the start, and while you're down.
-  const scope = f?.me.scoped ? (KITS[f.me.kit].scope?.zoom ?? 1) : 1;
+  const scope = zoomOf(f);
   let foot = r.walk && !open ? steps(1 / scope) : STAND;
   if (f && (!f.started || !f.me.alive)) foot = { ...STAND, look: f.me.alive ? foot.look : { x: 0, y: 0 } };
   r.walk?.look(foot.look);
@@ -1294,8 +1289,9 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
   // Flying or on foot, round you, your kart a dot where it waits.
   const others = [...r.cars.values()].map((o) => ({ x: o.x, z: o.z, color: colorOf(o.id) }));
   const away = r.walk ? { x: r.walk.p.x, z: r.walk.p.z, yaw: r.walk.yaw } : r.fly ? { x: r.fly.p.x, z: r.fly.p.z, yaw: r.fly.yaw } : null;
-  // In a round, nobody but you: the minimap gives nobody away.
-  if (away) r.hud.minimap(away, f ? [] : [...others, { x: c.p.x, z: c.p.z, color: r.kart.model.driver.color }]);
+  // In a round, nobody but you and your team-mates: the minimap gives no foe away.
+  const crew = () => [...standing.entries()].filter(([id, a]) => a.fighting && !a.downAt && mates(id, room?.you ?? '')).map(([id, a]) => ({ x: a.x, z: a.z, color: shade(id) }));
+  if (away) r.hud.minimap(away, f ? crew() : [...others, { x: c.p.x, z: c.p.z, color: r.kart.model.driver.color }]);
   else r.hud.minimap({ x: c.p.x, z: c.p.z, yaw: c.yaw }, others);
 
   if (now - r.kept > 3000) {
@@ -1336,42 +1332,66 @@ function hearRoam(r: RoamCtx, dt: number): void {
   citySound(r.walk?.p ?? r.fly?.p ?? c.p, dt);
 }
 
-// ---- The deathmatch (braga-map's task 074) ----
+// ---- The deathmatch (braga-map's task 074, after Counter-Strike 2's) ----
 
 // The arenas as a round is played in (braga-map's task 079), each made the first time a round starts
-// in it (about 0.1 s): its ground with the edge, the spawns, where the bots walk, where the railings and
-// barriers stand, and its edge drawn; the one the round's in; and what's drawn for any round, the
-// shots' marks and tracers, and your gun.
+// in it: its ground with the edge, the spawns, where the bots walk, where the railings and barriers
+// stand, and its edge drawn; the one the round's in; and what's drawn for any round, the shots' marks
+// and tracers, the grenades, and the weapon in your hands.
 const arenas = new Map<string, { field: Field; edge: THREE.Group }>();
 let arena: Field | null = null;
-let arms: { shots: ShotsView; view: Viewmodel } | null = null;
+// The edge (and cover) of the arena the round is in, up while it lasts.
+let edgeUp: THREE.Group | null = null;
+let arms: { shots: ShotsView; view: Viewmodel; nades: NadesView } | null = null;
+
+// The cars the LiDAR saw parked in the arenas (braga-map's ground cover), cover in a round; fetched once
+// the city's up. Every browser must make an arena alike (a shot is decided on the shooter's), so one
+// made before they're in is used once and made again.
+let parked: Parked[] = [];
+let parkedIn = false;
+if (!SCENERY) {
+  setTimeout(
+    () =>
+      void loadParked(world.drive.d.world)
+        .then((p) => (parked = p))
+        .catch(() => [])
+        .finally(() => (parkedIn = true)),
+    2500,
+  );
+}
 
 function arenaFor(id: string): { field: Field; edge: THREE.Group } {
   const w0 = world.drive.d.world;
   const area = w0.arenas.find((a) => a.id === id) ?? w0.arenas[0];
   let a = arenas.get(area.id);
   if (!a) {
-    const f = field(world.drive, area);
+    const f = field(world.drive, area, parked);
     a = { field: f, edge: buildEdge(f) };
+    // Its cover (render/props.ts), shown and hidden with its edge.
+    const props = buildProps(f);
+    props.visible = true;
+    a.edge.add(props);
     a.edge.visible = false;
     scene.add(a.edge);
-    arenas.set(area.id, a);
+    if (parkedIn) arenas.set(area.id, a);
   }
   return a;
 }
 
 // The others on foot as they're drawn this frame (syncOthers): where they stand, which way they face,
-// whether they're in the round and since when they're down, and their footsteps.
+// how far they're crouched, whether they're in the round and since when they're down, their footsteps,
+// and in a round their figure.
 interface Afoot {
   x: number;
   y: number;
   z: number;
   yaw: number;
   spd: number;
+  c: number;
   fighting: boolean;
   downAt: number;
   stride: number;
-  model: WalkerModel;
+  fig: Fighter | null;
 }
 const standing = new Map<string, Afoot>();
 // The karts waiting, the others' (syncOthers) and with yours this frame, as what stops someone on foot
@@ -1384,16 +1404,87 @@ function kartBlock(out: Blocker[], x: number, y: number, z: number, yaw: number)
   for (const s of [1, -1]) out.push({ x: x + Math.cos(yaw) * 0.95 * s, z: z + Math.sin(yaw) * 0.95 * s, r: 0.8, y0: y - 0.3, y1: y + 1.1 });
 }
 
-// The others in the round who are up, as a shot finds them.
-const foes = (): Body[] => [...standing.entries()].filter(([, a]) => a.fighting && !a.downAt).map(([id, a]) => ({ id, x: a.x, y: a.y, z: a.z }));
+// In a round of two teams, the team someone's on; else null. Who's the same side as whom, and the
+// colour someone's drawn in (their team's, the HUD's TEAMS).
+const teamOf = (id: string): number | null => (room?.lobby.mode === 'fight' && room.lobby.teams ? (room.lobby.members.find((m) => m.id === id)?.team ?? null) : null);
+const mates = (a: string, b: string) => {
+  const t = teamOf(a);
+  return t !== null && t === teamOf(b);
+};
+const shade = (id: string) => {
+  const t = teamOf(id);
+  return t === null ? colorOf(id) : TEAMS[t].color;
+};
 
-// Whether the kits are up to choose from: before the start, and while you're down.
-const picking = (f: FightCtx) => !f.started || !f.me.alive;
+// The others in the round who are up, as a shot finds them: your foes, not your team-mates.
+const foes = (): Body[] => [...standing.entries()].filter(([id, a]) => a.fighting && !a.downAt && !mates(id, room?.you ?? '')).map(([id, a]) => ({ id, x: a.x, y: a.y, z: a.z, yaw: a.yaw, c: a.c }));
 
 const nameOf = (id: string) => (id === room?.you ? 'Tu' : (room?.lobby.members.find((m) => m.id === id)?.name ?? 'Alguém'));
 
-// The host has started a round: everyone on foot at a spawn in Fujacal (the grid says whose), your kart
-// waiting where it was, the kits to choose from until the start.
+// The loadout you last bought, kept in this browser for the next round.
+function keptKit(): Loadout {
+  try {
+    const k = JSON.parse(stored('pk-kit', '')) as Loadout;
+    const ok = (k.primary === null || isGun(k.primary)) && isGun(k.secondary) && GUNS[k.secondary].slot === 'secondary' && Array.isArray(k.nades) && k.nades.every(isNade) && [0, 1, 2].includes(k.armour);
+    return ok ? { primary: k.primary, secondary: k.secondary, nades: k.nades.slice(0, 4), armour: k.armour } : START;
+  } catch {
+    return START;
+  }
+}
+let lastKit: Loadout = keptKit();
+
+// A random 32-bit seed for a shot's spread.
+const seed32 = () => (Math.random() * 4294967296) >>> 0;
+
+// A grenade on its way, worked out from its throw: its event, its flight, and how far along it its
+// bounces have been heard.
+interface Thrown {
+  ev: NadeEv;
+  fl: Flight;
+  heard: number;
+  done: boolean;
+}
+
+// The deathmatch (braga-map's task 074): a round on foot in Fujacal, in free roam, your kart waiting
+// where it was; started by the host as a race is. You, the round's clock, what you come back with, the
+// grenades up, and what's on the screen.
+interface FightCtx {
+  goAt: number; // performance.now() of the start: the round's clock is ms since
+  endAt: number;
+  me: Soldier;
+  hud: FightHud;
+  kit: Loadout; // to come back with, as bought
+  by: string; // who put you down last, with what, and whether in the head
+  byW: Cause;
+  byHead: boolean;
+  fell: number; // performance.now() when you went down
+  hurt: number; // how red the screen's edge is, fading
+  from: { id: string; x: number; z: number; at: number }[]; // who shot you lately, from where, when (performance.now())
+  center: { text: string; until: number } | null;
+  lastBeep: number;
+  started: boolean;
+  scores: boolean; // shown, by the bar's button on a touch screen
+  downs: number;
+  squad: Squad | null; // the bots, if you host (braga-map's task 075)
+  // The grenades thrown, the smoke clouds and the fires up, round ms; a grenade's pin pulled (since,
+  // how hard it'll go); flashed till (performance.now()) and for how long; the fire's damage owed;
+  // when you last looked your gun over.
+  thrown: Thrown[];
+  clouds: Cloud[];
+  fires: (Blaze & { owner: string })[];
+  pin: { at: number; power: number } | null;
+  blindUntil: number;
+  blindFor: number;
+  burn: number;
+  burnBy: string;
+  inspectAt: number;
+  mags: number; // the magazine last frame, for a shotgun's shells going in
+}
+
+let fight: FightCtx | null = null;
+
+// The host has started a round: everyone on foot at a spawn in the arena (the grid says whose), your
+// kart waiting where it was, the buy menu up till the start.
 function startFight(goIn: number, endIn: number, grid: Record<string, number>): void {
   const rm = room!;
   if (race) endRace();
@@ -1409,121 +1500,277 @@ function startFight(goIn: number, endIn: number, grid: Record<string, number>): 
   const here = arenaFor(rm.lobby.arena);
   const f = (arena = here.field);
   for (const a of arenas.values()) a.edge.visible = a === here;
+  here.edge.visible = true;
+  edgeUp = here.edge;
   if (!arms) {
-    arms = { shots: new ShotsView(), view: new Viewmodel(scene.environment) };
-    scene.add(arms.shots.group);
+    arms = { shots: new ShotsView(), view: new Viewmodel(scene.environment), nades: new NadesView() };
+    scene.add(arms.shots.group, arms.nades.group);
     look.overlay = arms.view.scene;
   }
   arms.shots.clear();
+  arms.nades.clear();
   const now = performance.now();
   // Joining a round under way: where none of the others can see.
   const s = goIn > 0 ? f.spawns[(grid[rm.you] ?? 0) % f.spawns.length] : pickSpawn(f, foes(), kartBlocks);
   const w = new Walker(f.ground, v3(s.x, s.y, s.z), s.yaw);
   w.bound = f.inside;
+  w.fighter = speedWith(lastKit.primary ?? lastKit.secondary, false);
   r.walk = w;
   r.eye = w.p.y + EYE;
   r.hop = false;
   const me = new Soldier(rm.you, lastKit);
-  mouse.pulls = 0;
+  me.team = teamOf(rm.you) ?? 0;
+  mouse.pulls = mouse.alts = mouse.wheel = 0;
+  keys.fighting = true;
   // The host's bots, each at its spawn on the grid as a player is, as good as the host chose.
   let squad: Squad | null = null;
   if (bots.length) {
     squad = new Squad(f, f.paths, rm.lobby.skill / (SKILLS.length - 1));
-    for (const m of bots) squad.add(m.id, Math.max(0, -goIn), goIn > 0 ? f.spawns[(grid[m.id] ?? 0) % f.spawns.length] : null, foes());
+    for (const m of bots) squad.add(m.id, Math.max(0, -goIn), goIn > 0 ? f.spawns[(grid[m.id] ?? 0) % f.spawns.length] : null, foes()).s.team = m.team ?? 0;
   }
-  fight = { goAt: now + goIn, endAt: now + endIn, me, hud: new FightHud(hudRoot), kit: lastKit, chose: false, by: '', fell: 0, hurt: 0, from: [], center: null, lastBeep: 99, started: goIn <= 0, scores: false, downs: 0, squad };
-  fight.hud.onPick = pickKit;
-  if (fight.started) me.arm(lastKit, now - fight.goAt);
+  const hud = new FightHud(hudRoot);
+  fight = { goAt: now + goIn, endAt: now + endIn, me, hud, kit: lastKit, by: '', byW: 'knife', byHead: false, fell: 0, hurt: 0, from: [], center: null, lastBeep: 99, started: goIn <= 0, scores: false, downs: 0, squad, thrown: [], clouds: [], fires: [], pin: null, blindUntil: 0, blindFor: 1, burn: 0, burnBy: '', inspectAt: -1e9, mags: 0 };
+  hud.onBuy = buy;
+  hud.onBuyAsked = () => toggleBuy(fight!);
+  hud.onBuyClosed = () => {
+    render();
+    mouse.lock();
+  };
+  me.arm(lastKit, now - fight.goAt);
+  // Before the start, the guns to choose, as Counter-Strike's deathmatch opens.
+  if (!fight.started) hud.buy(true, lastKit);
   r.hud.keys('fight');
   const where = world.drive.d.world.arenas.find((a) => a.id === rm.lobby.arena) ?? world.drive.d.world.arenas[0];
   r.hud.setEdge(where.pts);
-  r.hud.feed(pad.on ? `🎯 Tiroteio em ${where.name}: escolhe a arma, e cada um por si` : `🎯 Tiroteio em ${where.name}: escolhe a arma (1 a 4), e cada um por si`, 'big');
+  const side = teamOf(rm.you);
+  r.hud.feed(`🎯 Tiroteio em ${where.name}: ${side === null ? 'cada um por si' : `estás na ${TEAMS[side].name}`}`, 'big');
   nearPlane(true);
   (document.activeElement as HTMLElement | null)?.blur();
   render();
 }
 
-// The round over (or left): the edge down, and back in your kart where it waited.
+// The round over (or left): the edge down, the grenades gone, and back in your kart where it waited.
 function endFight(): void {
   const f = fight;
   if (!f) return;
   fight = null;
+  keys.fighting = false;
   f.hud.remove();
   for (const a of arenas.values()) a.edge.visible = false;
-  if (arms) arms.view.show(null);
+  if (edgeUp) edgeUp.visible = false;
+  if (arms) {
+    arms.view.update(camera, SUN_DIR, 0, IDLE);
+    arms.nades.clear();
+  }
+  fightSfx.calm();
   pad.unscope();
-  document.body.classList.remove('picking');
   for (const a of standing.values()) {
-    a.model.arm(null);
-    a.model.fall(0, 0);
+    a.fig?.fall(0, 0);
     a.fighting = false;
     a.downAt = 0;
   }
   const r = roam;
   if (!r) return;
   r.hud.setEdge(mapLines.edge);
-  if (r.walk) walk(r, false);
-  else render();
+  if (r.walk) {
+    r.walk.fighter = null;
+    r.walk.crouch = 0;
+    walk(r, false);
+  } else render();
 }
 
-// The kit to come back with, from the picker or the keys 1 to 4. Chosen while the kits are up, the
-// pointer locks again (the click that chose it allows it).
-function pickKit(k: KitId): void {
+// The buy menu changed what you carry: kept for the next life (and the next round), and yours now if
+// you came back a moment ago.
+function buy(kit: Loadout): void {
   const f = fight;
   if (!f) return;
-  f.kit = lastKit = k;
-  if (!picking(f)) return;
-  f.chose = true;
+  f.kit = lastKit = kit;
+  remember('pk-kit', JSON.stringify(kit));
+  const t = performance.now() - f.goAt;
+  if (f.started && (!f.me.alive || t - f.me.spawnAt > BUY_TIME)) return;
+  const was = f.me.hand;
+  f.me.equip(kit, t);
+  if (f.me.hand !== was) drew(f);
+}
+
+function toggleBuy(f: FightCtx): void {
+  f.hud.buy(!f.hud.buying, f.kit);
   render();
-  mouse.lock();
+  if (!f.hud.buying) mouse.lock();
+}
+
+// Something else in your hand: its sound, and no inspecting it or throwing.
+function drew(f: FightCtx): void {
+  fightSfx.draw(f.me.hand);
+  f.inspectAt = -1e9;
+  f.pin = null;
 }
 
 function fightAction(f: FightCtx, act: string, now: number): void {
-  if (act === 'reload' && f.me.reload(now - f.goAt)) {
-    fightSfx.reload(KITS[f.me.kit].reload);
-    pad.unscope();
-  }
-  const k = ['kit1', 'kit2', 'kit3', 'kit4'].indexOf(act);
-  if (k >= 0) pickKit(KIT_IDS[k]);
+  const me = f.me;
+  const t = now - f.goAt;
+  if (act === 'buy') return toggleBuy(f);
+  if (!f.started || !me.alive) return;
+  if (act === 'reload' && me.reload(t)) fightSfx.reload(me.hand, me.gun!.reload);
+  const slot = ['slot1', 'slot2', 'slot3', 'slot4'].indexOf(act);
+  if (slot >= 0 && me.slot(slot + 1, t)) drew(f);
+  if (act === 'last' && me.select(me.has(me.last) ? me.last : (me.primary ?? me.secondary), t)) drew(f);
+  if ((act === 'next' || act === 'prev') && me.cycle(act === 'next' ? 1 : -1, t)) drew(f);
+  if (act === 'inspect' && t >= me.drawnAt && !me.reloading) f.inspectAt = now;
 }
+
+// What the right button (on a touch screen, Mira) does with what's in your hand, as its label says.
+const altOf = (me: Soldier): string | null => (me.gun?.scope ? 'Mira' : me.hand === 'knife' ? 'Facada' : isNade(me.hand) ? 'Lançar' : null);
 
 // The trigger this frame, the mouse's and the thumbs': held, pulled since last read (a semi-automatic
-// fires once a pull, and one pull waits for the gun to be ready), and the scope.
-function trigger(f: FightCtx): { held: boolean; pulls: number; scope: boolean } {
-  const p = pad.fight(!!KITS[f.me.kit].scope);
+// fires once a pull, and one pull waits for the gun to be ready), and the right button, held and
+// pressed since.
+function trigger(f: FightCtx): { held: boolean; pulls: number; alt: boolean; alts: number } {
+  const p = pad.fight(f.started && f.me.alive ? altOf(f.me) : null, f.me.scope > 0);
   const pulls = Math.min(1, mouse.pulls + p.pulls);
-  mouse.pulls = 0;
-  return { held: mouse.trigger || p.trigger, pulls, scope: mouse.scope || p.scope };
+  const alts = Math.min(1, mouse.alts + p.alts);
+  mouse.pulls = mouse.alts = 0;
+  return { held: mouse.trigger || p.trigger, pulls, alt: mouse.scope, alts };
 }
 
-// A step of the round at its ms t: your kit's state, the scope, and a shot if the trigger says so.
-function fightStep(f: FightCtx, w: Walker, trig: { held: boolean; pulls: number; scope: boolean }, t: number): void {
+// A step of the round at its ms t: your weapon's state, a fall's hurt, and what the buttons do with
+// what's in your hand: a shot, a cut, the scope, a grenade's pin and throw.
+function fightStep(f: FightCtx, w: Walker, trig: { held: boolean; pulls: number; alt: boolean; alts: number }, t: number): void {
   const me = f.me;
+  me.crouch = w.crouch > 0.5;
   me.step(DT, t);
+  w.fighter = speedWith(me.hand, me.scope > 0);
   if (!f.started || !me.alive) return;
-  const k = KITS[me.kit];
-  me.scoped = trig.scope && !!k.scope && !me.reloading;
-  if (!trig.pulls && !(k.auto && trig.held)) return;
-  if (me.ammo === 0) {
-    if (trig.pulls) fightSfx.dry();
-    trig.pulls = 0;
-    if (me.reload(t)) fightSfx.reload(k.reload);
+  // Coming down from more than a storey hurts, as Counter-Strike's falls do.
+  if (w.landed) {
+    const v = w.landed;
+    w.landed = 0;
+    const safe = Math.sqrt(2 * 9.81 * FALL);
+    if (v > safe) hurtMe(f, { b: 0, h: 0, l: Math.round((v - safe) * 18) }, 'fall', me.id, null);
+    if (v > 4) fightSfx.land(Math.min(1, v / 10));
+  }
+  const eye = v3(w.p.x, w.p.y + w.eye(), w.p.z);
+  const aim = w.dir();
+  if (me.hand === 'knife') {
+    if (!trig.pulls && !trig.held && !trig.alts && !trig.alt) return;
+    const heavy = (trig.alts > 0 || trig.alt) && !trig.pulls && !trig.held;
+    const ev = stab(me, eye, aim, heavy, t, foes(), seeOn(arena!, block));
+    if (!ev) return;
+    trig.pulls = trig.alts = 0;
+    mine(f, ev, t);
     return;
   }
-  const ev = fire(me, v3(w.p.x, w.p.y + EYE, w.p.z), w.dir(), w.speed(), !w.grounded, t, foes(), seeOn(arena!, block), (Math.random() * 4294967296) >>> 0);
+  if (isNade(me.hand)) {
+    // Either button pulls the pin; let go, it's thrown: overarm with the left, a lob with the right,
+    // between with both.
+    if (!f.pin && (trig.pulls || trig.alts) && me.ready(t)) {
+      f.pin = { at: t, power: trig.pulls && (trig.alts || trig.alt) ? 0.5 : trig.pulls ? 1 : 0 };
+      me.throwAt = t;
+      fightSfx.nade('pin');
+    }
+    trig.pulls = trig.alts = 0;
+    if (!f.pin) return;
+    if (trig.held && trig.alt) f.pin.power = 0.5;
+    if (trig.held || trig.alt || t < f.pin.at + WINDUP) return;
+    const ev = toss(me, eye, aim, f.pin.power, w.v, t);
+    f.pin = null;
+    if (!ev) return;
+    fightSfx.nade('throw');
+    arms?.view.thrown();
+    addThrown(f, ev);
+    room?.sendEv(ev);
+    return;
+  }
+  const g = me.gun!;
+  if (trig.alts) {
+    trig.alts = 0;
+    if (g.scope && t >= me.drawnAt) {
+      me.zoom(t);
+      fightSfx.zoom(me.scope > 0);
+    }
+  }
+  if (!trig.pulls && !(g.auto && trig.held)) return;
+  if (me.mag === 0) {
+    if (trig.pulls) fightSfx.dry();
+    trig.pulls = 0;
+    if (me.reload(t)) fightSfx.reload(me.hand, g.reload);
+    return;
+  }
+  const ev = fire(me, eye, aim, { speed: w.speed(), air: !w.grounded }, t, foes(), seeOn(arena!, block), seed32());
   if (!ev) return;
   trig.pulls = 0;
+  f.inspectAt = -1e9;
+  mine(f, ev, t);
+  if (me.mag === 0 && me.reload(t)) fightSfx.reload(me.hand, g.reload);
+}
+
+// Your shot or cut: drawn, sent, met by the bots, and a mark at the crosshair for each hit.
+function mine(f: FightCtx, ev: ShotEv, t: number): void {
   shotFx(ev, true);
   room?.sendEv(ev);
   botsShot(f, ev, t);
   for (const h of ev.hits) {
-    f.hud.hit(h.head);
-    fightSfx.marker(h.head);
+    f.hud.hit(h.h > 0, false);
+    fightSfx.marker(h.h > 0, false);
   }
-  if (me.ammo === 0 && me.reload(t)) fightSfx.reload(k.reload);
 }
 
-// Back at the spawn none of the others can see, with the kit chosen, whole and safe for a moment.
+// A grenade on its way, yours or anyone's: its flight worked out on the round's ground, as every
+// browser works it out, and drawn.
+function addThrown(f: FightCtx, ev: NadeEv): void {
+  const fl = flyNade(ev, seeOn(arena!));
+  f.thrown.push({ ev, fl, heard: ev.t, done: false });
+  arms?.nades.add(ev, fl);
+}
+
+// A grenade going off at round ms t: the HE grenade's blast, the flash's blinding, the smoke's cloud,
+// the molotov's fire (on the ground; in the air it's lost); what it does to you, and if you host, to
+// the bots.
+function goOff(f: FightCtx, n: Thrown, t: number): void {
+  const { ev, fl } = n;
+  const at = v3(fl.at.x, fl.at.y, fl.at.z);
+  const clearTo = (a: V, b: V) => clear(arena!.ground, a, b);
+  const me = f.me;
+  const w = roam?.walk;
+  const up = f.started && me.alive && !!w;
+  if (ev.w === 'he') {
+    arms?.nades.boom('he', at);
+    fightSfx.nade('he', at);
+    if (w && Math.hypot(w.p.x - at.x, w.p.z - at.z) < 25 && roam) roam.shake = Math.max(roam.shake, 1 - Math.hypot(w.p.x - at.x, w.p.z - at.z) / 25);
+    const n2 = up ? blast(at, w!.p, clearTo) : 0;
+    if (n2) hurtMe(f, { b: n2, h: 0, l: 0 }, 'he', ev.owner, at);
+  } else if (ev.w === 'flash') {
+    arms?.nades.boom('flash', at);
+    fightSfx.nade('flash', at);
+    if (up) {
+      const ms = blinding(at, v3(w!.p.x, w!.p.y + w!.eye(), w!.p.z), w!.dir(), clearTo);
+      if (ms > 0) {
+        f.blindUntil = performance.now() + ms;
+        f.blindFor = ms;
+        fightSfx.ring(ms);
+      }
+    }
+  } else if (ev.w === 'smoke') {
+    const c: Cloud = { x: at.x, y: at.y, z: at.z, t0: t };
+    f.clouds.push(c);
+    douse(f.fires, c);
+    arms?.nades.cloud(c);
+    fightSfx.nade('smoke', at);
+  } else if (fl.ground) {
+    const b = { x: at.x, y: at.y, z: at.z, t0: t, out: t + FIRE.last, owner: ev.owner };
+    // Into a smoke, it's out at once.
+    for (const c of f.clouds) if (thickness(c, t) > 0.3) douse([b], c);
+    f.fires.push(b);
+    arms?.nades.blaze(b);
+    fightSfx.nade('fire', at);
+  } else fightSfx.nade('bounce', at);
+  if (f.squad) for (const d of f.squad.boom(ev, fl, t, clearTo)) {
+    room?.sendEv(d);
+    downFx(d);
+  }
+}
+
+// Back at a spawn none of your foes can see, with what you bought, whole and safe for a moment.
 function respawn(f: FightCtx, w: Walker, now: number): void {
   const s = pickSpawn(arena!, foes(), block);
   w.p = v3(s.x, s.y, s.z);
@@ -1531,14 +1778,22 @@ function respawn(f: FightCtx, w: Walker, now: number): void {
   w.yaw = s.yaw;
   w.pitch = 0;
   w.grounded = true;
+  w.crouch = 0;
+  w.landed = 0;
   if (roam) roam.eye = s.y + EYE;
   f.me.arm(f.kit, now - f.goAt);
-  f.chose = false;
+  f.pin = null;
+  f.blindUntil = 0;
+  f.burn = 0;
+  f.mags = f.me.mag;
+  if (f.hud.buying) f.hud.buy(false, f.kit);
   pad.unscope();
+  fightSfx.draw(f.me.hand);
   render();
 }
 
-// Once a frame in a round: the start, coming back, and what's on the screen.
+// Once a frame in a round: the start, coming back, the grenades going off and the fires burning, the
+// wheel, and what's on the screen.
 function fightFrame(f: FightCtx, r: RoamCtx, w: Walker, now: number, dt: number): void {
   const me = f.me;
   const t = now - f.goAt;
@@ -1551,32 +1806,87 @@ function fightFrame(f: FightCtx, r: RoamCtx, w: Walker, now: number, dt: number)
   if (!f.started && t >= 0) {
     f.started = true;
     me.arm(f.kit, t);
+    f.mags = me.mag;
+    if (f.hud.buying) f.hud.buy(false, f.kit);
     beep(true);
     f.center = { text: 'JÁ!', until: now + 900 };
     render();
+    mouse.lock();
   }
   if (f.started && !me.alive && now - f.fell >= RESPAWN) respawn(f, w, now);
+  // The wheel round the weapons.
+  const wheel = mouse.wheel;
+  mouse.wheel = 0;
+  if (wheel && f.started && me.alive && me.cycle(wheel > 0 ? 1 : -1, t)) drew(f);
+  // A shotgun's shells going in, one by one.
+  if (me.gun?.shells && me.mag > f.mags && me.alive) fightSfx.reload(me.hand, 0);
+  f.mags = me.mag;
+
+  // The grenades: their bounces heard, and those whose time has come going off.
+  for (const n of f.thrown) {
+    if (n.done) continue;
+    for (const b of n.fl.bounces) if (b.t > n.heard && b.t <= t) fightSfx.nade('bounce', along(n.fl, b.t), Math.min(1, b.v / 8));
+    n.heard = t;
+    if (t < n.fl.at.t) continue;
+    n.done = true;
+    goOff(f, n, t);
+  }
+  f.thrown = f.thrown.filter((n) => !n.done);
+  f.clouds = f.clouds.filter((c) => t - c.t0 < CLOUD.last);
+  f.fires = f.fires.filter((b) => t < Math.min(b.out, b.t0 + FIRE.last));
+  fightSfx.burning(f.fires.filter((b) => burning(b, t)).map((b) => ({ x: b.x, y: b.y, z: b.z })));
+  // Standing in a fire, it burns, a little at a time.
+  if (f.started && me.alive) {
+    for (const b of f.fires) {
+      if (!inFire(b, w.p, t)) continue;
+      f.burn += FIRE.dps * dt;
+      f.burnBy = b.owner;
+      break;
+    }
+    if (f.burn >= 4) {
+      const n = Math.floor(f.burn);
+      f.burn -= n;
+      hurtMe(f, { b: n, h: 0, l: 0 }, 'molotov', f.burnBy, null);
+    }
+  }
+  if (f.squad && f.started) {
+    for (const d of f.squad.burn(f.fires, t, dt)) {
+      room?.sendEv(d);
+      downFx(d);
+    }
+  }
+
   f.hurt *= Math.exp(-dt * 2.5);
   f.from = f.from.filter((s) => now - s.at < FROM_FOR);
-  document.body.classList.toggle('picking', picking(f));
+  document.body.classList.toggle('picking', f.hud.buying);
 
   const board = room?.board ?? [];
-  const mine = board.find((e) => e.id === room?.you);
+  const mine2 = board.find((e) => e.id === room?.you);
   const lead = board[0];
-  const standingText = !mine ? '' : lead && lead.id !== mine.id && lead.kills > mine.kills ? `Tu ${mine.kills} · 1.º ${lead.name} ${lead.kills}` : `Tu ${mine.kills} · vais à frente`;
+  const side = teamOf(room?.you ?? '');
+  const standingText = side !== null || !mine2 ? '' : lead && lead.id !== mine2.id && lead.kills > mine2.kills ? `Tu ${mine2.kills} · 1.º ${lead.name} ${lead.kills}` : `Tu ${mine2.kills} · vais à frente`;
   const end = Math.max(0, f.endAt - now);
   const wait = Math.max(0, Math.ceil((f.started ? f.fell + RESPAWN - now : -t) / 1000));
+  const g = me.gun;
+  const spread = spreadOf(me, { speed: w.speed(), air: !w.grounded }, t);
+  const kills = (k: number) => board.filter((e) => teamOf(e.id) === k).reduce((s, e) => s + e.kills, 0);
   f.hud.set({
+    started: f.started,
+    alive: me.alive,
     health: me.health,
-    alive: me.alive && f.started,
-    kit: me.kit,
-    ammo: me.ammo,
-    reloading: me.reloading,
+    armour: me.armour,
+    helmet: me.helmet,
+    hand: me.hand,
+    mag: me.mag,
+    reserve: me.reserve,
+    reloading: me.reloading && g ? clamp(1 - (me.reloadAt - t) / g.reload, 0, 1) : null,
+    slots: { primary: me.primary, secondary: me.secondary, nades: me.nades },
     clock: f.started ? `${Math.floor(end / 60000)}:${String(Math.floor((end % 60000) / 1000)).padStart(2, '0')}` : `Começa em ${left}`,
     standing: standingText,
-    gap: 5 + (Math.tan(spreadOf(me, w.speed(), !w.grounded)) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2),
-    scoped: me.scoped,
-    hurt: me.alive ? Math.max(f.hurt, (1 - me.health / 100) * 0.5) : 0.6,
+    teams: side === null ? null : { a: kills(0), b: kills(1), mine: side as 0 | 1 },
+    cross: { gap: 4 + (Math.tan(spread) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2), show: f.started && me.alive && !me.scope && !(g?.family === 'sniper') },
+    scope: me.alive ? me.scope : 0,
+    hurt: me.alive ? Math.max(f.hurt, (1 - me.health / 100) * 0.4) : 0.6,
     from: f.from.slice(-4).map((s) => {
       const dx = s.x - w.p.x;
       const dz = s.z - w.p.z;
@@ -1584,9 +1894,11 @@ function fightFrame(f: FightCtx, r: RoamCtx, w: Walker, now: number, dt: number)
       const sn = Math.sin(w.yaw);
       return { angle: Math.atan2(dz * c - dx * sn, dx * c + dz * sn), a: (FROM_FOR - (now - s.at)) / 1000 };
     }),
+    flash: now < f.blindUntil ? clamp((f.blindUntil - now) / (f.blindFor * 0.5), 0, 1) : 0,
     center: !f.started && left <= 3 ? String(left) : f.center && now < f.center.until ? f.center.text : '',
-    picking: !picking(f) ? null : f.started ? { title: `Eliminado por ${nameOf(f.by)}`, sub: 'A arma com que voltas:', kit: f.kit, wait: `Voltas em ${wait} s` } : { title: 'Escolhe a tua arma', sub: KITS[f.kit].blurb, kit: f.kit, wait: '' },
-    scores: keys.scores || f.scores ? board.map((e) => ({ name: e.bot ? `🤖 ${e.name}` : e.name, color: colorOf(e.id), kills: e.kills, deaths: e.deaths, me: e.id === room?.you })) : null,
+    dead: f.started && !me.alive ? { by: nameOf(f.by), w: f.byW, head: f.byHead, wait } : null,
+    buyLeft: !f.started ? Math.ceil(BUY_TIME / 1000) : me.alive ? Math.max(0, Math.ceil((BUY_TIME - (t - me.spawnAt)) / 1000)) : 0,
+    scores: keys.scores || f.scores ? board.map((e) => ({ name: e.bot ? `🤖 ${e.name}` : e.name, color: shade(e.id), kills: e.kills, deaths: e.deaths, hs: e.hs ?? 0, me: e.id === room?.you, team: teamOf(e.id) ?? undefined })) : null,
   });
 }
 
@@ -1597,27 +1909,33 @@ const FROM_FOR = 2500;
 // from where it was fired, the tracers, and where each pellet no one stopped struck, its mark, a puff
 // of what it struck and a smack. Where it hit someone, a tracer from the muzzle to them, a red puff
 // and their figure jerked away from it, so it's plain from anywhere who shot whom; a tracer that hit
-// you streaks past a metre short of your eye.
-const DUST: Record<string, string[]> = { ground: ['#b8ad99', '#8d8577'], building: ['#ddd6ca', '#b9b1a4'], roof: ['#a8553f', '#8c8c8c'], wall: ['#cfc8bb', '#9f998d'], hedge: ['#5c7a37', '#3f5a26'], tree: ['#6b5641', '#4d3d2c'], kart: ['#ffe14d', '#ffffff'] };
+// you streaks past a metre short of your eye. A knife's cut: its swish, and what it struck.
+const DUST: Record<string, string[]> = { ground: ['#b8ad99', '#8d8577'], building: ['#ddd6ca', '#b9b1a4'], roof: ['#a8553f', '#8c8c8c'], wall: ['#cfc8bb', '#9f998d'], hedge: ['#5c7a37', '#3f5a26'], tree: ['#6b5641', '#4d3d2c'], kart: ['#ffe14d', '#ffffff'], plastic: ['#e8e2d4', '#c0392b'], sand: ['#c9b48a', '#a8956c'], metal: ['#9aa0a6', '#ffffff'], wood: ['#b08455', '#7a5a38'], concrete: ['#c9c5bc', '#9b978e'], car: ['#c9d2d8', '#ffffff'] };
 function shotFx(ev: ShotEv, mine: boolean): void {
   if (!arms || !arena) return;
+  const knife = ev.w === 'knife';
+  const quiet = isGun(ev.w) && GUNS[ev.w].silenced;
   const from = new THREE.Vector3();
   if (mine) {
-    arms.view.fired();
+    arms.view.fired(ev.w, !!ev.heavy);
     arms.view.muzzle(from);
-    fightSfx.shot(ev.kit);
+    if (knife) fightSfx.knife(ev.hits.length ? 'hit' : 'air');
+    else fightSfx.shot(ev.w);
   } else {
     const o = standing.get(ev.owner);
-    if (o) o.model.muzzle(from);
-    else from.set(ev.x, ev.y - 0.4, ev.z);
-    arms.shots.flash(from);
-    fightSfx.shot(ev.kit, { x: ev.x, y: ev.y, z: ev.z });
+    if (o?.fig) {
+      o.fig.fired(ev.w);
+      o.fig.muzzle(from);
+    } else from.set(ev.x, ev.y - 0.4, ev.z);
+    if (!knife && !quiet) arms.shots.flash(from);
+    if (knife) fightSfx.knife(ev.hits.length ? 'hit' : 'air', { x: ev.x, y: ev.y, z: ev.z });
+    else fightSfx.shot(ev.w, { x: ev.x, y: ev.y, z: ev.z });
   }
   const you = room?.you;
   const hits = struck(ev, (id) => (id === you ? (roam?.walk?.p ?? null) : (standing.get(id) ?? null)));
   hits.forEach((s, i) => {
     const atYou = s.v === you;
-    if (i < 2) arms!.shots.tracer(from, atYou ? addScaled(s.p, s.d, -1.2) : s.p);
+    if (i < 2 && !knife && !quiet) arms!.shots.tracer(from, atYou ? addScaled(s.p, s.d, -1.2) : s.p);
     if (atYou) return;
     glow.spray(s.p, 2, ['#ff6a55', '#ffd2c4'], 2.2, 1.6, 0.15);
     for (let k = 0; k < 2; k++) smoke.add(s.p.x, s.p.y, s.p.z, s.d.x * 1.2, s.d.y * 1.2 + 0.3, s.d.z * 1.2, 0.16 + k * 0.08, k ? '#a3150d' : '#e0261a', 0);
@@ -1625,43 +1943,54 @@ function shotFx(ev: ShotEv, mine: boolean): void {
   });
   for (const h of ev.hits) {
     const s = hits.find((x) => x.v === h.v);
-    if (s && h.v !== you) standing.get(h.v)?.model.hit(s.d, h.n / 40);
+    if (s && h.v !== you) standing.get(h.v)?.fig?.hit(s.d, hitTotal(h) / 40);
   }
   const traced = Math.min(2, hits.length);
   landed(ev, seeOn(arena, block)).forEach((s, i) => {
-    if (i + traced < 3) arms!.shots.tracer(from, s);
+    if (i + traced < 3 && !knife && !quiet) arms!.shots.tracer(from, s);
     if (!s.what) return;
     arms!.shots.mark(s, { x: s.nx, y: s.ny, z: s.nz });
     const c = DUST[s.what] ?? DUST.wall;
-    for (let k = 0; k < 6; k++) smoke.add(s.x, s.y, s.z, s.nx * 1.5 + (Math.random() - 0.5), s.ny * 1.5 + Math.random(), s.nz * 1.5 + (Math.random() - 0.5), 0.5 + Math.random() * 0.4, c[k % 2], -2);
-    if (s.what !== 'hedge' && s.what !== 'tree') glow.spray(s, 4, ['#ffd98a', '#ffffff'], 3, 2, 0.15);
-    if (i === 0) fightSfx.impact(s);
+    // A small puff: a spray's dozen of them on one wall mustn't make a cloud of it.
+    for (let k = 0; k < (knife ? 1 : 3); k++) smoke.add(s.x + s.nx * 0.05, s.y + s.ny * 0.05, s.z + s.nz * 0.05, s.nx * 1.2 + (Math.random() - 0.5) * 0.6, s.ny * 1.2 + Math.random() * 0.6, s.nz * 1.2 + (Math.random() - 0.5) * 0.6, 0.18 + Math.random() * 0.17, c[k % 2], -1.5);
+    for (let k = 0; k < 4; k++) fx.add(s.x, s.y, s.z, s.nx * 2.5 + (Math.random() - 0.5) * 2, s.ny * 2.5 + Math.random() * 1.5, s.nz * 2.5 + (Math.random() - 0.5) * 2, 0.06 + Math.random() * 0.05, c[1], -9);
+    if (s.what !== 'hedge' && s.what !== 'tree' && s.what !== 'wood') glow.spray(s, 4, ['#ffd98a', '#ffffff'], 3, 2, 0.15);
+    if (i === 0) {
+      if (knife) fightSfx.knife('wall', s);
+      else fightSfx.impact(s);
+    }
   });
 }
 
-// Something from someone else in the round: a shot (and it hit you, by the shooter's say), or someone
-// put down.
+// Something from someone else in the round: a shot (and it hit you, by the shooter's say), a grenade
+// thrown, or someone put down.
 function onFightEv(ev: FightEv): void {
   const f = fight;
   if (!f) return;
   if (ev.k === 'down') return downFx(ev);
   if (ev.owner === room?.you) return;
+  if (ev.k === 'nade') return addThrown(f, ev);
   shotFx(ev, false);
-  for (const h of ev.hits) if (h.v === f.me.id) hitMe(f, ev, h);
+  for (const h of ev.hits) if (h.v === f.me.id) hurtMe(f, h, ev.w, ev.owner, { x: ev.x, z: ev.z });
   botsShot(f, ev, performance.now() - f.goAt);
 }
 
 // The host's bots, a step of the round at its ms t (braga-map's task 075): they look for the players as
-// this browser draws them, and for you where you are, and shoot as you do; each shot goes to everyone,
-// as yours does, and what it hit is decided here, as yours is in your browser.
+// this browser draws them, and for you where you are, and shoot and throw as you do; each shot goes to
+// everyone, as yours does, and what it hit is decided here, as yours is in your browser.
 function stepBots(f: FightCtx, w: Walker, t: number): void {
   const squad = f.squad!;
-  const players: Mark[] = [...standing.entries()].filter(([id, a]) => a.fighting && !a.downAt && !squad.bots.some((b) => b.id === id)).map(([id, a]) => ({ id, x: a.x, y: a.y, z: a.z, spd: a.spd }));
-  if (f.me.alive) players.push({ id: f.me.id, x: w.p.x, y: w.p.y, z: w.p.z, spd: w.speed() });
-  for (const ev of squad.step(DT, t, players, block)) {
-    shotFx(ev, false);
+  const players: Mark[] = [...standing.entries()].filter(([id, a]) => a.fighting && !a.downAt && !squad.bots.some((b) => b.id === id)).map(([id, a]) => ({ id, x: a.x, y: a.y, z: a.z, spd: a.spd, yaw: a.yaw, c: a.c, team: teamOf(id) ?? undefined }));
+  if (f.me.alive && f.started) players.push({ id: f.me.id, x: w.p.x, y: w.p.y, z: w.p.z, spd: w.speed(), yaw: w.yaw, c: w.crouch, team: teamOf(f.me.id) ?? undefined });
+  for (const ev of squad.step(DT, t, players, block, { clouds: f.clouds, fires: f.fires })) {
     room?.sendEv(ev);
-    for (const h of ev.hits) if (h.v === f.me.id) hitMe(f, ev, h);
+    if (ev.k === 'nade') {
+      addThrown(f, ev);
+      continue;
+    }
+    if (ev.k !== 'shot') continue;
+    shotFx(ev, false);
+    for (const h of ev.hits) if (h.v === f.me.id) hurtMe(f, h, ev.w, ev.owner, { x: ev.x, z: ev.z });
     botsShot(f, ev, t);
   }
 }
@@ -1681,41 +2010,73 @@ function botSnap(b: FootBot, fl: number): Snap {
   return { id: b.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +b.w.yaw.toFixed(3), ux: 0, uy: 1, uz: 0, spd: +b.w.speed().toFixed(1), st: 0, P: 0, fl, g: b.w.grounded ? 1 : 0, w: 1, pi: +b.w.pitch.toFixed(3), kx: 0, ky: 0, kz: 0, kw: 0 };
 }
 
-// Shot: hurt, or down, by what the shooter's browser says it hit.
-function hitMe(f: FightCtx, ev: ShotEv, h: { n: number; head: boolean }): void {
+// Hurt by a hit (each part's damage before your armour), with a weapon, by someone, from somewhere
+// (or nowhere to point at: a fall, a fire): the red, the arc, the flinch; and down, everyone told.
+function hurtMe(f: FightCtx, h: Pick<Hit, 'b' | 'h' | 'l'>, w: Cause, by: string, from: { x: number; z: number } | null): void {
   const me = f.me;
   const now = performance.now();
-  const was = me.health;
-  const down = me.hurt(h.n, now - f.goAt);
-  if (me.health === was && !down) return;
-  f.hurt = Math.min(1, f.hurt + 0.35 + (was - me.health) / 100);
-  f.from = [...f.from.filter((s) => s.id !== ev.owner), { id: ev.owner, x: ev.x, z: ev.z, at: now }];
-  fightSfx.hurt();
-  if (roam) roam.shake = Math.max(roam.shake, 0.3);
+  const { lost, down } = me.hurt(h, w, now - f.goAt);
+  if (!lost) return;
+  f.hurt = Math.min(1, f.hurt + 0.3 + lost / 100);
+  if (from && by !== me.id) f.from = [...f.from.filter((s) => s.id !== by), { id: by, x: from.x, z: from.z, at: now }];
+  fightSfx.hurt(h.h > 0);
+  if (roam) roam.shake = Math.max(roam.shake, 0.25 + lost / 120);
   if (!down) return;
-  const p = roam?.walk?.p ?? v3(ev.x, ev.y, ev.z);
-  const d: DownEv = { k: 'down', id: `${me.id}:d${++f.downs}`, victim: me.id, by: ev.owner, kit: ev.kit, head: h.head, x: p.x, y: p.y, z: p.z };
+  const p = roam?.walk?.p ?? v3();
+  const d: DownEv = { k: 'down', id: `${me.id}:d${++f.downs}`, victim: me.id, by, w, head: h.h > 0, x: p.x, y: p.y, z: p.z };
   f.fell = now;
-  f.by = ev.owner;
-  f.chose = false;
+  f.by = by;
+  f.byW = w;
+  f.byHead = d.head;
+  f.pin = null;
   pad.unscope();
   room?.sendEv(d);
   downFx(d);
   render();
 }
 
-// Someone down: in the feed, and for whoever did it, the word.
+// Someone down: in the kill feed, and for whoever did it, the word.
 function downFx(ev: DownEv): void {
   const f = fight;
   if (!f) return;
   const me = room?.you;
-  const how = `${KITS[ev.kit].article}${ev.head ? ', na cabeça' : ''}`;
-  const line = ev.victim === me ? `${nameOf(ev.by)} eliminou-te com ${how}` : ev.by === me ? `Eliminaste ${nameOf(ev.victim)} com ${how}` : `${nameOf(ev.by)} eliminou ${nameOf(ev.victim)} com ${how}`;
-  roam?.hud.feed(line, ev.by === me || ev.victim === me ? 'big' : '');
-  if (ev.by === me && ev.victim !== me) {
+  const self = ev.by === ev.victim;
+  f.hud.kill({ by: self ? '' : nameOf(ev.by), byColor: shade(ev.by), victim: nameOf(ev.victim), victimColor: shade(ev.victim), w: ev.w, head: ev.head, mine: ev.by === me || ev.victim === me });
+  if (ev.by === me && !self) {
     fightSfx.down();
-    f.center = { text: `Eliminaste ${nameOf(ev.victim)}`, until: performance.now() + 1600 };
+    f.hud.hit(ev.head, true);
+    f.center = { text: `Eliminaste ${nameOf(ev.victim)}${ev.head ? ' com um tiro na cabeça' : ''}`, until: performance.now() + 1600 };
   }
+}
+
+// How many times the scope narrows your view, 1 without.
+function zoomOf(f: FightCtx | null): number {
+  const g = f?.me.alive ? f.me.gun : null;
+  return g?.scope && f!.me.scope ? g.scope.zooms[f!.me.scope - 1] : 1;
+}
+
+// What your hands hold when there's nothing to show.
+const IDLE: HandState = { hand: null, draw: 1, reload: null, speed: 0, grounded: true, crouch: 0, scope: 0, punch: { x: 0, y: 0 }, pin: false, inspect: false, walk: false };
+
+// Your weapon in your hands this frame, as the round has it.
+function hands(f: FightCtx, w: Walker, now: number): HandState {
+  const me = f.me;
+  const t = now - f.goAt;
+  if (!f.started || !me.alive) return IDLE;
+  const g = me.gun;
+  return {
+    hand: me.hand,
+    draw: clamp(1 - (me.drawnAt - t) / drawOf(me.hand), 0, 1),
+    reload: me.reloading && g ? clamp(1 - (me.reloadAt - t) / g.reload, 0, 1) : null,
+    speed: w.speed(),
+    grounded: w.grounded,
+    crouch: w.crouch,
+    scope: me.scope,
+    punch: me.punch,
+    pin: !!f.pin,
+    inspect: now - f.inspectAt < 2600,
+    walk: w.speed() < speedWith(me.hand, false) * 0.6,
+  };
 }
 
 // ---- The race ----
@@ -2116,25 +2477,39 @@ function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local
         k.model.update(0, 0, dt, true, 0);
         kartBlock(kartBlocks, b.kx, b.ky, b.kz, b.kw);
       }
+      // In a round: as a fighter, the weapon in their hands, crouched or not, down, falling and
+      // fading; out of one, the driver they picked, walking. Their footsteps when they run (walking,
+      // as crouched, is quiet, as in Counter-Strike).
+      const fl = fight ? fighterOf(b.fl) : null;
+      const armed = !!fl?.armed;
       if (!k.walker) {
         k.walker = buildWalker(driverById(m.driver));
         scene.add(k.walker.group);
       }
-      k.walker.group.visible = true;
-      k.walker.group.position.set(x, y, z);
-      k.walker.group.rotation.y = -yaw;
-      k.walker.update(b.spd, dt, L(a.pi, b.pi));
-      // In a round: their gun, and down, falling and fading; their footsteps always.
-      const fl = fight ? fighterOf(b.fl) : null;
-      const armed = !!fl?.armed;
-      k.walker.arm(armed ? fl!.kit : null);
+      k.walker.group.visible = !armed;
+      if (armed && !k.fighter) {
+        k.fighter = buildFighter(driverById(m.driver));
+        scene.add(k.fighter.group);
+      }
+      if (k.fighter) k.fighter.group.visible = armed;
       let s = standing.get(id);
-      if (!s) standing.set(id, (s = { x, y, z, yaw, spd: 0, fighting: false, downAt: 0, stride: 0, model: k.walker }));
-      Object.assign(s, { x, y, z, yaw, spd: b.spd, fighting: armed, model: k.walker });
+      if (!s) standing.set(id, (s = { x, y, z, yaw, spd: 0, c: 0, fighting: false, downAt: 0, stride: 0, fig: null }));
+      s.c = clamp(s.c + (fl?.crouch ? dt : -dt) / 0.16, 0, 1);
+      Object.assign(s, { x, y, z, yaw, spd: b.spd, fighting: armed, fig: armed ? k.fighter : null });
       s.downAt = armed && fl!.down ? s.downAt || now : 0;
       const since = s.downAt ? now - s.downAt : 0;
-      k.walker.fall(s.downAt ? Math.min(1, since / 450) : 0, s.downAt ? clamp((since - 2500) / 800, 0, 1) : 0);
-      if (b.g && b.spd > 0.6 && !s.downAt) {
+      if (armed) {
+        const fig = k.fighter!;
+        fig.group.position.set(x, y, z);
+        fig.group.rotation.y = -yaw;
+        fig.update(dt, { speed: b.spd, pitch: L(a.pi, b.pi), crouch: s.c, hand: fl!.down ? null : fl!.weapon, scoped: fl!.scoped, reloading: fl!.reloading, grounded: !!b.g, team: teamOf(id) });
+        fig.fall(s.downAt ? Math.min(1, since / 450) : 0, s.downAt ? clamp((since - 2500) / 800, 0, 1) : 0);
+      } else {
+        k.walker.group.position.set(x, y, z);
+        k.walker.group.rotation.y = -yaw;
+        k.walker.update(b.spd, dt, L(a.pi, b.pi));
+      }
+      if (b.g && b.spd > (armed ? 2.9 : 0.6) && !s.downAt) {
         s.stride += b.spd * dt;
         if (s.stride > (b.spd > 3 ? 1.6 : 0.8)) {
           s.stride = 0;
@@ -2150,15 +2525,16 @@ function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local
       k.model.update(b.spd, b.st, dt, !!b.g, b.fl);
       kartEffects(id, k, x, y, z, yaw, Math.abs(b.spd), b.fl, !!b.g, dt);
       if (k.walker) k.walker.group.visible = false;
+      if (k.fighter) k.fighter.group.visible = false;
     }
     // Their name over them, in the kart or on foot; but in a round, where it would say where they are
     // through the walls, none.
-    const over = foot ? k.walker!.group : k.model.group;
+    const over = foot ? (k.fighter?.group.visible ? k.fighter.group : k.walker!.group) : k.model.group;
     if (k.tag && k.tag.parent !== over) {
       over.add(k.tag);
       k.tag.position.y = foot ? 2.2 : 3.4;
     }
-    if (k.tag) k.tag.visible = !fight;
+    if (k.tag) k.tag.visible = !fight || mates(id, room!.you);
   }
   for (const [id, k] of karts) {
     if (local(id) || seen.has(id)) continue;
@@ -2393,8 +2769,9 @@ function flyCam(f: Flyer, dt: number): void {
 }
 
 // On foot: the camera at your eyes, looking where you look, its height easing up a kerb or a tread
-// rather than jumping, and never bobbing. ?view= still holds it. In a round, through a scope it
-// narrows, and put down, it drops to the ground, rolling over.
+// rather than jumping, and never bobbing. ?view= still holds it. In a round, it ducks as you crouch,
+// a spray's recoil kicks it up (by less than the bullets go: Counter-Strike's view punch), through a
+// scope it narrows, and put down, it drops to the ground, rolling over.
 function walkCam(r: RoamCtx, w: Walker, dt: number): void {
   if (VIEW && VIEW.length >= 6) {
     holdView(VIEW);
@@ -2402,20 +2779,42 @@ function walkCam(r: RoamCtx, w: Walker, dt: number): void {
   }
   const f = fight;
   const down = !!f && f.started && !f.me.alive;
-  const want = w.p.y + (down ? 0.35 : EYE);
-  r.eye = Math.abs(want - r.eye) > 2 && !down ? want : r.eye + (want - r.eye) * (1 - Math.exp(-dt / (down ? 0.15 : 0.07)));
+  const want = w.p.y + (down ? 0.35 : w.eye());
+  // Crouching, it goes down with you at once; up a kerb or a tread, it eases.
+  const ducking = f && Math.abs(want - r.eye) < 0.6 && w.grounded && w.crouch > 0 && w.crouch < 1;
+  r.eye = (Math.abs(want - r.eye) > 2 && !down) || ducking ? want : r.eye + (want - r.eye) * (1 - Math.exp(-dt / (down ? 0.15 : 0.07)));
   const d = w.dir();
   camera.position.set(w.p.x, r.eye, w.p.z);
   camera.lookAt(w.p.x + d.x, r.eye + d.y, w.p.z + d.z);
-  if (down) camera.rotateZ(0.7 * Math.min(1, (performance.now() - f.fell) / 500));
+  if (f && f.me.alive && (f.me.punch.x || f.me.punch.y)) {
+    camera.rotateY((-f.me.punch.x * PUNCH * Math.PI) / 180);
+    camera.rotateX((f.me.punch.y * PUNCH * Math.PI) / 180);
+  }
+  if (down) {
+    // Put down, the camera on the ground, rolling over; then turning to whoever did it, if they're
+    // still there to see, as Counter-Strike's death camera does.
+    const since = performance.now() - f.fell;
+    const k = standing.get(f.by);
+    if (k && since > 900) {
+      const turn = Math.min(1, (since - 900) / 600);
+      const at = new THREE.Vector3(k.x, k.y + 1.4, k.z);
+      const ahead2 = camera.position.clone().add(new THREE.Vector3(d.x, d.y, d.z));
+      camera.lookAt(ahead2.lerp(at, turn));
+    }
+    camera.rotateZ(0.7 * Math.min(1, since / 500) * (k && since > 900 ? 1 - Math.min(1, (since - 900) / 600) * 0.8 : 1));
+  }
   if (r.shake > 0.01) {
     camera.rotateX((Math.random() - 0.5) * r.shake * 0.04);
     r.shake *= Math.exp(-dt * 8);
   }
   camPos.copy(camera.position);
-  const zoom = f?.me.scoped && f.me.alive ? (KITS[f.me.kit].scope?.zoom ?? 1) : 1;
+  const zoom = zoomOf(f);
   widen(72 / zoom, dt, f ? 18 : 4);
 }
+
+// How much of a spray's kick the view shows: the bullets go further, so the crosshair isn't where they
+// land, and a player learns to pull down.
+const PUNCH = 0.45;
 
 // Where the flying camera looks on the ground, at most 100 m ahead, for the sun's shadows to fall
 // round, as ?scenery's fall 8 m ahead of its camera.
@@ -2488,9 +2887,9 @@ function frame(now: number): void {
     // Your gun, once the camera's set; the shots' tracers and flashes.
     if (arms) {
       const f = fight;
-      arms.view.show(f && f.started && f.me.alive && r.walk ? f.me.kit : null);
-      if (f && r.walk) arms.view.update(camera, SUN_DIR, dt, r.walk.speed(), f.me.reloading ? 1 - (f.me.reloadAt - (now - f.goAt)) / KITS[f.me.kit].reload : null, f.me.scoped);
+      arms.view.update(camera, SUN_DIR, dt, f && r.walk ? hands(f, r.walk, now) : IDLE);
       arms.shots.update(dt);
+      arms.nades.update(f ? now - f.goAt : 0, dt, camera);
     }
     else if (r.fly) flyCam(r.fly, dt);
     else if (menu || results) orbit(r.me.car, t, dt);
@@ -2516,7 +2915,7 @@ function frame(now: number): void {
         members: room?.lobby.members.filter((m) => !m.bot).map((m) => m.name) ?? [],
         others: [...r.cars.values()].map((o) => ({ id: o.id, name: o.name, x: o.x, y: o.y, z: o.z })),
         street: r.street,
-        fight: fight ? { started: fight.started, alive: fight.me.alive, health: fight.me.health, kit: fight.me.kit, ammo: fight.me.ammo, kills: room?.board.find((e) => e.id === room?.you)?.kills ?? 0, deaths: room?.board.find((e) => e.id === room?.you)?.deaths ?? 0, foes: foes(), bots: fight.squad?.bots.map((b) => ({ id: b.id, x: b.w.p.x, y: b.w.p.y, z: b.w.p.z, alive: b.s.alive, health: b.s.health, kit: b.s.kit, shots: b.shots, stuck: b.stuck })) ?? null } : null,
+        fight: fight ? { started: fight.started, alive: fight.me.alive, health: fight.me.health, armour: fight.me.armour, hand: fight.me.hand, mag: fight.me.mag, reserve: fight.me.reserve, scope: fight.me.scope, crouch: roam?.walk?.crouch ?? 0, kit: fight.kit, buying: fight.hud.buying, team: teamOf(fight.me.id), kills: room?.board.find((e) => e.id === room?.you)?.kills ?? 0, deaths: room?.board.find((e) => e.id === room?.you)?.deaths ?? 0, foes: foes(), nades: fight.thrown.length, clouds: fight.clouds.length, fires: fight.fires.length, bots: fight.squad?.bots.map((b) => ({ id: b.id, x: b.w.p.x, y: b.w.p.y, z: b.w.p.z, alive: b.s.alive, health: b.s.health, hand: b.s.hand, shots: b.shots, stuck: b.stuck })) ?? null } : null,
         calls: renderer.info.render.calls,
         tris: renderer.info.render.triangles,
         audio: { city: cityHeard },

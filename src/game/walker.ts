@@ -27,6 +27,25 @@ const AIR = 1;
 // The arrows' turn, rad/s.
 const TURN = 1.8;
 
+// In a round (`fighter`), as Counter-Strike moves: running is the pace, Shift walks (quietly, and
+// slower), Ctrl crouches; the speed eases up and is braked by the ground's friction, so letting go of a
+// key, or pressing the other way, stops you short (a counter-strafe). The crouched height, and the eye
+// in it; how fast you duck; the jump (about 70 cm, a crate's height with your legs tucked up in the air
+// by crouching); and a fall over FALL m hurts.
+export const CROUCHED = 1.3;
+export const EYE_DOWN = 1.2;
+const DUCK = 0.16;
+const TUCK = 0.4;
+const JUMP_CS = 3.75;
+const ACCEL = 5.5;
+const FRICTION = 5.2;
+const STOP = 1.6;
+const AIR_ACCEL = 12;
+const AIR_WISH = 0.75;
+export const WALKING = 0.52;
+export const CROUCHING = 0.34;
+export const FALL = 3.2;
+
 export interface WalkInput {
   fwd: number; // -1 to 1: the way it faces
   side: number; // -1 to 1: to its right
@@ -34,6 +53,9 @@ export interface WalkInput {
   look: { x: number; y: number }; // the mouse or a drag this step, in radians: to the right, and up
   run: boolean;
   jump: boolean;
+  // In a round: walking (Shift), and crouching (Ctrl).
+  walk?: boolean;
+  crouch?: boolean;
 }
 
 export const STAND: WalkInput = { fwd: 0, side: 0, turn: 0, look: { x: 0, y: 0 }, run: false, jump: false };
@@ -49,6 +71,12 @@ export class Walker {
   // as upright circles; and an area it keeps in, a round's.
   blockers: readonly Blocker[] = [];
   bound: ((x: number, z: number) => boolean) | null = null;
+  // In a round: the fastest it runs with what it holds (m/s), or null for a walk round the city; how
+  // far it's crouched, from 0 to 1; and how fast it was falling when it last came down (m/s), for the
+  // round to read and clear.
+  fighter: number | null = null;
+  crouch = 0;
+  landed = 0;
 
   constructor(ground: WorldGround, p: V, yaw: number, pitch = 0) {
     this.ground = ground;
@@ -88,23 +116,30 @@ export class Walker {
       mx /= m;
       mz /= m;
     }
-    const pace = inp.run ? RUN : WALK;
-    const k = 1 - Math.exp(-dt / (this.grounded ? EASE : AIR));
-    v.x += (mx * pace - v.x) * k;
-    v.z += (mz * pace - v.z) * k;
+    if (this.fighter !== null) this.move(inp, mx, mz, dt);
+    else {
+      const pace = inp.run ? RUN : WALK;
+      const k = 1 - Math.exp(-dt / (this.grounded ? EASE : AIR));
+      v.x += (mx * pace - v.x) * k;
+      v.z += (mz * pace - v.z) * k;
+    }
 
     // Across: out of the walls round it, and back where the ground won't have it (the land over its
     // head, a bank too steep, the river, the area's edge), sliding along whatever stopped it.
+    const [x0, z0] = [p.x, p.z];
     const [x, z] = this.clear(p.x, p.z, p.x + v.x * dt, p.z + v.z * dt);
     if (this.can(x, z)) [p.x, p.z] = [x, z];
     else if (this.can(x, p.z)) p.x = x;
     else if (this.can(p.x, z)) p.z = z;
     if (p.x !== x) v.x = 0;
     if (p.z !== z) v.z = 0;
+    // Pinned where it stood (a corner, a wall's end walked straight at): it isn't moving, whatever it
+    // wants, or it would go on spreading its shots and sounding its steps as if it ran.
+    if (x === p.x && z === p.z && x === x0 && z === z0) v.x = v.z = 0;
 
     // Up and down: on the highest surface a step over its feet or under them, or falling.
     if (this.grounded && inp.jump) {
-      v.y = JUMP;
+      v.y = this.fighter !== null ? JUMP_CS : JUMP;
       this.grounded = false;
     }
     if (this.grounded) {
@@ -120,6 +155,7 @@ export class Walker {
       const f = this.footing(p.x, p.z, Math.max(was, p.y));
       if (v.y <= 0 && p.y <= f.y) {
         p.y = f.y;
+        this.landed = Math.max(this.landed, -v.y);
         v.y = 0;
         this.grounded = true;
       }
@@ -130,6 +166,61 @@ export class Walker {
       return true;
     }
     return false;
+  }
+
+  // Its eye over its feet, and how tall it stands, as crouched as it is.
+  eye(): number {
+    return EYE + (EYE_DOWN - EYE) * this.crouch;
+  }
+
+  height(): number {
+    return HEIGHT + (CROUCHED - HEIGHT) * this.crouch;
+  }
+
+  // A round's step across (Counter-Strike's, after Quake's): the ground's friction brakes it, then it
+  // speeds up towards the pace wanted, at once nearly, but never past it; in the air it hardly
+  // steers. Crouching in the air tucks the legs up, the feet rising as the eye comes down.
+  private move(inp: WalkInput, mx: number, mz: number, dt: number): void {
+    const v = this.v;
+    const was = this.crouch;
+    this.crouch = clamp(this.crouch + (inp.crouch ? dt : -dt) / DUCK, 0, 1);
+    if (!this.grounded) this.p.y += (this.crouch - was) * TUCK;
+    const top = this.fighter!;
+    const wish = top * (this.crouch > 0.5 && this.grounded ? CROUCHING : inp.walk ? WALKING : 1);
+    const m = Math.hypot(mx, mz);
+    const wx = m ? mx / m : 0;
+    const wz = m ? mz / m : 0;
+    if (this.grounded) {
+      const s = Math.hypot(v.x, v.z);
+      if (s > 0) {
+        const k = Math.max(0, s - Math.max(s, STOP) * FRICTION * dt) / s;
+        v.x *= k;
+        v.z *= k;
+      }
+      if (m > 0) {
+        const ws = wish * m;
+        const add = ws - (v.x * wx + v.z * wz);
+        if (add > 0) {
+          const a = Math.min(ACCEL * ws * dt, add);
+          v.x += wx * a;
+          v.z += wz * a;
+        }
+      }
+    } else if (m > 0) {
+      const ws = Math.min(wish * m, AIR_WISH);
+      const add = ws - (v.x * wx + v.z * wz);
+      if (add > 0) {
+        const a = Math.min(AIR_ACCEL * wish * m * dt, add);
+        v.x += wx * a;
+        v.z += wz * a;
+      }
+      // No faster in the air than running: a hop gains nothing.
+      const s = Math.hypot(v.x, v.z);
+      if (s > top * 1.1) {
+        v.x *= (top * 1.1) / s;
+        v.z *= (top * 1.1) / s;
+      }
+    }
   }
 
   // What it stands on at (x, z), from height y: the ground's floor, but where that's the land over its
@@ -178,9 +269,9 @@ export class Walker {
 
   // The wall, trunk or blocker a walker at (x, z) is deepest into, coming from (x0, z0).
   private deepest(x: number, z: number, x0: number, z0: number): { nx: number; nz: number; d: number } | null {
-    let best = this.ground.circle(x, z, x0, z0, this.p.y, RADIUS, HEIGHT, true);
+    let best = this.ground.circle(x, z, x0, z0, this.p.y, RADIUS, this.height(), true);
     for (const b of this.blockers) {
-      if (this.p.y >= b.y1 || this.p.y + HEIGHT <= b.y0) continue;
+      if (this.p.y >= b.y1 || this.p.y + this.height() <= b.y0) continue;
       const dx = x - b.x;
       const dz = z - b.z;
       const q = Math.hypot(dx, dz);

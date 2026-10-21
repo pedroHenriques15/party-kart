@@ -2,7 +2,7 @@
 // car that's a joke about them. Every face is the same friendly cartoon face.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { KitId } from '../game/fight.ts';
+import type { GunLook } from './arms.ts';
 import { buildGun } from './arms.ts';
 import * as tex from './textures.ts';
 import { windStreak } from './textures.ts';
@@ -961,7 +961,7 @@ export interface WalkerModel {
   update: (speed: number, dt: number, pitch: number) => void;
   // In a round (braga-map's task 074): the gun in its hands, or none; and how far it has fallen, from
   // 0 standing to 1 down, and faded, from 0 to gone.
-  arm: (kit: KitId | null) => void;
+  arm: (kit: GunLook | null) => void;
   fall: (down: number, fade: number) => void;
   // Where its gun's muzzle is, in the world, for its shots' flash and tracers.
   muzzle: (out: THREE.Vector3) => THREE.Vector3;
@@ -1017,7 +1017,7 @@ export function buildWalker(d: Driver): WalkerModel {
   const inv = new THREE.Quaternion();
   // Its gun, held in front of its chest at a person's size whatever the figure's scale, made the
   // first time it holds that kit.
-  const guns = new Map<KitId, ReturnType<typeof buildGun>>();
+  const guns = new Map<GunLook, ReturnType<typeof buildGun>>();
   let held: ReturnType<typeof buildGun> | null = null;
   // Faded, its meshes wear their own copies of their materials, the shared ones kept to put back.
   const own = new Map<THREE.Mesh, THREE.Material>();

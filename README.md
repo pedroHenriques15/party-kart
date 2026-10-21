@@ -31,20 +31,26 @@ and driver, the graphics, the help, and
    and **Começar a corrida** puts everyone in the room on the grid, the empty places filled with
    bots. When it's over the results show over the world, and everyone is back where they were,
    driving.
-3. **🎯 Tiroteio**: a deathmatch on foot in one of three small arenas in Fujacal and the Conselheiro
-   Lobato, about 80 m across each, everyone for themselves: **Topo do Fujacal**, the Rua do Fujacal
+3. **🎯 Tiroteio**: a deathmatch on foot after Counter-Strike 2's, in one of three small arenas in
+   Fujacal and the Conselheiro Lobato, about 80 m across each, everyone for themselves or in two teams: **Topo do Fujacal**, the Rua do Fujacal
    by the race's start round a block of flats alone in its street; **Doutor José Vilaça**, the flats'
    courtyard off the Rua Monsenhor Airosa; and **Santa Justa**, the street by the river and the
    Ecovia. Most of their buildings open on the ground floor, a room you walk into through its door
    and shoot out of through its windows; and in Topo do Fujacal and Doutor José Vilaça a block of
-   flats goes up by its stairs, floor by floor, to its roof. The host chooses the arena, how long (3,
-   5 or 10 minutes), how many bots fill the empty places and how good they are (**Fácil**, **Médio**
-   or **Difícil**), and starts it: everyone in the room is put on foot at a spawn there, their kart
-   waiting where it was, and chooses a kit. Alone with bots, it's a round worth playing too. Whoever
-   has the most kills when
-   the time runs out wins; then the results, and everyone is back in their kart. Put down, you fall,
-   choose the kit you come back with, and after four seconds come back where none of the others can
-   see you, unhurt for a moment. Your health comes back by itself once you've been unhurt a while.
+   flats goes up by its stairs, floor by floor, to its roof. The host chooses the arena, everyone for
+   themselves or two teams (**Equipa Azul** and **Equipa Laranja**, shared out evenly, the bots
+   too), how long (3, 5 or 10 minutes), how many bots fill the empty places and how good they are
+   (**Fácil**, **Médio** or **Difícil**), and starts it: everyone in the room is put on foot at a
+   spawn there, their kart waiting where it was, with the buy menu open till the start. The money is
+   unlimited, as in Counter-Strike's deathmatch: twenty guns (pistols, sub-machine guns, rifles,
+   sniper's rifles, shotguns and a machine gun), the knife, four grenades (HE, flash, smoke and
+   molotov), and a vest and helmet; what you buy stays with you every time you come back, and you can
+   change it in the first 15 s of a life (after that, or while you're down, it's for the next). Alone
+   with bots, it's a round worth playing too. Whoever (or whichever team) has the most kills when the
+   time runs out wins; then the results, with each player's share of kills to the head, and everyone
+   is back in their kart. Put down, you fall, the camera turns to whoever did it, and after three
+   seconds you come back where none of your foes can see you, unhurt for a moment. Health doesn't
+   come back; armour takes part of each hit to the body (to the head too, with a helmet).
    A railing round the arena, and road-works barriers across the streets and paths that leave it,
    keep the round in it; they stand only while a round is on. The bots are the drivers nobody picked,
    on foot as a player is: each chooses a kit as it comes back, goes looking round the arena, in and
@@ -104,26 +110,36 @@ the ghost of your best. Round the city there are no items.
 | Shift | Run |
 | Space | Jump |
 
-The deathmatch's kits, chosen at each spawn. None is best everywhere: the shotgun up close, the
-carabina at most distances, the sniper's rifle far off and scoped, the pistol on the run. A hit on
-the head counts more.
-
-| Kit | |
-|---|---|
-| Carabina | Automatic, 30 rounds, 24 to the body up to 25 m (14 from 70 m on): about half a second to put someone down |
-| Caçadeira | Ten pellets a shot, 15 each up to 10 m, hardly anything past 35 m: one shot up close |
-| Espingarda de precisão | Bolt action, 5 rounds, 60 to the body at any range, 150 to the head; its scope narrows the view four and a half times |
-| Pistola | 12 rounds, 30 up to 15 m, as true running as standing |
+The deathmatch's guns are Counter-Strike 2's (`src/game/arsenal.ts`), each with its damage (a hit
+on the head counts four times, on the legs three quarters), how much of it gets through armour, how
+it falls off with distance, its rate of fire, magazine and reserve, reload and draw times, and how
+fast you run with it out. A gun is true standing still or walking, less so running, crouched truer
+still, and wild in the air; let go of the keys (or press the other way, to counter-strafe) and you
+stop at once. Each automatic's spray climbs and sways along its own pattern, the same every time, so
+you learn to pull against it; the first shot goes where you aim. The AWP and the SSG 08 have two
+zooms, and fired without them (a no-scope) the AWP's shot goes anywhere near the crosshair; a moment
+after the scope comes up it's dead on (a quick-scope); after each shot the bolt takes the scope down,
+and it comes back up by itself. The SG 553 and the AUG have a scope with one zoom. The knife cuts
+(click) or stabs (right button), and from behind it's worth much more. Grenades go where you look:
+overarm with the click, lobbed with the right button, between with both; they bounce off walls and
+the ground. The HE grenade blasts up to 98 close to it; the flash blinds whoever looks at it; the
+smoke makes a cloud nobody sees through for 18 s (the bots neither); the molotov sets the ground
+alight for 7 s, and a smoke puts it out. Falls of more than a storey hurt.
 
 | In a round | |
 |---|---|
 | The mouse | Aim |
-| Click (held, with the carabina) | Fire |
-| Right button, held | The scope, with the sniper's rifle |
-| R | Reload (it reloads by itself when the magazine's empty) |
-| Tab, held | The scores: kills and deaths |
-| 1 to 4 | The kit you come back with |
-| WASD, Shift, Space | Walk, run, jump, as on foot |
+| Click (held, with an automatic) | Fire; with the knife, cut; with a grenade, pull the pin, and let go to throw |
+| Right button | The scope's next zoom; with the knife, stab; with a grenade, lob it |
+| R | Reload (a shotgun a shell at a time; firing stops it) |
+| 1, 2, 3, 4 | The primary, the secondary, the knife, the grenades (again, the next grenade) |
+| Q, the wheel | The weapon you had before; the weapons in turn |
+| B | The buy menu: a family's number, then a gun's (B 3 3 is the AK-47); B or Esc closes it |
+| F | Look your weapon over |
+| Shift | Walk: slower, truer, and quiet (running, your footsteps are heard) |
+| Ctrl or C | Crouch |
+| Space | Jump (crouch in the air to tuck your legs up and reach higher) |
+| Tab, held | The scores: kills, deaths, kills to the head |
 
 While you drive, fly or walk, no key or mouse button takes you off the game: Alt, F1, F3, F5, F7, /
 and Ctrl with S, D, F, P, R or + do nothing of the browser's, the mouse's side buttons don't go back
@@ -154,8 +170,9 @@ rim; a drag anywhere on the right half looks round; **Saltar** jumps; and **🏎
 top puts you back in it.
 
 In a round, the same, with **Fogo** under your right thumb (hold it to fire; drag it to aim as you
-fire), **Recarregar**, and **Mira** for the sniper's scope; tap a kit to choose it, and
-**Pontuação** at the top shows the scores.
+fire), **Recarregar**, **Mira** (a scope's next zoom, the knife's stab, a grenade's lob), **Agachar**
+(it stays down till you press it again) and **Trocar** (the next weapon); **🛒 Armas** at the top
+opens the buy menu, and **Pontuação** shows the scores.
 
 On Android the game goes full screen at the first tap. On an iPhone, add the page to the home screen
 (Share → Add to Home Screen) for the same.
@@ -249,8 +266,10 @@ the game runs slowly, it steps down a level by itself, as far as Low.
   browser draws it in the same place without sending positions. A hit is decided by the one
   who gets hit, in their own browser, and told to the others: what you see is what happened.
 - A shot in the deathmatch is the other way round: a bullet is instant, so it's decided by the
-  shooter's browser, against the others as it draws them, and the victim's browser takes the damage.
-  What hit on your screen hit. The host keeps the kills and deaths.
+  shooter's browser, against the others as it draws them, and the victim's browser takes the damage
+  (and its armour takes its share). What hit on your screen hit. A grenade is like a bola: its throw
+  is its whole flight, worked out the same in every browser, and each browser works out what its
+  blast, flash or fire does to its own player. The host keeps the kills and deaths.
 - Players connect over WebRTC, through [PeerJS](https://peerjs.com/)'s free public server, which
   only introduces them (and relays when a router is strict).
 
@@ -262,8 +281,8 @@ the game runs slowly, it steps down a level by itself, as far as Low.
 - `src/game/`: a race: the arena (clock, cars, items in flight, order), a racer (laps, boxes,
   items, hits, bumps, slipstreams, catch-up), the items' rules, and the bots; a car driving round
   the city (`roamer.ts`); the flying camera (`flyer.ts`); you on foot (`walker.ts`); the
-  deathmatch (`fight.ts`: the kits, health, shots, spawns, scores, an arena's field); and its bots
-  (`footbot.ts`).
+  deathmatch: its guns (`arsenal.ts`), a fighter, health, armour, shots and scores (`fight.ts`),
+  grenades (`nades.ts`), an arena's field and spawns (`field.ts`); and its bots (`footbot.ts`).
 - `src/world/`: the world as the karts' ground: the land, every street and path at its level, the
   steps, and the walls (`ground.ts`); the arenas' buildings' insides (`interiors.ts`, laid out by
   `storeys.ts` as their facades are); line of sight through it (`sight.ts`); and where someone on
@@ -271,7 +290,8 @@ the game runs slowly, it steps down a level by itself, as far as Low.
 - `src/render/`: the look (sky, sun, shadows, quality); the city round the track (`city.ts`,
   from the map), every street and path in its area (`streets.ts`), what the race adds to them (`road.ts`),
   the bridges' pillars and the tunnels' mouths (`levels.ts`), the easter eggs (`eggs.ts`); trees, karts and
-  drivers, items, particles, skid marks; the deathmatch's guns, bullet marks and edge (`arms.ts`); and the first track's world (`world.ts`,
+  drivers, items, particles, skid marks; the deathmatch's weapons in your hands, bullet marks and
+  edge (`arms.ts`), the others as fighters (`soldier.ts`) and the grenades (`nades.ts`); and the first track's world (`world.ts`,
   `landmarks.ts`, `braga.ts`), for reference.
 - The map of Braga is its own repo, [braga-map](https://github.com/pedroHenriques15/braga-map),
   shared with the games to come: the city in sections, and the tracks planned on its streets. The
@@ -283,6 +303,9 @@ the game runs slowly, it steps down a level by itself, as far as Low.
   a town, birds, woods, a river, bells, a bus and a crowd (CC0, from Freesound, listed in
   braga-map's `docs/SOURCES.md`), in `src/sounds/`, heard by what's near your kart wherever it is
   (`src/ambience.ts`).
+- `src/fight/`: the deathmatch's CC0 models (the guns, the knife, the grenades, the fighter, the
+  cover's props) and recordings (shots, reloads, grenades, impacts, footsteps), each with its source
+  in `src/fight/ASSETS.md`.
 
 How it fits together, the network messages included, is in [docs/architecture.md](docs/architecture.md).
 How to change the track, add an item or a driver, and what to watch out for is in
@@ -303,7 +326,9 @@ npm run deploy   # publish to GitHub Pages (the gh-pages branch)
 Map data © OpenStreetMap contributors, under the Open Database Licence. The ground is from DGT's
 LiDAR (CC BY 4.0), and what it is and its colour from that LiDAR and DGT's 2025 orthophoto (CC BY
 4.0): informação geográfica cedida pela Direção-Geral do Território. The ground's photos (asphalt,
-paving, setts, grass, soil and gravel) are from Poly Haven, CC0. The horizon beyond the map is from Terrain Tiles, on AWS
+paving, setts, grass, soil and gravel) are from Poly Haven, CC0. The deathmatch's models are CC0, by Pichuliru (the Flat Guns packs), Quaternius
+(the fighter, the bullpup, the cars) and Rafael (the Desert Eagle), and its sounds CC0 from Freesound:
+`src/fight/ASSETS.md` names each. The horizon beyond the map is from Terrain Tiles, on AWS
 Open Data. Europe terrain data produced using Copernicus data and information funded by the
 European Union - EU-DEM layers. The facades' photos are © Mapillary contributors, CC BY-SA 4.0,
 and so are the textures made from them: How to play names their authors, and braga-map's

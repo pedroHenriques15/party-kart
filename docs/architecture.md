@@ -26,7 +26,11 @@ change things, read [making-changes.md](making-changes.md).
 | `src/game/roamer.ts` | sim | `Roamer`: your car round the city, outside a race, on the world's ground (bumps and slipstreams, back on the street when lost) |
 | `src/game/flyer.ts` | sim | `Flyer`: the flying camera (braga-map's task 054), its pace by its height, kept 1 to 500 m over the ground it's given and inside its bound; `landing`: where your kart is put when you stop flying; `onGrid`: a grid of heights as its triangles are drawn |
 | `src/game/walker.ts` | sim | `Walker`: you on foot (braga-map's task 073), on the world's ground at a person's height and radius, walking, running and jumping, up kerbs and treads, stopped by the walls and trunks, the karts and the others on foot (`blockers`), and kept in a round's area (`bound`); `alight`: where you get out beside your kart |
-| `src/game/fight.ts` | sim | The deathmatch (braga-map's task 074): the kits (`KITS`), a fighter's health, ammunition and spread (`Soldier`), the figures' hitboxes, a shot and what it hits (`fire`, `pellets`, `landed`, and `struck`: where a pellet a fighter stopped struck them, as a browser draws them), the events (`ShotEv`, `DownEv`), the scores (`tally`), and Fujacal as a round is played in (`field`: its ground with the edge, the spawns, where the railings and barriers stand; `pickSpawn`) |
+| `src/game/arsenal.ts` | sim | The deathmatch's arsenal, after Counter-Strike 2's (braga-map's decision 060): twenty guns (`GUNS`: damage, armour penetration, range falloff, rate of fire, magazine and reserve, reload, draw, running speed, spread, recoil, scope), the knife, the grenades, armour, a `Loadout`, and the sums: a spray's kick (`kickOf`), a shot's cone (`coneOf`), damage at a distance and through armour |
+| `src/game/fight.ts` | sim | The deathmatch (braga-map's task 074): a fighter (`Soldier`: its guns and their rounds, the weapon in hand and switching, reloads, the scope's zooms, recoil and bloom, health and armour), the figures' hitboxes standing and crouched, a shot and a knife's cut and what they hit (`fire`, `stab`, `pellets`, `landed`, `struck`), the events (`ShotEv`, `DownEv`, and `NadeEv`), the scores with head shots and teams (`tally`) |
+| `src/game/nades.ts` | sim | The grenades: a throw (`throwOf`, `toss`), its whole flight with its bounces on the round's ground (`fly`, the same in every browser), and what each does: the HE grenade's blast, the flash's blinding, the smoke's cloud that hides (`hidden`), the molotov's fire, put out by a smoke |
+| `src/game/field.ts` | sim | An arena as a round is played in (`field`): its ground with the edge and its cover, its spawns, the bots' paths, its railings and barriers; `pickSpawn` |
+| `src/world/cover.ts` | sim | A round's cover in an arena (braga-map's decision 060): the cars the LiDAR saw parked there (`loadParked`), and road works' things placed to break its long looks |
 | `src/game/footbot.ts` | sim | The bots on foot (braga-map's task 075): `FootBot`, one bot's senses, plans, aim and trigger, as good as its level (`skillOf`, `SKILLS`); `Squad`, a round's bots as the host runs them (their steps, their coming back, the shots they fire and meet) |
 | `src/world/sight.ts` | sim | Line of sight: how far a ray goes before the world stops it (`sight`, `clear`), for a shot and a look |
 | `src/world/paths.ts` | sim | `Paths`: where someone on foot can walk in an area, points 2 m apart joined where a walker gets from one to the next (several over each other in a tower, and ways joined by hand through doors and up flights); the way between two (A*), the points round one, whether a straight line is walkable. For the bots |
@@ -34,7 +38,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/world/storeys.ts` | sim | How a building's walls are laid out: its storeys, its bays, which walls face a street; for the facades and the rooms' openings |
 | `src/session.ts` | browser | Rooms over PeerJS: `HostRoom` and `ClientRoom` |
 | `src/main.ts` | browser | Free roam, the menu over it, the race and its screens, the loop, the cameras, and the glue between all of it |
-| `src/hud.ts` | browser | What's on the screen while you drive: in a race (`Hud`: place, lap, item slot, clock, minimap, order, feed), round the city (`RoamHud`: speed, the street's name, a minimap round you, feed; on foot, a dot for the speed), and in a round (`FightHud`: health, kit and ammunition, the clock and where you stand, the crosshair and hit marker, the red edge, an arc for each shooter the way the shot came from, the scope, the scores, the kits to choose from) |
+| `src/hud.ts` | browser | What's on the screen while you drive: in a race (`Hud`: place, lap, item slot, clock, minimap, order, feed), round the city (`RoamHud`: speed, the street's name, a minimap round you, feed; on foot, a dot for the speed), and in a round (`FightHud`, after Counter-Strike 2's: health and armour, the ammunition and the weapon slots, the clock and the teams' scores, the crosshair and hit marker, the kill feed, the red edge and the arcs to whoever shot you, the scope, a flash's white, the buy menu and the scoreboard) |
 | `src/stats.ts` | browser | `?stats`: what the game costs on this screen, in a corner, for measuring it on a phone |
 | `src/audio.ts` | browser | Every sound and the mix it goes through (buses, a limiter, places): synthesized with Web Audio, but the city's, recorded (`src/sounds/`) |
 | `src/ambience.ts` | sim | What's round any point of the city on a grid every 10 m (traffic, town, park, woods), each point worked out the first time it's needed, and where the churches, the rivers, the bus stops and the stadium are, from the map, for the city's sound |
@@ -441,27 +445,36 @@ it. A race the host starts puts you back in it first. The snapshot (`Snap`) carr
 your feet's `x`, `y`, `z`, `yaw` and pace (`spd`), how far you look up (`pi`), and where your kart
 waits (`kx`, `ky`, `kz`, `kw`, its up `ux`, `uy`, `uz`); all of these 0 in the kart.
 
-**The deathmatch** (braga-map's task 074), from the menu's "Tiroteio": a round of 3, 5 or 10 minutes
-on foot in one of three small arenas in Fujacal (braga-map's `world.arenas`, its task 079: Topo do
-Fujacal, Doutor José Vilaça and Santa Justa, about 80 m across each), started by the host as a race
-is (`Settings.mode` `'fight'`, `round` its minutes, `arena` its id). The arena's field (`field`,
-made the first time a round starts in it, 50 to 115 ms) is its ground with its edge, its spawns, the
-bots' paths and where its edge is drawn. Everyone in the room is put on foot at a spawn (its 8: the
-most spread of points every 3 m outdoors, at least 3 m in from the edge, on the ground its paths
-reach from its middle, by the grid), their kart waiting
-where it was, and chooses a kit while it counts down; a race-like countdown, then the round. Your
-walker walks the round's ground, the world's with the area's edge a wall at every level, and keeps
-inside it (`bound`); the karts and the others on foot stop you. Each fixed step steps your
-`Soldier` (its reload, its spread settling, its health coming back after 5 s unhurt) and fires if the
-trigger says so (a semi-automatic once a pull, the carabina while it's held). Hit, the red edge and a
-thud; down, you fall, the kits come up, and after 4 s you're back at the spawn none of the others can
-see, the furthest from them (`pickSpawn`), unhurt for 2 s unless you fire first. Your snapshot carries
-your fighter's flags (`FIGHT`: down, kit, scoped, reloading, safe, armed) in `fl`, and the others are
-drawn holding their kit, falling and fading when down, with no names over them (they'd show through
-the walls), and nobody but you on the minimap. The host keeps the kills and deaths, and ends the
-round at its time (or "Acabar o tiroteio"): the results, and everyone back in their kart where it
-waited. The edge is drawn only during a round (`render/arms.ts`'s `buildEdge`, one for each arena):
-a railing wherever someone on foot could walk up to it, road-works barriers across its gates.
+**The deathmatch** (braga-map's task 074, after Counter-Strike 2's since its decision 060), from the
+menu's "Tiroteio": a round of 3, 5 or 10 minutes on foot in one of three small arenas in Fujacal
+(braga-map's `world.arenas`, its task 079: Topo do Fujacal, Doutor José Vilaça and Santa Justa, about
+80 m across each), everyone for themselves or in two teams, started by the host as a race is
+(`Settings.mode` `'fight'`, `round` its minutes, `arena` its id, `teams`; with teams the host gives
+each member one, the people shared out first, `Member.team`). The arena's field (`field`, made while
+the round's settings are up, 0.3 to 0.6 s, once the parked cars are in so every browser's is the same)
+is its ground with its edge and its cover (`world/cover.ts`: the parked cars, the road works' things;
+solid boxes in the round's ground only, to stand on, walk round and stop a shot), its spawns (32: the
+most sheltered points, indoors too, 7 m apart at least), the bots' paths and where its edge is drawn.
+Everyone in the room is put on foot at a spawn, their kart waiting where it was, the buy menu up while
+it counts down. Your walker moves as Counter-Strike's does in a round (`fighter` set to the weapon's
+running speed): it speeds up and is braked by the ground, so a counter-strafe stops you short; Shift
+walks, Ctrl or C crouches (the eye 45 cm lower, the hitboxes too), and a crouch in the air tucks the
+legs up. Each fixed step steps your `Soldier` (its reload, its spread and recoil settling, a sniper's
+scope back after its bolt) and does what the buttons say with what's in your hand: fires (a
+semi-automatic once a pull), cuts with the knife, zooms, pulls a grenade's pin and throws it on release
+(`toss`); a grenade's throw goes to everyone, and every browser works out its flight (`fly`) and,
+when it goes off, what it does to its own player (the victim's rule, as the items'). Hit, the red
+edge, a flinch and an arc to the shooter; down, you fall, the camera turns to whoever did it, and after
+3 s you're back at a spawn none of your foes can see, none within 12 m (`pickSpawn`), unhurt for 2 s
+unless you fire first, with what you bought. Your snapshot carries your fighter's flags (`FIGHT`: down,
+armed, scoped, reloading, safe, crouched, team, the weapon in hand) in `fl`, and the others are drawn
+as fighters (`render/soldier.ts`) holding it, crouched or not, falling and fading when down, with no
+names over them (they'd show through the walls) but a team-mate's, and nobody but your team on the
+minimap. The host keeps the kills, head shots and deaths, and ends the round at its time (or "Acabar o
+tiroteio"): the results, and everyone back in their kart where it waited. The edge and the cover are
+drawn only during a round (`render/arms.ts`'s `buildEdge`, `render/props.ts`'s `buildProps`, one each
+for each arena): a railing wherever someone on foot could walk up to it, road-works barriers across its
+gates.
 
 **The arenas' buildings' insides** (braga-map's task 079, `src/world/interiors.ts`), made up and the
 world's always, round the city as in a round. Each building wholly in an arena whose ground floor a
@@ -480,9 +493,14 @@ meets its floors (`roomSolid`) and the buildings' roof band isn't over it. The c
 through the facade (each wall with its openings triangulated, the same batches and shader), opens a
 tower's roof over its stairs, and draws the inside in one mesh (`render/interiors.ts`: the walls'
 inside faces and the openings' reveals, floors and ceilings, treads, the stairwell's walls, the
-parapet and the hut: 5,200 triangles, one draw call). A building the city leaves out loses its room too
-(`unroom`). 24 rooms, 31
-doors, 148 windows, 2 towers.
+parapet and the hut). A building the city leaves out loses its room too
+(`unroom`). Since braga-map's decision 060 a room of more than 40 m² is split by partitions with open
+doorways, has up to three doors (each as far from the others as it can be, onto standing ground at its
+sill), and is furnished by what it is (a shop, a café, a kitchen, an office…: counters and bars to
+crouch behind, crates to climb, shelves and wardrobes as full cover), seeded by the building, never in
+a door's way or on the stairs, a metre's lane kept between them all; the pieces are the room's walls
+and floors as its partitions are. Santa Justa has a tower too. The land isn't drawn inside a room's
+outline (`Holes` in `render/lattice.ts` cuts its triangles there), so it never shows through a floor.
 
 **The bots on foot** (braga-map's task 075, `src/game/footbot.ts`): the round's empty places, the
 drivers no player picked, as many as the host chose, as good as its "Nível" (`Settings.skill`, 0 to
@@ -495,7 +513,12 @@ it draws them and the other bots where they are; the shots anyone fires reach th
 hear them and take their hits (`Squad.shot`), and a bot put down is the host's to tell (`down`, as a
 player's browser tells its own). Each kill and death is on the board as a player's.
 
-What a bot does: at each spawn it chooses a kit (the one it likes, more often than not). It walks the
+What a bot does: at each spawn it buys a loadout of its own taste (rifles about half the time, a
+sniper's rifle, a sub-machine gun, a shotgun, a Desert Eagle alone or a Negev the rest; grenades more
+often the better it is), and it fights as its weapon likes, holding its range, controlling its spray
+(pulling against the recoil, the more the better it is), counter-strafing and crouching to shoot,
+quick-scoping with a sniper's rifle and changing to its pistol up close or empty, throwing a grenade it
+has aimed by flying it first, never at a team-mate, blind in a smoke and while flashed. It walks the
 arena's walkable ground (`world/paths.ts`, made with its field): points 2 m apart over the round's
 ground, each with room to stand, at the ground's level and on each of a tower's floors, joined to
 their eight neighbours where nothing stands between them and the rise is one a walker climbs (a flight
@@ -525,8 +548,8 @@ way, and after 5 s is put back on that point, as a race's bot is on its line.
 | Médio | 0.54 s | 7°, 0.7 s | 0.9° | 315°/s | 185 m | 40 |
 | Difícil | 0.22 s | 3°, 0.3 s | 0.25° | 480°/s | 260 m | 55 |
 
-A bot with the carabina puts down someone standing 20 m off in 6.0 s on Fácil (26% of its shots hit),
-2.3 s on Médio (46%) and 1.1 s on Difícil (58%) (`test/footbot.test.ts`, the mean of 40). Three bots
+A bot with an AK-47 puts down someone in a helmet standing 20 m off in 5.9 s on Fácil (24% of its shots
+hit), 2.4 s on Médio (31%) and 0.8 s on Difícil (55%) (`test/footbot.test.ts`, the mean of 40). Three bots
 alone in an arena for 5 minutes put each other down 34 to 43 times, none put back on its path; over 18
 such rounds a bot was put back once in 270 bot-minutes. The bots cost 0.04 ms a frame for three and 0.09
 ms for seven (a full room with the host) on the desktop, the worst step after the first second under
@@ -814,9 +837,12 @@ Every sound is in `audio.ts`, and plays through one mix. All are synthesized but
   through a `PannerNode` there, and the listener is on the camera (`listen`, every frame), so it's
   heard from the left or the right, and fainter far away: a twelfth as loud at 120 m, and not
   played past 400 m. Your own racer's sounds have no place: they're in your head.
-- **A round's sounds** (braga-map's task 074, `fightSfx`): each kit's report a crack, a burst of noise
-  and a thump, as loud as in your head within 40 m and heard 1.5 km off, duller the further, and sent
-  to the streets' echo (one convolver, its impulse a few slaps off the facades and a darkening tail of
+- **A round's sounds** (braga-map's task 074, `fightSfx`; CC0 recordings since its decision 060, in
+  `src/fight/sounds/`, fetched as a round first sounds, the old synthesis standing in till each is in):
+  each gun's report its family's recording, varied a little, as loud as in your head within 40 m and
+  heard 1.5 km off, duller the further and a distant shot's far off, a gun's next shot cutting its
+  last short; the reloads' stages, the bolt and the pump, the knife, the grenades, impacts by what they
+  strike, a flash's ringing that muffles the rest; and sent to the streets' echo (one convolver, its impulse a few slaps off the facades and a darkening tail of
   1.8 s); a bullet striking, a reload, a dry click, being hit, the hit marker's tick and a kill's two
   notes; and footsteps, yours in your head and the others' where they walk, on foot round the city as
   in a round.

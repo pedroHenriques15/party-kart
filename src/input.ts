@@ -22,14 +22,25 @@ const ACTIONS: Record<string, Action> = {
   KeyV: 'fly',
   KeyF: 'walk',
   KeyR: 'reload',
-  Digit1: 'kit1',
-  Digit2: 'kit2',
-  Digit3: 'kit3',
-  Digit4: 'kit4',
+};
+// In a round (`fighting`), as Counter-Strike's: 1 to 5 the slots (the primary, the secondary, the
+// knife, the grenades), Q the weapon before, the wheel round them, R reloads, B the buy menu, F looks
+// the gun over; Shift walks and Ctrl or C crouches (held, read by steps()).
+const FIGHT_ACTIONS: Record<string, Action> = {
+  Digit1: 'slot1',
+  Digit2: 'slot2',
+  Digit3: 'slot3',
+  Digit4: 'slot4',
+  Digit5: 'slot4',
+  KeyQ: 'last',
+  KeyR: 'reload',
+  KeyB: 'buy',
+  KeyF: 'inspect',
+  Enter: 'respawn',
+  NumpadEnter: 'respawn',
 };
 // 'useBack' throws the item backwards: the touch screen's swipe, where the keyboard holds ↓.
-// In a round (braga-map's task 074): R reloads, 1 to 4 choose the kit to come back with.
-export type Action = 'respawn' | 'restart' | 'horn' | 'camera' | 'use' | 'useBack' | 'fly' | 'walk' | 'reload' | 'kit1' | 'kit2' | 'kit3' | 'kit4';
+export type Action = 'respawn' | 'restart' | 'horn' | 'camera' | 'use' | 'useBack' | 'fly' | 'walk' | 'reload' | 'slot1' | 'slot2' | 'slot3' | 'slot4' | 'last' | 'next' | 'prev' | 'buy' | 'inspect';
 
 export interface Held {
   throttle: number;
@@ -56,6 +67,9 @@ export interface Steps {
   turn: number;
   run: boolean;
   jump: boolean;
+  // In a round: Shift walks, Ctrl or C crouches.
+  walk: boolean;
+  crouch: boolean;
 }
 
 // How far a drag turns the flying camera, or the mouse a walker's head, in radians a CSS pixel: the
@@ -63,7 +77,8 @@ export interface Steps {
 const MOUSE_LOOK = 0.004;
 const TOUCH_LOOK = 0.007;
 
-const GAME_KEYS = new Set([...Object.values(KEYS).flat(), ...Object.keys(ACTIONS)]);
+const CROUCH = ['ControlLeft', 'ControlRight', 'KeyC'];
+const GAME_KEYS = new Set([...Object.values(KEYS).flat(), ...Object.keys(ACTIONS), ...Object.keys(FIGHT_ACTIONS), ...CROUCH, 'ShiftLeft', 'ShiftRight']);
 const inField = (e: Event) => e.target instanceof HTMLElement && !!e.target.closest('input, select, textarea');
 const onLink = (e: Event) => e.target instanceof Element && !!e.target.closest('a');
 // While you play, the keys the browser keeps: full screen and its tools. Every other key does nothing
@@ -78,6 +93,7 @@ export class Keyboard {
   private pending: Action[] = [];
   private hop = false; // on foot: Space pressed since steps() was read, however briefly
   enabled = false;
+  fighting = false; // in a round: its keys, not the kart's
 
   constructor() {
     addEventListener('keydown', (e) => {
@@ -87,7 +103,8 @@ export class Keyboard {
       if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
       if (!GAME_KEYS.has(e.code)) return;
       this.down.add(e.code);
-      if (!e.repeat && ACTIONS[e.code]) this.pending.push(ACTIONS[e.code]);
+      const act = (this.fighting ? FIGHT_ACTIONS : ACTIONS)[e.code];
+      if (!e.repeat && act) this.pending.push(act);
       if (!e.repeat && e.code === 'Space') this.hop = true;
     });
     addEventListener('keyup', (e) => {
@@ -146,6 +163,8 @@ export class Keyboard {
       turn: k('ArrowRight') - k('ArrowLeft'),
       run: !!(k('ShiftLeft') || k('ShiftRight')),
       jump,
+      walk: !!(k('ShiftLeft') || k('ShiftRight')),
+      crouch: CROUCH.some((c) => this.down.has(c)),
     };
   }
 }
@@ -168,6 +187,9 @@ export class Mouse {
   trigger = false;
   pulls = 0;
   scope = false;
+  // And the right button pressed since last read (a knife's stab, the next zoom), and the wheel's turns.
+  alts = 0;
+  wheel = 0;
   private on: HTMLElement;
   private letting = false;
   private x = 0;
@@ -198,7 +220,10 @@ export class Mouse {
         this.trigger = true;
         this.pulls++;
       }
-      if (e.button === 2) this.scope = true;
+      if (e.button === 2) {
+        this.scope = true;
+        this.alts++;
+      }
     });
     document.addEventListener('mouseup', (e) => {
       if (e.button === 0) this.trigger = false;
@@ -219,6 +244,7 @@ export class Mouse {
       'wheel',
       (e) => {
         if (e.ctrlKey && this.playing) e.preventDefault();
+        if (this.locked && this.aim && e.deltaY) this.wheel += Math.sign(e.deltaY);
       },
       { passive: false },
     );
@@ -293,7 +319,8 @@ const SWIPE = 28;
 // anywhere on the right half looks round, and Subir and Descer are where Derrapar and Travar are. On
 // foot ('walk'), twin sticks: the left walks, running when it's pushed to its rim, a drag on the right
 // half looks round, and Saltar jumps. In a round ('fight', braga-map's task 074), on foot with Fogo
-// under the right thumb, which aims as it's dragged too, Recarregar, and Mira for the sniper's scope.
+// under the right thumb, which aims as it's dragged too, Recarregar, Mira (a scope's next zoom, a
+// knife's stab, a grenade's lob), Agachar (held down till pressed again) and Trocar (the next weapon).
 export class TouchPad {
   readonly el: HTMLElement;
   // Whether the touch controls show: from the start on a touch screen, from the first touch on
@@ -306,7 +333,9 @@ export class TouchPad {
   private fighting = false;
   private trigger = false;
   private pulls = 0;
-  private scoped = false;
+  private alts = 0;
+  private crouched = false;
+  private crouchBtn: HTMLElement;
   private steer = 0;
   private move = { x: 0, y: 0 }; // flying and on foot: the stick, to the right and forward
   private rim = false; // on foot: the stick pushed to its rim, to run
@@ -342,9 +371,11 @@ export class TouchPad {
     const fire = el('t-btn t-fire', 'Fogo');
     const reload = el('t-btn t-reload', 'Recarregar');
     this.scopeBtn = el('t-btn t-scope', 'Mira');
+    this.crouchBtn = el('t-btn t-crouch', 'Agachar');
+    const swap = el('t-btn t-swap', 'Trocar');
     this.itemBtn = el('t-btn t-item');
     this.el = el('t-pad');
-    this.el.append(zone, look, drift, brake, rise, sink, jump, fire, reload, this.scopeBtn, this.itemBtn, el('t-rotate', 'Deita o telemóvel para veres mais'));
+    this.el.append(zone, look, drift, brake, rise, sink, jump, fire, reload, this.scopeBtn, this.crouchBtn, swap, this.itemBtn, el('t-rotate', 'Deita o telemóvel para veres mais'));
     document.body.append(this.el);
 
     // A finger keeps whatever it pressed until it lifts, even if it slides off.
@@ -376,7 +407,13 @@ export class TouchPad {
     hold(sink, (on) => (this.sink = on));
     hold(jump, (on) => on && (this.hop = true));
     hold(reload, (on) => on && this.fighting && this.pending.push('reload'));
-    hold(this.scopeBtn, (on) => on && (this.scoped = !this.scoped));
+    hold(this.scopeBtn, (on) => on && this.alts++);
+    hold(this.crouchBtn, (on) => {
+      if (!on) return;
+      this.crouched = !this.crouched;
+      this.crouchBtn.classList.toggle('on', this.crouched);
+    });
+    hold(swap, (on) => on && this.fighting && this.pending.push('next'));
 
     // In a round, Fogo fires while it's held, and the thumb on it aims as it moves, as a drag on the
     // right half looks round.
@@ -531,7 +568,7 @@ export class TouchPad {
     this.flying = mode === 'fly';
     this.fighting = mode === 'fight';
     this.walking = mode === 'walk' || this.fighting;
-    this.scoped = false;
+    if (!this.fighting) this.unscope();
     this.driving = mode !== null && !this.flying && !this.walking;
     this.roam = mode === 'roam';
     this.el.dataset.mode = mode ?? '';
@@ -559,16 +596,17 @@ export class TouchPad {
     return { fwd: this.move.y, side: this.move.x, up: (this.rise ? 1 : 0) - (this.sink ? 1 : 0), turn: 0, look, fast: false };
   }
 
-  // In a round: Fogo held and pressed since last read, and the scope; Mira only with a scope (the
-  // sniper's rifle), and the scope off when there's none.
-  fight(scope: boolean): { trigger: boolean; pulls: number; scope: boolean } {
+  // In a round: Fogo held and pressed since last read, and Mira pressed since; Mira only when what's
+  // in hand has a use for it (`alt`, its label), and lit while a scope's up.
+  fight(alt: string | null, scoped: boolean): { trigger: boolean; pulls: number; alts: number } {
     const pulls = this.pulls;
-    this.pulls = 0;
-    this.scopeBtn.style.visibility = scope ? '' : 'hidden';
-    if (!scope) this.scoped = false;
-    this.scopeBtn.classList.toggle('on', this.scoped);
-    if (!this.on || !this.fighting) return { trigger: false, pulls: 0, scope: false };
-    return { trigger: this.trigger, pulls, scope: this.scoped };
+    const alts = this.alts;
+    this.pulls = this.alts = 0;
+    this.scopeBtn.style.visibility = alt ? '' : 'hidden';
+    if (alt && this.scopeBtn.textContent !== alt) this.scopeBtn.textContent = alt;
+    this.scopeBtn.classList.toggle('on', scoped);
+    if (!this.on || !this.fighting) return { trigger: false, pulls: 0, alts: 0 };
+    return { trigger: this.trigger, pulls, alts };
   }
 
   // On foot: the stick, running at its rim, and Saltar since last read; and the drags on the right
@@ -578,8 +616,8 @@ export class TouchPad {
     this.looked = { x: 0, y: 0 };
     const jump = this.hop;
     this.hop = false;
-    if (!this.on || !this.walking) return { fwd: 0, side: 0, turn: 0, run: false, jump: false, look: { x: 0, y: 0 } };
-    return { fwd: this.move.y, side: this.move.x, turn: 0, run: this.rim, jump, look };
+    if (!this.on || !this.walking) return { fwd: 0, side: 0, turn: 0, run: false, jump: false, walk: false, crouch: false, look: { x: 0, y: 0 } };
+    return { fwd: this.move.y, side: this.move.x, turn: 0, run: this.rim, jump, walk: this.fighting && !this.rim && Math.hypot(this.move.x, this.move.y) < 0.6, crouch: this.fighting && this.crouched, look };
   }
 
   controls(): Held {
@@ -605,8 +643,9 @@ export class TouchPad {
     if (this.driving || this.flying || this.walking) this.pending.push(act);
   }
 
-  // In a round, the scope off (a reload, a respawn).
+  // Back up on your feet (a respawn, the round over).
   unscope(): void {
-    this.scoped = false;
+    this.crouched = false;
+    this.crouchBtn.classList.remove('on');
   }
 }

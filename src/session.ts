@@ -2,7 +2,8 @@
 // in a race; the host relays where everyone is (always) and what they throw (in a race), drives the
 // bots, keeps the leaderboard and the clock.
 import Peer, { type DataConnection } from 'peerjs';
-import { byKills, KIT_IDS, tally, type FightEv } from './game/fight.ts';
+import { GUNS, isGun, NADE_IDS, WEAPON_IDS, type Cause, type WeaponId } from './game/arsenal.ts';
+import { byKills, tally, type FightEv } from './game/fight.ts';
 import type { ItemEv } from './game/items.ts';
 import { driverById, DRIVERS, repeatOf } from './render/drivers.ts';
 import { map } from 'braga-map';
@@ -14,8 +15,8 @@ import { courseById, lapLimit, TRACKS } from './tracks.ts';
 // the host picks (braga-map's task 071), which an older guest would race the Volta dos Amigos whatever;
 // pk40 the players on foot (braga-map's task 073), whom an older build would draw as karts; pk41 the
 // deathmatch (braga-map's tasks 074 and 075), its settings, its shots and its scores, and its bots on
-// foot.
-const PREFIX = 'partykart-pk41-';
+// foot; pk42 the deathmatch after Counter-Strike 2's: its arsenal, grenades, teams and flags.
+const PREFIX = 'partykart-pk42-';
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 export const HOST_ID = 'host';
 export const MAX_RACERS = 8;
@@ -26,7 +27,7 @@ const FINISH_GRACE_MS = 30000; // after the winner, how long the rest have to fi
 // What the host starts: a race or time attack on a track, or the deathmatch on foot ('fight', braga-map's
 // task 074), a round of `round` minutes in one of the arenas in Fujacal (`arena`, braga-map's
 // world.arenas, its task 079), its bots as good as `skill` says (0 to 2, footbot.ts's SKILLS:
-// braga-map's task 075).
+// braga-map's task 075), everyone for themselves or in two teams (`teams`).
 export interface Settings {
   track: string; // its id (tracks.ts)
   mode: 'race' | 'time' | 'fight';
@@ -38,6 +39,7 @@ export interface Settings {
   bots: number;
   skill: number;
   arena: string;
+  teams: boolean;
 }
 
 // Something that happens in a race or a round, sent through the host to everyone.
@@ -48,6 +50,8 @@ export interface Member {
   name: string;
   driver: string;
   bot: boolean;
+  // In a round of two teams, which (0 or 1): the host's to say, at the start or as they join.
+  team?: number;
 }
 
 export interface Lobby extends Settings {
@@ -93,6 +97,8 @@ export interface Entry {
   P: number;
   kills: number; // the deathmatch's
   deaths: number;
+  hs: number;
+  team?: number;
 }
 
 type ToHost =
@@ -220,16 +226,24 @@ function cleanEv(from: string, ev: GameEv): GameEv | null {
       return { k: 'hit', id, item: str(ev.item), victim: ev.victim === null ? null : from, blocked: !!ev.blocked, how: str(ev.how, 16), x: n(ev.x), y: n(ev.y), z: n(ev.z) };
     case 'boom':
       return { k: 'boom', id, owner: str(ev.owner), victim: from, x: n(ev.x), y: n(ev.y), z: n(ev.z) };
-    // A shot, its hits the shooter's to decide (braga-map's task 074): at most one a pellet, none more
-    // than a kit's worst can do.
+    // A shot or a knife's cut, its hits the shooter's to decide (braga-map's task 074): at most one a
+    // pellet, none more than the weapon's worst can do to each part.
     case 'shot': {
-      if (!KIT_IDS.includes(ev.kit)) return null;
-      const hits = Array.isArray(ev.hits) ? ev.hits.slice(0, 10).map((h) => ({ v: str(h?.v), n: num(h?.n, 0, 400), head: !!h?.head })) : [];
-      return { k: 'shot', id, owner: from, kit: ev.kit, t: n(ev.t), x: num(ev.x, -5000, 5000), y: num(ev.y, -500, 500), z: num(ev.z, -5000, 5000), dx: num(ev.dx, -1, 1), dy: num(ev.dy, -1, 1), dz: num(ev.dz, -1, 1), sp: num(ev.sp, 0, 0.5), seed: num(ev.seed, 0, 4294967295) >>> 0, stop: num(ev.stop, 0, 1023) | 0, hits };
+      const w = ev.w as WeaponId;
+      if (!(isGun(w) || w === 'knife')) return null;
+      const most = isGun(w) ? GUNS[w].dmg * GUNS[w].pellets * 4 : 180;
+      const hits = Array.isArray(ev.hits) ? ev.hits.slice(0, 10).map((h) => ({ v: str(h?.v), b: num(h?.b, 0, most), h: num(h?.h, 0, most), l: num(h?.l, 0, most) })) : [];
+      return { k: 'shot', id, owner: from, w, t: n(ev.t), x: num(ev.x, -5000, 5000), y: num(ev.y, -500, 500), z: num(ev.z, -5000, 5000), dx: num(ev.dx, -1, 1), dy: num(ev.dy, -1, 1), dz: num(ev.dz, -1, 1), sp: num(ev.sp, 0, 0.5), seed: num(ev.seed, 0, 4294967295) >>> 0, stop: num(ev.stop, 0, 1023) | 0, hits, heavy: !!ev.heavy };
     }
-    case 'down':
-      if (!KIT_IDS.includes(ev.kit)) return null;
-      return { k: 'down', id, victim: from, by: str(ev.by), kit: ev.kit, head: !!ev.head, x: n(ev.x), y: n(ev.y), z: n(ev.z) };
+    case 'down': {
+      const w = ev.w as Cause;
+      if (!(WEAPON_IDS.includes(w as WeaponId) || w === 'fall')) return null;
+      return { k: 'down', id, victim: from, by: str(ev.by), w, head: !!ev.head, x: n(ev.x), y: n(ev.y), z: n(ev.z) };
+    }
+    // A grenade thrown: where from and how fast, which is all its flight.
+    case 'nade':
+      if (!NADE_IDS.includes(ev.w)) return null;
+      return { k: 'nade', id, owner: from, w: ev.w, t: n(ev.t), x: num(ev.x, -5000, 5000), y: num(ev.y, -500, 500), z: num(ev.z, -5000, 5000), vx: num(ev.vx, -30, 30), vy: num(ev.vy, -30, 30), vz: num(ev.vz, -30, 30) };
     default:
       return null;
   }
@@ -276,6 +290,7 @@ export class HostRoom implements Room {
       bots: 3,
       skill: 1,
       arena: map().arenas[0].id,
+      teams: false,
       members: [{ id: HOST_ID, name, driver: validDriver(driver), bot: false }],
       racing: false,
     };
@@ -360,7 +375,7 @@ export class HostRoom implements Room {
       }
       this.remotes.set(c.peer, { conn: c, heard: performance.now() });
       const humans = this.humans();
-      humans.push({ id: c.peer, name: cleanName(m.name), driver: this.freeDriver(validDriver(m.driver), c.peer), bot: false });
+      humans.push({ id: c.peer, name: cleanName(m.name), driver: this.freeDriver(validDriver(m.driver), c.peer), bot: false, team: this.lobby.racing && this.lobby.mode === 'fight' && this.lobby.teams ? this.smallerTeam() : undefined });
       this.lobby.members = [...humans, ...this.lobby.members.filter((x) => x.bot)];
       if (!this.lobby.racing) this.syncBots();
       this.entry(c.peer);
@@ -412,14 +427,31 @@ export class HostRoom implements Room {
     const m = this.lobby.members.find((x) => x.id === id);
     let e = this.board.find((x) => x.id === id);
     if (!e) {
-      e = { id, name: m?.name ?? '?', driver: m?.driver ?? DRIVERS[0].id, bot: !!m?.bot, best: null, laps: 0, fin: null, P: -1e6, kills: 0, deaths: 0 };
+      e = { id, name: m?.name ?? '?', driver: m?.driver ?? DRIVERS[0].id, bot: !!m?.bot, best: null, laps: 0, fin: null, P: -1e6, kills: 0, deaths: 0, hs: 0 };
       this.board.push(e);
     }
     if (m) {
       e.name = m.name;
       e.driver = m.driver;
+      e.team = this.lobby.mode === 'fight' && this.lobby.teams ? m.team : undefined;
     }
     return e;
+  }
+
+  // A round of two teams: everyone on one, the people shared out first and the bots after, so the
+  // teams come out as even as can be; someone joining goes to the smaller.
+  private teamUp(): void {
+    for (const m of this.lobby.members) m.team = undefined;
+    if (this.lobby.mode !== 'fight' || !this.lobby.teams) return;
+    const people = this.lobby.members.filter((m) => !m.bot).sort(() => Math.random() - 0.5);
+    let k = Math.random() < 0.5 ? 0 : 1;
+    for (const m of [...people, ...this.lobby.members.filter((m) => m.bot)]) m.team = k++ % 2;
+  }
+
+  private smallerTeam(): number {
+    const a = this.lobby.members.filter((m) => m.team === 0).length;
+    const b = this.lobby.members.filter((m) => m.team === 1).length;
+    return a <= b ? 0 : 1;
   }
 
   // In a round, someone down: a kill and a death on the board.
@@ -501,6 +533,7 @@ export class HostRoom implements Room {
   start(): void {
     const now = performance.now();
     this.syncBots();
+    this.teamUp();
     this.goAt = now + COUNTDOWN_MS;
     const race = this.lobby.mode === 'race';
     this.endAt = this.goAt + (race ? (this.lobby.laps * lapLimit(courseById(this.lobby.track)) + 60) * 1000 : (this.lobby.mode === 'fight' ? this.lobby.round : this.lobby.minutes) * 60_000);
@@ -600,7 +633,7 @@ export class HostRoom implements Room {
 export class ClientRoom implements Room {
   readonly isHost = false;
   you = '';
-  lobby: Lobby = { code: '', track: TRACKS[0].course.id, mode: 'race', laps: 1, minutes: 10, round: 5, items: true, catchUp: true, bots: 0, skill: 1, arena: '', members: [], racing: false };
+  lobby: Lobby = { code: '', track: TRACKS[0].course.id, mode: 'race', laps: 1, minutes: 10, round: 5, items: true, catchUp: true, bots: 0, skill: 1, arena: '', teams: false, members: [], racing: false };
   board: Entry[] = [];
   cars = new Map<string, { at: number; s: Snap }[]>();
   onLobby = () => {};

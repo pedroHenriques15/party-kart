@@ -16,7 +16,7 @@ import { raceGround } from '../world/race.ts';
 import { buildEggs, eggSpots, type Eggs } from './eggs.ts';
 import { buildSights, horizon, TOURIGALO_CLEAR } from './sights.ts';
 import { bake, box, mat } from './kit.ts';
-import { Lattice, Surface } from './lattice.ts';
+import { Holes, Lattice, Surface } from './lattice.ts';
 import { buildLevels, isDeck, nearLevels } from './levels.ts';
 import type { Quality } from './look.ts';
 import { GRIDS, KINDS, loadCover, type Cover } from './cover.ts';
@@ -354,12 +354,19 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   const landMesh = new Surface(lat, land);
   const [photos, cover, treeLooks] = await Promise.all([photosLoading, coverLoading, treesLoading]);
   if (masked && !cover) paint = paintGround(map, B, quality, inOpenTiles, outline, onGround);
+  // The land isn't drawn inside a room (braga-map's task 079, world/interiors.ts): its floors stand
+  // for it, and where the ground rises under the building it would stand up through them. Each
+  // triangle a room's outline meets is cut to what's outside it, the land outside just as it was; what
+  // was inside is kept by the room, to be drawn after all if the city leaves its building out.
+  const holes = new Holes(wg.d.rooms.map((r) => r.pts));
+  const holed = wg.d.rooms.slice();
+  const landUnder = new Map<number, { pos: number[]; nor: number[]; uv: number[] }>();
+  const lands = new THREE.Group();
+  lands.name = 'land';
+  const material = groundMaterial(paint, cover, masked && !!cover);
   {
     const r = lat.r;
     const W = lat.nx * r + 1;
-    const material = groundMaterial(paint, cover, masked && !!cover);
-    const lands = new THREE.Group();
-    lands.name = 'land';
     // A tile of the land at a time, a kilometre square, so whole tiles out of view are skipped. Its
     // normals are the land's own over a small cell either way, so they agree where tiles meet.
     const T = Math.round(1000 / C);
@@ -387,14 +394,57 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
           return v;
         };
         const idx: number[] = [];
-        const cell = (a: number, b: number, c: number, d: number) => idx.push(a, c, b, b, c, d); // corners (i, j), (i + 1, j), (i, j + 1), (i + 1, j + 1)
+        // A point of a triangle of the lattice's (a, b, c), on its plane: its height and its normal
+        // weighed between theirs, for the pieces of one a room's outline cuts.
+        const P = (v: number): [number, number] => [pos[v * 3], pos[v * 3 + 2]];
+        const onTri = (a: number, b: number, c: number, into: { pos: number[]; nor: number[]; uv: number[] }) => {
+          const [ax, az] = P(a);
+          const [bx, bz] = P(b);
+          const [cx, cz] = P(c);
+          const den = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+          return ([x, z]: [number, number]) => {
+            const wa = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / den;
+            const wb = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / den;
+            const wc = 1 - wa - wb;
+            const k = into.pos.length / 3;
+            into.pos.push(x, wa * pos[a * 3 + 1] + wb * pos[b * 3 + 1] + wc * pos[c * 3 + 1], z);
+            const n = [0, 1, 2].map((q) => wa * nor[a * 3 + q] + wb * nor[b * 3 + q] + wc * nor[c * 3 + q]);
+            const l = Math.hypot(n[0], n[1], n[2]) || 1;
+            into.nor.push(n[0] / l, n[1] / l, n[2] / l);
+            into.uv.push((x - B.x0) / (B.x1 - B.x0), 1 - (z - B.z0) / (B.z1 - B.z0));
+            return k;
+          };
+        };
+        const here = { pos, nor, uv };
+        const tri = (a: number, b: number, c: number) => {
+          const cut = holes.cut([P(a), P(b), P(c)]);
+          if (!cut) return void idx.push(a, b, c);
+          const at = onTri(a, b, c, here);
+          for (const piece of cut.out) {
+            const ks = piece.map(at);
+            for (let q = 1; q + 1 < ks.length; q++) idx.push(ks[0], ks[q], ks[q + 1]);
+          }
+          for (const piece of cut.in) {
+            let u = landUnder.get(piece.ring);
+            if (!u) landUnder.set(piece.ring, (u = { pos: [], nor: [], uv: [] }));
+            const put = onTri(a, b, c, u);
+            for (let q = 1; q + 1 < piece.pts.length; q++) [piece.pts[0], piece.pts[q], piece.pts[q + 1]].forEach(put);
+          }
+        };
+        // Corners (i, j), (i + 1, j), (i, j + 1), (i + 1, j + 1); cut where a room's outline may meet it.
+        const cell = (a: number, b: number, c: number, d: number, cut: boolean) => {
+          if (!cut) return void idx.push(a, c, b, b, c, d);
+          tri(a, c, b);
+          tri(b, c, d);
+        };
         for (let j = tj; j < Math.min(lat.nz, tj + T); j++) {
           for (let i = ti; i < Math.min(lat.nx, ti + T); i++) {
+            const cut = holes.touches(B.x0 + i * C, B.z0 + j * C, B.x0 + (i + 1) * C, B.z0 + (j + 1) * C);
             if (!lat.isFine(i, j)) {
-              cell(vertex(i * r, j * r), vertex((i + 1) * r, j * r), vertex(i * r, (j + 1) * r), vertex((i + 1) * r, (j + 1) * r));
+              cell(vertex(i * r, j * r), vertex((i + 1) * r, j * r), vertex(i * r, (j + 1) * r), vertex((i + 1) * r, (j + 1) * r), cut);
               continue;
             }
-            for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) cell(vertex(i * r + a, j * r + b), vertex(i * r + a + 1, j * r + b), vertex(i * r + a, j * r + b + 1), vertex(i * r + a + 1, j * r + b + 1));
+            for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) cell(vertex(i * r + a, j * r + b), vertex(i * r + a + 1, j * r + b), vertex(i * r + a, j * r + b + 1), vertex(i * r + a + 1, j * r + b + 1), cut);
           }
         }
         const geo = new THREE.BufferGeometry();
@@ -547,6 +597,29 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
     if (kept.has(b)) continue;
     wg.unroom(b.pts);
     wg.unwall(b.pts);
+  }
+  // The land under a room whose building that leaves out, drawn after all.
+  {
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const uv: number[] = [];
+    holed.forEach((r, k) => {
+      const u = landUnder.get(k);
+      if (!u || wg.d.rooms.includes(r)) return;
+      pos.push(...u.pos);
+      nor.push(...u.nor);
+      uv.push(...u.uv);
+    });
+    if (pos.length) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      geo.computeBoundingSphere();
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.receiveShadow = true;
+      lands.add(mesh);
+    }
   }
   // A sight drawn in a building's place (São João da Ponte's chapel, the route's other chapels, São
   // Lázaro's bell tower) stands for it: the building is a wall to the karts still, but isn't drawn.

@@ -525,7 +525,7 @@ export class Match {
   // Something picked up off the ground: a gun (its taker's, the first to ask), or the bomb ('c4', a
   // Terrorist's). True if it's theirs.
   take(id: string, drop: string, give?: { w: GunId; mag: number; reserve: number }): boolean {
-    if (!this.alive.has(id) || this.phase === 'over' || this.phase === 'end') return false;
+    if (!this.alive.has(id) || this.phase === 'end') return false;
     if (drop === 'c4') {
       if (this.bomb.at !== 'dropped' || this.side(id) !== 'T') return false;
       this.bomb = { ...this.bomb, at: 'carried', by: id };

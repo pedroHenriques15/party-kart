@@ -257,3 +257,26 @@ test('bots alone in a match, two against two and three against three: rounds won
   assert.ok(plants > 0, 'a bomb planted');
   void defuses;
 });
+
+test('a match: the gun someone drops as they fall, picked up by the first to ask, a swap leaving yours in its place', () => {
+  const m = new Match([{ id: 'ct', team: 0 }, { id: 't1', team: 1 }, { id: 't2', team: 1 }], MAP, 12, seeded(6));
+  m.start(0);
+  m.step(COMP.freeze);
+  // A pistol round's pistol drops too.
+  m.down({ victim: 't1', by: 'ct', w: 'usp', x: 10, y: 0, z: 5, drop: { w: 'glock', mag: 14, reserve: 120 } }, COMP.freeze + 1000);
+  let s = m.state(COMP.freeze + 1000);
+  assert.equal(s.drops.length, 1);
+  const d = s.drops[0];
+  assert.deepEqual([d.w, d.mag, d.reserve], ['glock', 14, 120]);
+  // The dead can't pick it up; the Counter-Terrorist swaps his USP-S for it, which is left there.
+  assert.equal(m.take('t1', d.id), false);
+  assert.ok(m.take('ct', d.id, { w: 'usp', mag: 7, reserve: 24 }));
+  assert.equal(m.take('t2', d.id), false, 'gone to the first to ask');
+  s = m.state(COMP.freeze + 1200);
+  assert.deepEqual(s.took.at(-1), { d: d.id, by: 'ct', w: 'glock', mag: 14, reserve: 120 });
+  assert.deepEqual(s.drops.map((x) => [x.w, x.x, x.z, x.mag]), [['usp', 10, 5, 7]]);
+  // The round won, the guns can still be picked up till the next.
+  m.down({ victim: 't2', by: 'ct', w: 'glock', x: 0, y: 0, z: 0, drop: { w: 'glock', mag: 20, reserve: 100 } }, COMP.freeze + 2000);
+  assert.equal(m.phaseNow, 'over');
+  assert.ok(m.take('ct', m.state(COMP.freeze + 2000).drops.at(-1)!.id));
+});

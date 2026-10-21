@@ -133,7 +133,9 @@ on the head counts four times, on the legs three quarters), how much of it gets 
 it falls off with distance, its rate of fire, magazine and reserve, reload and draw times, and how
 fast you run with it out. A gun is true standing still or walking, less so running, crouched truer
 still, and wild in the air; let go of the keys (or press the other way, to counter-strafe) and you
-stop at once. Each automatic's spray climbs and sways along its own pattern, the same every time, so
+stop at once. You move as in Counter-Strike: a jump is a press (holding Space doesn't hop again; bind
+it to the wheel, as many do, in ⚙️ Definições), a hop pressed as you land keeps your speed, and in the
+air strafing as you turn the mouse the same way gains it: a bunny hop. Each automatic's spray climbs and sways along its own pattern, the same every time, so
 you learn to pull against it; the first shot goes where you aim. The AWP and the SSG 08 have two
 zooms, and fired without them (a no-scope) the AWP's shot goes anywhere near the crosshair; a moment
 after the scope comes up it's dead on (a quick-scope); after each shot the bolt takes the scope down,

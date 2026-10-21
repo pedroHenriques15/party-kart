@@ -41,10 +41,18 @@ const ACCEL = 5.5;
 const FRICTION = 5.2;
 const STOP = 1.6;
 const AIR_ACCEL = 12;
-const AIR_WISH = 0.75;
+// The most a step in the air adds along the way you strafe: Counter-Strike's 30 units at its 64 ticks
+// a second, made as much a second at the game's 120 steps, so a strafe gains what it would there.
+const AIR_WISH = 0.65 * Math.sqrt(64 / 120);
 export const WALKING = 0.52;
 export const CROUCHING = 0.34;
 export const FALL = 3.2;
+// A jump is a press, not a key held (Counter-Strike 2's: no hopping by holding Space), kept this long
+// (s) for the landing it was pressed just before. A jump on the step it lands skips the ground's
+// friction, so a hop timed to the landing keeps its speed: a bunny hop. In the air, strafing as you
+// turn gains speed (Quake's air acceleration), up to this many times the running pace.
+const JUMP_KEPT = 0.06;
+const AIR_MOST = 2.6;
 
 export interface WalkInput {
   fwd: number; // -1 to 1: the way it faces
@@ -77,6 +85,7 @@ export class Walker {
   fighter: number | null = null;
   crouch = 0;
   landed = 0;
+  private jumpFor = 0; // s a jump pressed is still waited on, for the landing
 
   constructor(ground: WorldGround, p: V, yaw: number, pitch = 0) {
     this.ground = ground;
@@ -116,8 +125,17 @@ export class Walker {
       mx /= m;
       mz /= m;
     }
-    if (this.fighter !== null) this.move(inp, mx, mz, dt);
-    else {
+    if (this.fighter !== null) {
+      // The jump first: on the step it lands, a hop pressed for it goes before the ground brakes it.
+      if (inp.jump) this.jumpFor = JUMP_KEPT;
+      if (this.grounded && this.jumpFor > 0) {
+        v.y = JUMP_CS;
+        this.grounded = false;
+        this.jumpFor = 0;
+      }
+      this.jumpFor = Math.max(0, this.jumpFor - dt);
+      this.move(inp, mx, mz, dt);
+    } else {
       const pace = inp.run ? RUN : WALK;
       const k = 1 - Math.exp(-dt / (this.grounded ? EASE : AIR));
       v.x += (mx * pace - v.x) * k;
@@ -138,8 +156,8 @@ export class Walker {
     if (x === p.x && z === p.z && x === x0 && z === z0) v.x = v.z = 0;
 
     // Up and down: on the highest surface a step over its feet or under them, or falling.
-    if (this.grounded && inp.jump) {
-      v.y = this.fighter !== null ? JUMP_CS : JUMP;
+    if (this.fighter === null && this.grounded && inp.jump) {
+      v.y = JUMP;
       this.grounded = false;
     }
     if (this.grounded) {
@@ -178,8 +196,10 @@ export class Walker {
   }
 
   // A round's step across (Counter-Strike's, after Quake's): the ground's friction brakes it, then it
-  // speeds up towards the pace wanted, at once nearly, but never past it; in the air it hardly
-  // steers. Crouching in the air tucks the legs up, the feet rising as the eye comes down.
+  // speeds up towards the pace wanted, at once nearly, but never past it. In the air it hardly steers
+  // the way it's going, but a strafe across it, turning with it, adds speed: air strafing, and with
+  // hops timed to the landings, a bunny hop. Crouching in the air tucks the legs up, the feet rising
+  // as the eye comes down.
   private move(inp: WalkInput, mx: number, mz: number, dt: number): void {
     const v = this.v;
     const was = this.crouch;
@@ -214,11 +234,10 @@ export class Walker {
         v.x += wx * a;
         v.z += wz * a;
       }
-      // No faster in the air than running: a hop gains nothing.
       const s = Math.hypot(v.x, v.z);
-      if (s > top * 1.1) {
-        v.x *= (top * 1.1) / s;
-        v.z *= (top * 1.1) / s;
+      if (s > top * AIR_MOST) {
+        v.x *= (top * AIR_MOST) / s;
+        v.z *= (top * AIR_MOST) / s;
       }
     }
   }

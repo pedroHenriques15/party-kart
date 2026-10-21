@@ -180,9 +180,10 @@ export class Keyboard {
   }
 
   // On foot: forward and back, sideways, turning, walking quietly, crouching, jumping (pressed since
-  // last read, however briefly, or held). The mouse looks round (Mouse).
+  // last read, however briefly: holding it doesn't hop again, as in Counter-Strike 2; a jump bound to
+  // the wheel hops at every notch). The mouse looks round (Mouse).
   steps(): Steps {
-    const jump = this.take('jump') > 0 || this.held('jump');
+    const jump = this.take('jump') > 0;
     const quiet = this.held('quiet');
     return {
       fwd: this.on('fwd') - this.on('back'),

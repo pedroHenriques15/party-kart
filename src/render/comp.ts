@@ -59,6 +59,19 @@ function bomb(): { group: THREE.Group; light: THREE.Mesh } {
   return { group, light };
 }
 
+// The ring under a gun on the ground.
+let ringGeo: THREE.BufferGeometry | null = null;
+const ringMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.35, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+function dropRing(): THREE.Mesh {
+  if (!ringGeo) {
+    ringGeo = new THREE.RingGeometry(0.42, 0.5, 32, 1);
+    ringGeo.rotateX(-Math.PI / 2);
+  }
+  const m = new THREE.Mesh(ringGeo, ringMat);
+  m.position.y = 0.04;
+  return m;
+}
+
 export class CompView {
   readonly group = new THREE.Group();
   private sites: THREE.Object3D[] = [];
@@ -101,11 +114,18 @@ export class CompView {
     }
     for (const d of s.drops) {
       if (this.drops.has(d.id) || d.w === 'c4') continue;
+      // Lying on its side, a little bigger than in a hand, over a faint ring so it's found on any
+      // ground.
       const gun = buildGun(lookOf(d.w), false);
       const g = new THREE.Group();
-      gun.group.rotation.set(Math.PI / 2, 0, (d.x * 7.3) % (Math.PI * 2));
-      g.add(gun.group);
-      g.position.set(d.x, d.y + 0.04, d.z);
+      gun.group.rotation.set(Math.PI / 2, 0, 0);
+      gun.group.scale.setScalar(1.5);
+      const spin = new THREE.Group();
+      spin.rotation.y = (d.x * 7.3) % (Math.PI * 2);
+      spin.position.y = 0.1;
+      spin.add(gun.group);
+      g.add(spin, dropRing());
+      g.position.set(d.x, d.y, d.z);
       this.group.add(g);
       this.drops.set(d.id, g);
     }

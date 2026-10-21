@@ -2328,7 +2328,7 @@ function useHint(c: CompCtx, w: Walker): string | null {
 // The gun on the ground nearest your feet, within reach.
 function nearDrop(c: CompCtx, w: Walker): CompState['drops'][number] | null {
   let best: CompState['drops'][number] | null = null;
-  let bd = 1.4;
+  let bd = 1.8;
   for (const d of c.s.drops) {
     const dd = Math.hypot(d.x - w.p.x, d.z - w.p.z);
     if (dd < bd && Math.abs(d.y - w.p.y) < 1.5) {
@@ -2549,7 +2549,7 @@ function compFrame(f: FightCtx, c: CompCtx, w: Walker, now: number, dt: number):
       room?.sendComp({ k: 'take', id: 'c4' });
     }
     const d = nearDrop(c, w);
-    if (d && d.w !== 'c4' && Math.hypot(d.x - w.p.x, d.z - w.p.z) < 1 && (GUNS[d.w].slot === 'primary' ? !me.primary : false)) askFor(c, d.id, null, me);
+    if (d && d.w !== 'c4' && Math.hypot(d.x - w.p.x, d.z - w.p.z) < 1.2 && GUNS[d.w].slot === 'primary' && !me.primary) askFor(c, d.id, null, me);
   }
   // The planted bomb's beeps, faster as its time runs out.
   if (s.phase === 'planted' && s.bomb.at === 'planted') {
@@ -2702,12 +2702,6 @@ function stepBots(f: FightCtx, w: Walker, t: number): void {
 // told, as a player's browser tells them. In a match, with the gun it drops.
 function botsShot(f: FightCtx, ev: ShotEv, t: number): void {
   for (const d of f.squad?.shot(ev, t) ?? []) {
-    if (f.comp) {
-      const b = f.squad!.bots.find((x) => x.id === d.victim);
-      const g = b?.s.primary ?? null;
-      const r = g ? b!.s.rounds.get(g) : null;
-      if (g && r) d.drop = { w: g, mag: r.mag, reserve: r.reserve };
-    }
     room?.sendEv(d);
     downFx(d);
   }
@@ -2726,8 +2720,8 @@ function hurtMe(f: FightCtx, h: Pick<Hit, 'b' | 'h' | 'l'>, w: Cause, by: string
   if (f.free) return;
   const me = f.me;
   const now = performance.now();
-  const g = me.primary ?? null;
-  const rounds = g ? me.rounds.get(g) : null;
+  const g = me.primary ?? me.secondary;
+  const rounds = me.rounds.get(g);
   const { lost, down } = me.hurt(h, w, now - f.goAt);
   if (!lost) return;
   f.hurt = Math.min(1, f.hurt + 0.3 + lost / 100);
@@ -2756,13 +2750,25 @@ function downFx(ev: DownEv): void {
   if (!f) return;
   const me = room?.you;
   const self = ev.by === ev.victim;
-  f.comp?.match?.down(ev, performance.now());
+  const m = f.comp?.match;
+  if (m) {
+    const b = ev.drop ? null : f.squad?.bots.find((x) => x.id === ev.victim);
+    if (b) ev.drop = dropOf(b.s);
+    m.down(ev, performance.now());
+  }
   f.hud.kill({ by: self ? '' : nameOf(ev.by), byColor: shade(ev.by), victim: nameOf(ev.victim), victimColor: shade(ev.victim), w: ev.w, head: ev.head, mine: ev.by === me || ev.victim === me });
   if (ev.by === me && !self) {
     fightSfx.down();
     f.hud.hit(ev.head, true);
     f.center = { text: `Eliminaste ${nameOf(ev.victim)}${ev.head ? ' com um tiro na cabeça' : ''}${f.comp ? ` · +${killReward(ev.w)} €` : ''}`, until: performance.now() + 1600 };
   }
+}
+
+// The gun a fighter drops as it's put down in a match: its primary, else its pistol, as loaded as it is.
+function dropOf(s: Soldier): DownEv['drop'] {
+  const g = s.primary ?? s.secondary;
+  const r = s.rounds.get(g);
+  return r ? { w: g, mag: r.mag, reserve: r.reserve } : undefined;
 }
 
 // How many times the scope narrows your view, 1 without.
@@ -3645,7 +3651,7 @@ function frame(now: number): void {
         members: room?.lobby.members.filter((m) => !m.bot).map((m) => m.name) ?? [],
         others: [...r.cars.values()].map((o) => ({ id: o.id, name: o.name, x: o.x, y: o.y, z: o.z })),
         street: r.street,
-        fight: fight ? { started: fight.started, alive: fight.me.alive, health: fight.me.health, armour: fight.me.armour, hand: fight.me.hand, mag: fight.me.mag, reserve: fight.me.reserve, scope: fight.me.scope, crouch: roam?.walk?.crouch ?? 0, kit: fight.kit, buying: fight.hud.buying, team: teamOf(fight.me.id), kills: room?.board.find((e) => e.id === room?.you)?.kills ?? 0, deaths: room?.board.find((e) => e.id === room?.you)?.deaths ?? 0, foes: foes(), nades: fight.thrown.length, clouds: fight.clouds.length, fires: fight.fires.length, bots: fight.squad?.bots.map((b) => ({ id: b.id, x: b.w.p.x, y: b.w.p.y, z: b.w.p.z, alive: b.s.alive, health: b.s.health, hand: b.s.hand, shots: b.shots, stuck: b.stuck })) ?? null, free: fight.free, shots: fight.me.shots, comp: fight.comp ? { round: fight.comp.s.round, phase: fight.comp.s.phase, side: fight.comp.side, money: moneyOf(fight.comp), score: fight.comp.s.score, bomb: fight.comp.s.bomb, alive: fight.comp.s.alive, sites: fight.comp.s.map.sites, spawns: { t: fight.comp.s.map.t, ct: fight.comp.s.map.ct }, plants: fight.comp.bots?.plants ?? 0, defuses: fight.comp.bots?.defuses ?? 0 } : null } : null,
+        fight: fight ? { started: fight.started, alive: fight.me.alive, health: fight.me.health, armour: fight.me.armour, hand: fight.me.hand, mag: fight.me.mag, reserve: fight.me.reserve, scope: fight.me.scope, crouch: roam?.walk?.crouch ?? 0, kit: fight.kit, buying: fight.hud.buying, team: teamOf(fight.me.id), kills: room?.board.find((e) => e.id === room?.you)?.kills ?? 0, deaths: room?.board.find((e) => e.id === room?.you)?.deaths ?? 0, foes: foes(), nades: fight.thrown.length, clouds: fight.clouds.length, fires: fight.fires.length, bots: fight.squad?.bots.map((b) => ({ id: b.id, x: b.w.p.x, y: b.w.p.y, z: b.w.p.z, alive: b.s.alive, health: b.s.health, hand: b.s.hand, shots: b.shots, stuck: b.stuck })) ?? null, free: fight.free, shots: fight.me.shots, comp: fight.comp ? { round: fight.comp.s.round, phase: fight.comp.s.phase, side: fight.comp.side, money: moneyOf(fight.comp), score: fight.comp.s.score, bomb: fight.comp.s.bomb, alive: fight.comp.s.alive, drops: fight.comp.s.drops, primary: fight.me.primary, secondary: fight.me.secondary, sites: fight.comp.s.map.sites, spawns: { t: fight.comp.s.map.t, ct: fight.comp.s.map.ct }, plants: fight.comp.bots?.plants ?? 0, defuses: fight.comp.bots?.defuses ?? 0 } : null } : null,
         calls: renderer.info.render.calls,
         tris: renderer.info.render.triangles,
         audio: { city: cityHeard },

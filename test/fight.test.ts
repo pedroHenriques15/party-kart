@@ -445,3 +445,53 @@ test("the arenas' edges: a walker can't leave one, at its gates or along it", ()
   assert.ok(walks > 30);
   assert.equal(out, 0);
 });
+
+test("moving as in Counter-Strike: a hop on the landing keeps its speed, a late one loses it, strafing in the air gains it, a jump held doesn't hop again", () => {
+  const top = GUNS.ak47.speed;
+  // Running down the Rua do Fujacal with an AK-47 for a second.
+  const runner = () => {
+    const w = new Walker(F.ground, v3(176, ground.groundAt(176, 832), 832), Math.atan2(813 - 832, 169.5 - 176));
+    w.fighter = top;
+    for (let k = 0; k < 120; k++) w.step({ ...STAND, fwd: 1, run: true }, DT);
+    return w;
+  };
+  // A hop, then on, holding W, till it lands, and `late` steps more on the ground before the next.
+  const hop = (w: Walker, late: number, strafe: boolean) => {
+    w.step({ ...STAND, fwd: 1, run: true, jump: true }, DT);
+    let k = 0;
+    while (!w.grounded && k++ < 200) {
+      if (strafe) {
+        // Strafing right, the view turned with the way it goes: the strafe all but square across it.
+        const way = Math.atan2(w.v.z, w.v.x);
+        w.yaw = way + Math.acos(0.2 / w.speed()) - Math.PI / 2;
+        w.step({ ...STAND, side: 1, run: true }, DT);
+      } else w.step({ ...STAND, fwd: 1, run: true }, DT);
+    }
+    for (let j = 0; j < late; j++) w.step({ ...STAND, fwd: 1, run: true }, DT);
+    return w.speed();
+  };
+  const timed = runner();
+  const v0 = timed.speed();
+  hop(timed, 0, false);
+  const kept = hop(timed, 0, false);
+  const lateW = runner();
+  hop(lateW, 0, true);
+  const fast = lateW.speed();
+  const slowed = hop(lateW, 6, false);
+  const strafed = runner();
+  const gained = hop(strafed, 0, true);
+  // A jump held: one hop, then on the ground.
+  const held = runner();
+  held.step({ ...STAND, fwd: 1, run: true, jump: true }, DT);
+  let up = 0;
+  for (let k = 0; k < 240; k++) {
+    held.step({ ...STAND, fwd: 1, run: true, jump: false }, DT);
+    if (!held.grounded) up++;
+  }
+  console.log(`running ${v0.toFixed(2)} m/s; two hops on the landing ${kept.toFixed(2)}; a strafed hop ${gained.toFixed(2)}; from ${fast.toFixed(2)}, a hop 50 ms late ${slowed.toFixed(2)}`);
+  assert.ok(v0 > top * 0.97);
+  assert.ok(kept > v0 * 0.98, 'a hop on the landing keeps its speed');
+  assert.ok(gained > v0 * 1.1, 'strafing in the air gains speed');
+  assert.ok(slowed < fast * 0.85, 'a late hop loses speed to the ground');
+  assert.ok(held.grounded && up < 100, 'a jump held hops once');
+});

@@ -164,6 +164,15 @@ export function streetDistance(map: Braga, B: Box, far: number): (x: number, z: 
   };
 }
 
+// Whether the segment from (ax, az) to (bx, bz) crosses the one from (cx, cz) to (dx, dz).
+function crosses(ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number): boolean {
+  const d1 = (bx - ax) * (cz - az) - (bz - az) * (cx - ax);
+  const d2 = (bx - ax) * (dz - az) - (bz - az) * (dx - ax);
+  const d3 = (dx - cx) * (az - cz) - (dz - cz) * (ax - cx);
+  const d4 = (dx - cx) * (bz - cz) - (dz - cz) * (bx - cx);
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
 // The land in the box (and 100 m round it, for the river). Given the race's track, the river is
 // kept well below the road where the road crosses it.
 export function makeLand(map: Braga, B: Box, track?: Track): Land {
@@ -264,12 +273,88 @@ export function makeLand(map: Braga, B: Box, track?: Track): Land {
     });
     return h;
   };
+  // The bed is cut no further than a wall standing on its bank (braga-map's task 077): where the Rio
+  // Este runs past walls, as by Fujacal, the land they stand on is the land, not a bed 12 m wider than
+  // the river that a walker would walk along under them. A retaining wall along it is the channel's
+  // side, which the bed is cut down past as before (the race's jump by Ponte Pedrinha flies over that
+  // gap, braga-map's task 039). On a grid of BANK metres, each point behind one or not (a wall between
+  // it and the river's middle, running within 45° of it, or within FOOT of one, which stands on it
+  // whichever way it runs, as one down the bank to the water); a point is behind one if any of the four
+  // round it is, so the land right behind a wall is whole and the bed eases out in front of it.
+  const BANK = 1;
+  const FOOT = 0.75;
+  const banks = new Map<string, [number, number, number, number][]>();
+  for (const w of map.walls) {
+    if (w.level === 'bridge' || (w.kind !== 'wall' && w.kind !== 'hedge' && w.kind !== 'fence')) continue;
+    for (let k = 1; k < w.pts.length; k++) {
+      const [ax, az] = w.pts[k - 1];
+      const [bx, bz] = w.pts[k];
+      for (let i = Math.floor(Math.min(ax, bx) / C); i <= Math.floor(Math.max(ax, bx) / C); i++) {
+        for (let j = Math.floor(Math.min(az, bz) / C); j <= Math.floor(Math.max(az, bz) / C); j++) {
+          if (!cells.has(`${i},${j}`)) continue;
+          const key = `${i},${j}`;
+          if (!banks.has(key)) banks.set(key, []);
+          banks.get(key)!.push([ax, az, bx, bz]);
+        }
+      }
+    }
+  }
+  const behind = new Map<number, number>();
+  const banked = (i: number, j: number): number => {
+    const k = i * 65536 + j;
+    let v = behind.get(k);
+    if (v !== undefined) return v;
+    const x = i * BANK;
+    const z = j * BANK;
+    // The nearest point of the river's middle, and the walls between it and (x, z).
+    let best = Infinity;
+    let px = x;
+    let pz = z;
+    let ux = 1;
+    let uz = 0;
+    for (const s of cells.get(`${Math.floor(x / C)},${Math.floor(z / C)}`) ?? []) {
+      const dx = s.bx - s.ax;
+      const dz = s.bz - s.az;
+      const L = Math.hypot(dx, dz) || 1;
+      const t = Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / (L * L)));
+      const d = Math.hypot(x - s.ax - dx * t, z - s.az - dz * t);
+      if (d < best) [best, px, pz, ux, uz] = [d, s.ax + dx * t, s.az + dz * t, dx / L, dz / L];
+    }
+    v = 0;
+    if (best < HW + 14) {
+      const seen = new Set<[number, number, number, number]>();
+      for (let a = Math.floor(Math.min(x, px) / C); a <= Math.floor(Math.max(x, px) / C) && !v; a++) {
+        for (let b = Math.floor(Math.min(z, pz) / C); b <= Math.floor(Math.max(z, pz) / C) && !v; b++) {
+          for (const q of banks.get(`${a},${b}`) ?? []) {
+            if (seen.has(q)) continue;
+            seen.add(q);
+            const [ax, az, bx, bz] = q;
+            const L = Math.hypot(bx - ax, bz - az) || 1;
+            const t = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (z - az) * (bz - az)) / (L * L)));
+            const on = Math.hypot(ax + (bx - ax) * t - x, az + (bz - az) * t - z) < FOOT;
+            if (on || (Math.abs(((bx - ax) * ux + (bz - az) * uz) / L) >= Math.SQRT1_2 && crosses(x, z, px, pz, ax, az, bx, bz))) {
+              v = 1;
+              break;
+            }
+          }
+        }
+      }
+    }
+    behind.set(k, v);
+    return v;
+  };
+  const shore = (x: number, z: number): number => {
+    const i = Math.floor(x / BANK);
+    const j = Math.floor(z / BANK);
+    return Math.max(banked(i, j), banked(i + 1, j), banked(i, j + 1), banked(i + 1, j + 1));
+  };
   const land = (x: number, z: number): number => {
     let h = firm(x, z);
     const r = riverAt(x, z);
     if (r.d < HW + 12) {
       const bed = r.y - 1.6;
-      h = Math.min(h, bed + (h - bed) * smooth(HW - 2, HW + 12, r.d));
+      const cut = Math.min(h, bed + (h - bed) * smooth(HW - 2, HW + 12, r.d));
+      h = cut + (h - cut) * shore(x, z);
     }
     return h;
   };

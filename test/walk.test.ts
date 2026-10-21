@@ -216,6 +216,58 @@ test("on foot: a retaining wall can't be climbed, jumping or not, but is dropped
   assert.ok(dropped >= 2, `dropped off ${dropped}`);
 });
 
+test("on foot: no wall in the shooter's area walked through or under, nor a retaining wall climbed from below", () => {
+  // Task 073's survey (braga-map's task 077): into the middle of every straight stretch of every wall 0.75
+  // m high or more in Fujacal, from 2 m out on each side (a retaining wall's lower side, on its right),
+  // running and jumping; one that takes the walker past it, along the stretch, is walked through.
+  const tried: Record<string, number> = {};
+  const through: string[] = [];
+  for (const w of world.walls) {
+    if (w.h < 0.75) continue;
+    for (let i = 1; i < w.pts.length; i++) {
+      const [ax, az] = w.pts[i - 1];
+      const [bx, bz] = w.pts[i];
+      const L = Math.hypot(bx - ax, bz - az);
+      const [mx, mz] = [(ax + bx) / 2, (az + bz) / 2];
+      if (L < 1 || !world.inShooter(mx, mz)) continue;
+      const [nx, nz] = [-(bz - az) / L, (bx - ax) / L];
+      for (const side of w.kind === 'retaining' ? [1] : [1, -1]) {
+        const [x, z] = [mx + nx * side * (2 + w.w / 2), mz + nz * side * (2 + w.w / 2)];
+        if (!ground.d.inside.has(x, z)) continue;
+        const f = ground.floor(x, z, ground.groundAt(x, z) + 0.2);
+        if (f.buried || ground.circle(x, z, x, z, f.y, RADIUS, HEIGHT, true)) continue;
+        tried[w.kind] = (tried[w.kind] ?? 0) + 1;
+        const wk = new Walker(ground, v3(x, f.y, z), Math.atan2(-nz * side, -nx * side));
+        walk(wk, (wk) => ({ fwd: 1, run: true, jump: wk.grounded }), 3, (wk) => {
+          const d = ((wk.p.x - mx) * nx + (wk.p.z - mz) * nz) * side;
+          if (d > -w.w / 2 - 0.05 || Math.abs((wk.p.x - mx) * -nz + (wk.p.z - mz) * nx) > L / 2) return false;
+          through.push(`the ${w.kind} ${w.h} m high at (${mx.toFixed(1)}, ${mz.toFixed(1)}), its top at ${(w.ys[i - 1] / 2 + w.ys[i] / 2).toFixed(2)}, the walker's feet at ${wk.p.y.toFixed(2)}`);
+          return true;
+        });
+      }
+    }
+  }
+  console.log(`on foot into Fujacal's walls: ${Object.entries(tried).map(([k, n]) => `${n} stretches of ${k}`).join(', ')}; ${through.length} walked through`);
+  assert.ok(tried.retaining > 50 && tried.wall > 80 && tried.hedge > 50 && tried.gate > 30, JSON.stringify(tried));
+  assert.deepEqual(through, []);
+});
+
+test('on foot: through both passages under the houses south of the Rua Doutor José Vilaça, both ways', () => {
+  // The one at (-262, 924), and the courtyard's at (-319, 931) (braga-map's task 078), from 6 m out of
+  // either end to 6 m out of the other, along its middle.
+  for (const [ax, az, bx, bz] of [[-248, 921.5, -275, 926.3], [-305, 927, -332, 935.5]]) {
+    for (const [fx, fz, tx, tz] of [[ax, az, bx, bz], [bx, bz, ax, az]]) {
+      const L = Math.hypot(tx - fx, tz - fz);
+      const [ux, uz] = [(tx - fx) / L, (tz - fz) / L];
+      const w = stand(fx, fz, tx, tz);
+      let far = 0;
+      const r = walk(w, (w) => ({ fwd: 1, look: { x: clamp(angleDiff(Math.atan2(uz, ux) - clamp((-(w.p.x - fx) * uz + (w.p.z - fz) * ux) * 0.8, -0.5, 0.5), w.yaw), -0.1, 0.1), y: 0 } }), 25, (w) => (far = (w.p.x - fx) * ux + (w.p.z - fz) * uz) > L - 0.5);
+      assert.equal(r.lost, 0);
+      assert.ok(far > L - 0.5, `stopped ${far.toFixed(1)} m into ${L.toFixed(1)}, from (${fx}, ${fz})`);
+    }
+  }
+});
+
 test("on foot: stays inside the open world's area", () => {
   // Into the barrier across each of the first ten streets leaving the area, and on past it.
   const gates = world.open.gates.filter((g) => g.level === 'ground' && g.w >= 5).slice(0, 10);

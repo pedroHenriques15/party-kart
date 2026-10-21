@@ -7,7 +7,7 @@
 // on each, and the ways no lattice lines up with joined by hand: through each door of a room, and up
 // each flight of a tower's stairs. Only the points the area's places reach are kept. A bot finds its
 // way on it (A*) and looks for cover round it.
-import { HOLD, Rings, STEP, type Floor, type Post, type Wall, type WorldGround } from './ground.ts';
+import { overTop, Rings, STEP, type Floor, type Post, type Wall, type WorldGround } from './ground.ts';
 import { inside as inRoom, type Room } from './interiors.ts';
 
 // The lattice's spacing; the room a point needs round it, and an edge beside a wall (a little less,
@@ -297,7 +297,7 @@ export class Paths {
     const r = PASS;
     for (const cells of [g.d.walls, g.extra]) {
       for (const w of cells.near(Math.min(ax, bx) - 1, Math.min(az, bz) - 1, Math.max(ax, bx) + 1, Math.max(az, bz) + 1, walls)) {
-        const top = w.kind === 'retaining' ? w.y1 - HOLD : w.y1;
+        const top = overTop(w);
         if (lo >= top || Math.max(ay, by) + TALL <= w.y0 || g.down.has(w)) continue;
         if (segments(ax, az, bx, bz, w.ax, w.az, w.bx, w.bz) >= r + (w.half ?? 0)) continue;
         if (w.kind === 'retaining') {
@@ -448,7 +448,7 @@ export class Paths {
     if (!this.climbs(ax, y, az, bx, bz)) return false;
     for (const cells of [g.d.walls, g.extra]) {
       for (const w of cells.near(Math.min(ax, bx) - 1, Math.min(az, bz) - 1, Math.max(ax, bx) + 1, Math.max(az, bz) + 1, scratchWalls)) {
-        const top = w.kind === 'retaining' ? w.y1 - HOLD : w.y1;
+        const top = overTop(w);
         if (y >= top || y + TALL <= w.y0 || g.down.has(w)) continue;
         if (segments(ax, az, bx, bz, w.ax, w.az, w.bx, w.bz) < PASS + (w.half ?? 0)) return false;
       }

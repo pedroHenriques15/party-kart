@@ -178,7 +178,9 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
   it is a 2 m grid's, which ramps up to it, and would launch a kart over it at speed);
   and, given the area (`open`, braga-map's task 032), its edge at every level and a barrier across
   each street and path leaving it. A building is trimmed at a path's passage under it as at a
-  carriageway (the owner's answer to braga-map's task 050), so it's open too. The car is two circles, 1.6 m
+  carriageway (the owner's answer to braga-map's task 050), so it's open too; a cut's edge in a
+  building is a wall only where the building is on its other side, not where a passage's floor meets
+  a carriageway's or a tile's (`trimmed`, braga-map's task 078). The car is two circles, 1.6 m
   across and 1.9 m apart, pushed out of what they're in a few times over, and back the way it came
   if it went through a wall in one step. The land is a wall where it would rise more than a step in
   front of the car, or off the carriageway or a path steeper than 35°. A car going up a kerb hops
@@ -423,7 +425,10 @@ first person (`Walker`, `src/game/walker.ts`): 1.75 m tall, the eye at 1.65 m, a
 1.5 m/s walking and 5 m/s running, a jump of about 40 cm. You stand on the world's ground as a kart
 does (`floor`), up a kerb or a tread a step high (`STEP`, 0.3 m) and down any; bridging the few
 centimetres the map leaves between some treads of a flight; down a bank, but up none steeper than 45°;
-and off a retaining wall's top, but never up its face. Every wall, fence, hedge, gate, building and
+and off a retaining wall's top, but never up its face: from its lower side it stands `HOLD` over its
+top for you as for a kart, where its face is more than a step (`overTop`, braga-map's task 077), as the
+land at its foot ramps up to its top; one with no step there (braga-map measures each along its length)
+you climb. Every wall, fence, hedge, gate, building and
 tree stops you at your own radius (`WorldGround.circle`, the kart's own test at a walker's size, which
 also stands a thin wall's faces where they're drawn, `half`), and the area's edge keeps you in it.
 Pushed out of a wall, you're put a millimetre clear of it (just clear, a rounding error could leave you
@@ -571,7 +576,8 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   found, at its height, crown and foot, and of its kind), but those on a carriageway; and the
   Tourigalo's bull turned to face the road.
   - The land is the ground as the karts have it (`land.ts`: braga-map's, from DGT's LiDAR, every
-    2 m in the area), with the river's bed cut through it and level under the stadium. Its mesh is
+    2 m in the area), with the river's bed cut through it (but not past a wall, hedge or fence standing on its bank,
+    nor under one's foot: braga-map's task 077) and level under the stadium. Its mesh is
     on a lattice (`lattice.ts`) of cells of 10 m (20 m on Low), each split into cells of 2 m (4 m on
     Low) where it needs them: near a tunnel's mouth or under a deck, and where the land shows beside
     a street (not under it, nor under a building) and its two triangles would miss the ground there

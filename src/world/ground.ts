@@ -65,6 +65,17 @@ export interface Wall {
   // top is a railing on it, which they pass over the wall under it.
   open?: boolean;
   rail?: number;
+  // A retaining wall's face, how high it is over its lower side (braga-map's `h`, measured along it
+  // since its task 077).
+  face?: number;
+}
+
+// How high a walker's feet have to be to pass over a wall from where they are (braga-map's task 077):
+// its top; but a retaining wall's, from its lower side, stands HOLD over its top as it does for a
+// kart, where its face is more than a step, as the land at its foot is a 2 m grid's, which ramps up
+// to its top and would let a walker run up it and jump over (from its upper side, it's a drop).
+export function overTop(w: Wall): number {
+  return w.kind === 'retaining' && (w.face ?? Infinity) <= STEP ? w.y1 - HOLD : w.y1;
 }
 
 // A flight of steps' tread (braga-map's task 050): its outline, its height, and its box.
@@ -354,8 +365,9 @@ interface Data {
   raised: Rings;
   pathSetts: Rings;
   treads: Cells<Tread>;
-  // What a building that stands on it is cut back at: the carriageways on the ground, and the paths
-  // through passages under a building (the owner's answer to braga-map's task 050).
+  // What a building that stands on it is cut back at: the carriageways on the ground, the paths
+  // through passages under a building (the owner's answer to braga-map's task 050), and the steps'
+  // treads on the ground.
   cuts: Rings;
   pieces: Piece[];
   pieceCells: Cells<Piece>;
@@ -662,7 +674,7 @@ export class WorldGround implements Ground {
   // The wall or trunk a circle r wide at (qx, qz), at (q0x, q0z) before the move, is deepest into: which
   // way out, and how far. It stands from y and is h high: a kart's two circles (walls()) by default, or
   // a walker (game/walker.ts, braga-map's task 073), who also drops off a retaining wall from its top
-  // (it's no parapet for someone on foot) and stands as high as it is, not HOLD over it.
+  // (it's no parapet for someone on foot), and climbs one with no face to speak of (overTop).
   circle(qx: number, qz: number, q0x: number, q0z: number, y: number, r = CAR_R, h = WALL_H, onFoot = false): { nx: number; nz: number; d: number } | null {
     const x0 = Math.min(qx, q0x) - r - 0.1;
     const z0 = Math.min(qz, q0z) - r - 0.1;
@@ -671,7 +683,7 @@ export class WorldGround implements Ground {
     let best: { nx: number; nz: number; d: number } | null = null;
     for (const cells of [this.d.walls, this.extra]) {
       for (const w of cells.near(x0, z0, x1, z1, this.seen)) {
-        const top = onFoot && w.kind === 'retaining' ? w.y1 - HOLD : w.y1;
+        const top = onFoot ? overTop(w) : w.y1;
         if (y >= top || y + h <= w.y0 || this.down.has(w)) continue;
         // A retaining wall's lower side is on the right of its line (braga-map's walls): from its upper
         // side, on foot, it's a drop.
@@ -884,7 +896,9 @@ export function alongSpan(span: SpanPoint[], s: number): SpanPoint {
 export const pathSurface = (s: Path['surface']): 'asphalt' | 'setts' | 'paving' | 'dirt' => (s === 'setts' ? 'setts' : s === 'asphalt' ? 'asphalt' : s === 'gravel' || s === 'dirt' ? 'dirt' : 'paving');
 
 // A footprint's outline less the carriageways it stands on, as segments [ax, az, bx, bz]: its own
-// edges off them, and their edges in it (a passage's sides); and whether it stood on any.
+// edges off them, and their edges in it (a passage's sides), where the building is on their other
+// side, not another of them (a passage's floor meeting a carriageway's under the building, or a
+// tile's: braga-map's task 078); and whether it stood on any.
 export function trimmed(pts: [number, number][], roads: Rings): { segs: [number, number, number, number][]; cut: boolean } {
   const n = pts.length;
   const x0 = Math.min(...pts.map((p) => p[0]));
@@ -928,7 +942,12 @@ export function trimmed(pts: [number, number][], roads: Rings): { segs: [number,
   };
   for (const [ax, az, bx, bz] of whole) cut(ax, az, bx, bz, edges, (x, z) => !roads.has(x, z));
   const onRoad = out.length;
-  for (const [ax, az, bx, bz] of edges) cut(ax, az, bx, bz, whole, (x, z) => inRing(pts, x, z));
+  for (const [ax, az, bx, bz] of edges) {
+    const L = Math.hypot(bx - ax, bz - az) || 1;
+    const nx = (-(bz - az) / L) * 0.02;
+    const nz = ((bx - ax) / L) * 0.02;
+    cut(ax, az, bx, bz, whole, (x, z) => inRing(pts, x, z) && roads.has(x + nx, z + nz) !== roads.has(x - nx, z - nz));
+  }
   const kept = out.slice(0, onRoad).reduce((a, [ax, az, bx, bz]) => a + Math.hypot(bx - ax, bz - az), 0);
   const all = whole.reduce((a, [ax, az, bx, bz]) => a + Math.hypot(bx - ax, bz - az), 0);
   return { segs: out, cut: out.length > onRoad || all - kept > 1e-6 };
@@ -988,7 +1007,10 @@ export function worldGround(world: Braga): WorldGround {
   const paths = new Rings(flat.filter((p) => !p.raised).flatMap((p) => p.rings));
   const raised = new Rings(flat.filter((p) => p.raised).flatMap((p) => p.rings));
   const pathSetts = new Rings(S.paths.filter((p) => (p.level === 'ground' || p.level === 'under') && p.surface === 'setts').flatMap((p) => p.rings));
-  const cuts = new Rings([...S.carriageways.filter((p) => p.level === 'ground'), ...S.paths.filter((p) => p.level === 'under')].flatMap((p) => p.rings));
+  // And the treads of a flight on the ground, which stop at a building's outline as the map has it:
+  // the tiles round a building's points to half a metre, which would stand its wall across the foot
+  // of a flight at a passage's mouth (braga-map's task 078).
+  const cuts = new Rings([...S.carriageways.filter((p) => p.level === 'ground'), ...S.paths.filter((p) => p.level === 'under' || (p.level === 'ground' && p.kind === 'steps'))].flatMap((p) => p.rings));
   const treads = new Cells<Tread>();
   const treadList: Tread[] = [];
   for (const p of S.paths) {
@@ -1205,7 +1227,7 @@ export function worldGround(world: Braga): WorldGround {
     for (let k = 1; k < span.length; k++) {
       const a = span[k - 1];
       const b = span[k];
-      for (const o of lines) addWall({ ax: a.x + a.nx * o, az: a.z + a.nz * o, bx: b.x + b.nx * o, bz: b.z + b.nz * o, y0: Math.min(a.y0, b.y0) - 0.7, y1: Math.max(a.y1, b.y1) + (w.kind === 'retaining' ? HOLD : 0), kind: w.kind, ...(lines.length === 1 && w.w > 0 ? { half: w.w / 2 } : {}), ...(rail > 0 ? { rail } : {}) }, w.kind === 'gate' || w.kind === 'bar' ? 'gates' : w.kind === 'hedge' ? 'hedges' : w.kind === 'retaining' ? 'retaining walls' : w.kind === 'wall' ? 'walls' : 'fences and railings');
+      for (const o of lines) addWall({ ax: a.x + a.nx * o, az: a.z + a.nz * o, bx: b.x + b.nx * o, bz: b.z + b.nz * o, y0: Math.min(a.y0, b.y0) - 0.7, y1: Math.max(a.y1, b.y1) + (w.kind === 'retaining' ? HOLD : 0), kind: w.kind, ...(w.kind === 'retaining' ? { face: w.h } : {}), ...(lines.length === 1 && w.w > 0 ? { half: w.w / 2 } : {}), ...(rail > 0 ? { rail } : {}) }, w.kind === 'gate' || w.kind === 'bar' ? 'gates' : w.kind === 'hedge' ? 'hedges' : w.kind === 'retaining' ? 'retaining walls' : w.kind === 'wall' ? 'walls' : 'fences and railings');
     }
   }
 

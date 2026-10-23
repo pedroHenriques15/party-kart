@@ -30,7 +30,6 @@ import { streetFront } from '../world/storeys.ts';
 import * as tex from './textures.ts';
 import { buildSigns } from './signs.ts';
 import { buildPlates } from './plates.ts';
-import { loadPhotos } from './photos.ts';
 import { cityTrees, loadTreeLooks, type CityTree } from './trees.ts';
 import type { World } from './world.ts';
 
@@ -83,7 +82,7 @@ const PAVED = [true, false, true, true, true, true, false, false, false, false];
 const ROOFS = ['#b55a3c', '#a54e35', '#c26942', '#9c4a34'];
 
 // The ground's material. Where the map has classed the ground (cover.ts, braga-map's task 016), each
-// kind of ground with its own photo in the place's colour; elsewhere, the map painted on it with a fine
+// kind of ground with its own texture in the place's colour; elsewhere, the map painted on it with a fine
 // grain tiled by world position, so it isn't smeared up close. Where the painting is clear, there's a
 // street over it (streets.ts) and the land isn't drawn, whatever its height: with the cover on every
 // tile under the land, the painting is only that, a mask (paintGround). The canvas leaves a clear pixel
@@ -150,10 +149,10 @@ const CANOPY = new THREE.Color().setHSL(0.27, 0.5, 0.235);
 // The land's shader's part for the cover: its uniforms, and GLSL that sets `coverIn` (1 on a tile the
 // map has classed, 0 elsewhere) and `coverRgb`, the ground there. Each fragment takes the kinds of the
 // four cells round it, weighed by how near (a 50 cm cell's edge softened over half its width, so a
-// kind's edge isn't a staircase); each kind present, its photo tiled at its size (sampled with the
+// kind's edge isn't a staircase); each kind present, its texture tiled at its size (sampled with the
 // fragment's own gradients, taken where every fragment runs, as a texture's are only right there),
 // divided by its mean and times that kind's colour there.
-// `lawn`, where it's given, is the colour of every grass there in place of the photo's.
+// `lawn`, where it's given, is the colour of every grass there in place of the texture's.
 function coverShader(c: Cover, lawn?: THREE.Color): { uniforms: Record<string, THREE.IUniform>; head: string; body: string } {
   const uniforms: Record<string, THREE.IUniform> = {
     coverLawn: { value: lawn ?? new THREE.Color() },
@@ -226,19 +225,17 @@ ${kinds.map((k) => `  if (w[${k}] > 0.0) coverRgb += w[${k}] * ${lawn && k === G
 // ---- The world ----
 
 // Besides the city, the world as the karts' ground (ground.ts), built for it and kept for driving on.
-// What the map says the ground is, each kind with its photo (cover.ts), as the renderer's graphics card
-// takes them; and the map's photos of facades (photos.ts).
+// What the map says the ground is, each kind with its texture (cover.ts), as the renderer's graphics card
+// takes them.
 // The city is built round `track`, the home track (tracks.ts): its plinth, eggs and landmarks' signs, and
 // the world's walls its race takes down drawn apart (`cleared`). raceOn() adds a race on any track.
 export async function buildCity(track: Track, course: Course, quality: Quality, renderer: THREE.WebGLRenderer): Promise<World & { eggs: Eggs; drive: WorldGround; stageYaw: number; raceOn: (track: Track, course: Course) => RaceWorld; cleared: THREE.Object3D; above: (x: number, z: number) => number; horizon: Bound }> {
   const map = await loadWorld(course.box);
   // Fetched, and turned for the graphics card in workers, while the land is worked out. If they can't be
-  // had, the city goes without them: the ground painted from the map, as it was before task 016, and the
-  // facades in their kits alone.
-  const photosLoading = loadPhotos(map.photos, map.facadeColours, renderer, quality).catch((e: unknown) => (console.warn('The photo textures failed to load:', e), null));
+  // had, the city goes without them: the ground painted from the map, as it was before task 016.
   const coverLoading = loadCover(map, renderer, quality).catch((e: unknown) => (console.warn('What the ground is failed to load:', e), null));
   // The trees' bark and leaves (braga-map's task 019); without them, each kind in a colour.
-  const treesLoading = loadTreeLooks(map.treeKinds, renderer, quality).catch((e: unknown) => (console.warn("The trees' photos failed to load:", e), {}));
+  const treesLoading = loadTreeLooks(map.treeKinds, renderer, quality).catch((e: unknown) => (console.warn("The trees' textures failed to load:", e), {}));
   const B = course.box;
   const group = new THREE.Group();
   const updates: ((t: number) => void)[] = [];
@@ -352,7 +349,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
     }
   }
   const landMesh = new Surface(lat, land);
-  const [photos, cover, treeLooks] = await Promise.all([photosLoading, coverLoading, treesLoading]);
+  const [cover, treeLooks] = await Promise.all([coverLoading, treesLoading]);
   if (masked && !cover) paint = paintGround(map, B, quality, inOpenTiles, outline, onGround);
   // The land isn't drawn inside a room (braga-map's task 079, world/interiors.ts): its floors stand
   // for it, and where the ground rises under the building it would stand up through them. Each
@@ -629,7 +626,6 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
   group.add(Object.assign(buildBuildings(drawn, map, facadeKit(map.facadeTypes, quality), quality, rooms), { name: 'buildings' }));
   // The rooms' insides: the walls' inside faces, the floors, the stairs, the roof's parapet and hut.
   group.add(Object.assign(buildInteriors(wg.d.rooms, map), { name: 'interiors' }));
-  if (photos) group.add(photos.facades);
   // The shops' signs, on the buildings drawn.
   group.add(buildSigns(map.signs.filter((s) => near(s.from[0], s.from[1]) <= 300 && !keepOut.some((k) => Math.hypot(s.from[0] - k.x, s.from[1] - k.z) < k.r)), map.facadeColours));
   // The streets' name plates (braga-map's task 042, plates.ts): a wall's on a building drawn (one the

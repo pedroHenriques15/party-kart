@@ -2,15 +2,15 @@
 // over every tile it has classed, every 50 cm (on High) asphalt, paving, setts, grass, bare soil,
 // gravel, water or a roof, and whether a tree's crown is over it, from DGT's 2025 LiDAR and
 // orthophoto; and each kind's own colour there, the orthophoto's without its cars and shadows. The
-// land's shader (city.ts) draws each kind with its own photo (a seamless one, from Poly Haven, tiled at
-// its real size), its colour divided out and the place's put in: the photo gives the detail up close,
-// the place the colour.
+// land's shader (city.ts) draws each kind with its own texture (a seamless one, made, not photographed:
+// braga-map's task 082, tiled at its real size), its colour divided out and the place's put in: the
+// texture gives the detail up close, the place the colour.
 import type { World as Braga } from 'braga-map';
 import * as THREE from 'three';
 import type { Quality } from './look.ts';
-import { ktx2Loader } from './photos.ts';
+import { ktx2Loader } from './ktx2.ts';
 
-// The kinds there are (the map's groundKinds), and those with a photo: asphalt, paving, setts, grass,
+// The kinds there are (the map's groundKinds), and those with a texture: asphalt, paving, setts, grass,
 // soil and gravel. Water and a roof are their colour alone. Each tile's colour has a grid for each kind
 // and one for the trees' crowns, last.
 export const KINDS = 8;
@@ -31,7 +31,7 @@ export interface Cover {
   // Each kind's colour over each tile, between its squares' middles: layer tile × 9 + kind; and the
   // trees' crowns', seen from above, tile × 9 + 8.
   colour: THREE.DataArrayTexture;
-  // Each kind's photo, its mean colour in linear light, and how many times it repeats a metre.
+  // Each kind's texture, its mean colour in linear light, and how many times it repeats a metre.
   surfaces: THREE.Texture[];
   mean: THREE.Vector3[];
   scale: number[];
@@ -53,14 +53,14 @@ async function readPixels(url: string): Promise<{ w: number; h: number; data: Ui
 const linear = (v: number) => ((v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
 
 // Loads what the ground is on every tile loaded that the map has classed, at the graphics level asked
-// for, and the kinds' photos; null if it has classed none of them. A tile the open world's area doesn't
+// for, and the kinds' textures; null if it has classed none of them. A tile the open world's area doesn't
 // touch is never nearer the player than its edge, so its kinds come at Low (2 m a cell) and are drawn
 // at the level's cells all the same: on High that's 23 of the 48 tiles at a seventh of the download.
 export async function loadCover(map: Braga, renderer: THREE.WebGLRenderer, quality: Quality): Promise<Cover | null> {
   const covers = map.groundCover;
   if (!covers.length) return null;
   const kinds = map.groundKinds.slice(0, PHOTOGRAPHED);
-  if (kinds.some((k) => !k.texture)) throw new Error('The map has no photo for some kind of ground');
+  if (kinds.some((k) => !k.texture)) throw new Error('The map has no texture for some kind of ground');
   const open = new Set(map.open.tiles);
   const loader = ktx2Loader(renderer);
   const [tiles, surfaces] = await Promise.all([

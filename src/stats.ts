@@ -9,7 +9,7 @@ import type { Quality } from './render/look.ts';
 // it has been drawn: each texture a material uses, the sky's reflections and the sun's shadows. Four
 // bytes a pixel (eight in half floats; one where it's a single channel, as the ground's mask and kinds
 // are), every layer of an array, and a third more where there are mipmaps; a compressed one (the map's
-// photos, render/photos.ts and cover.ts) what its levels hold, as this graphics card takes them. (The
+// textures, render/cover.ts and trees.ts) what its levels hold, as this graphics card takes them. (The
 // ground's grain, added in its shader, isn't counted: it's 256 pixels square.)
 export function textureBytes(scene: THREE.Scene): number {
   const seen = new Set<THREE.Texture>();

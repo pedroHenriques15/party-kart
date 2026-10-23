@@ -643,7 +643,7 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   - What the ground is, where braga-map has classed it (its task 016, decision 034: every tile
     under the Volta dos Amigos' box, which the city loads), is drawn in the land's shader
     (`groundMaterial`, with `cover.ts`): each 50 cm cell's kind (asphalt, paving, setts, grass, bare
-    soil, gravel, water, a roof) in its own seamless photo (CC0, from Poly Haven), tiled at its real
+    soil, gravel, water, a roof) in its own seamless texture (made by braga-map, its task 082), tiled at its real
     size, its own mean colour divided out and the place's put in: that kind's colour over the tile,
     the orthophoto's without its cars and shadows. A cell's kind blends into its neighbours' over
     half its width; under a tree's crown the ground is 15% darker, and from 40 m off to 160 m a
@@ -687,8 +687,8 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     camera. The shops' signs (`render/signs.ts`, the map's `world.signs`) are a fascia in the sign's
     colour and the name in letters cut from one canvas of every letter they use: two meshes.
   - Then the trees (`cityTrees` in `trees.ts`): near the camera (260 m on High, 180 on Medium,
-    120 on Low) each a trunk in its kind's bark and a crown of cards of its leaves (the map's photos,
-    braga-map's task 019) laid round the crown in its kind's shape (round, a pine's flat head, a
+    120 on Low) each a trunk in its kind's bark and a crown of cards of its leaves (the map's textures,
+    braga-map's tasks 019 and 082) laid round the crown in its kind's shape (round, a pine's flat head, a
     eucalyptus's open one, a cypress's cone, a poplar's column; a palm's fronds), each card the same
     size in metres whatever the crown's (the shader scales it back, and lifts one that would hang
     below the crown's foot), tinted the green of Braga's trees in summer; the crown where the map
@@ -798,22 +798,20 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   `textures.ts`, and every sound is an oscillator or filtered noise in `audio.ts`, but the city's:
   eight CC0 recordings, 673 KB, in `src/sounds/` (braga-map's decision 016). The city's map is
   numbers in a module, drawn into textures and meshes as the game loads.
-- **Photo textures** are the map's, not the game's (braga-map's decisions 002 and 030): KTX2 files
-  in braga-map's `world/textures/`, one for each graphics level, which `loadWorld` lists with
-  each tile (`world.photos`) and Vite serves as assets (never inlined, `vite.config.ts`).
-  `render/photos.ts` loads them with three.js's KTX2Loader, which turns Basis Universal's ETC1S
-  into what the graphics card takes (ETC1 on a phone, BC7 on a PC) in its workers, so they stay
-  compressed on the card: half a byte a pixel on a phone, a byte on a PC, where a canvas or a WebP
-  takes four. The kinds of ground's photos are drawn always (braga-map's task 016, above), so the
-  loader and Basis's transcoder (0.56 MB, 0.26 MB gzipped) come with the city. `photos.ts` is
-  imported statically, part of the game's own script: a chunk of its own, and the one it would share
-  with the rest (three.js), would be preloaded (`<link rel="modulepreload">`), and WebKit keeps a
-  preload that failed until the browser closes, so the loading screen's "Tentar outra vez" would fail
-  again at once (braga-map's task 070). The built `index.html` should have no `modulepreload`. The facades are
-  drawn always (braga-map's task 017), each as quads 4 cm in front of its wall, a mesh each, in its
-  building's colour: the photo times that colour over the wall's colour in the photo (each in linear
-  light, as the map gives them), so a photo at dusk or through a tinted windscreen is as bright and
-  as white as the walls round it.
+- **The map's textures** are the map's, not the game's (braga-map's decisions 030 and 061): KTX2
+  files in braga-map's `world/textures/`, one for each graphics level, made, not photographed (no
+  photograph is drawn in the game, its task 082), which `map().groundKinds` and `.treeKinds` list
+  and Vite serves as assets (never inlined, `vite.config.ts`). `render/ktx2.ts` loads them with
+  three.js's KTX2Loader, which turns Basis Universal's ETC1S into what the graphics card takes (ETC1
+  on a phone, BC7 on a PC) in its workers, so they stay compressed on the card: half a byte a pixel
+  on a phone, a byte on a PC, where a canvas or a WebP takes four. The kinds of ground's textures are
+  drawn always (braga-map's task 016, above), so the loader and Basis's transcoder (0.56 MB, 0.26 MB
+  gzipped) come with the city. `ktx2.ts` is imported statically, part of the game's own script: a
+  chunk of its own, and the one it would share with the rest (three.js), would be preloaded
+  (`<link rel="modulepreload">`), and WebKit keeps a preload that failed until the browser closes,
+  so the loading screen's "Tentar outra vez" would fail again at once (braga-map's task 070). The
+  built `index.html` should have no `modulepreload`. Until braga-map's task 082 ten facades were
+  photos straightened onto their walls (`render/photos.ts`); they're the kit's now, as every other.
 - **Karts** (`render/drivers.ts`): each `Driver` is one of the friends: a body (`kart`, `trolley`,
   `banger`, `chair`), colours and a second paint (`alt`, for a bot repeating them), extras (on the
   driver and on the car), a trail and a horn. `buildKart` builds the model. Its

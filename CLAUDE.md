@@ -7,11 +7,11 @@ server and no accounts, and hardly an asset file of its own: every texture the g
 on a canvas, and every sound is synthesized but the city's round the track, eight short CC0
 recordings in `src/sounds/` (braga-map's decision 016 allows recordings for the engines and the
 city), and the deathmatch's CC0 models and recordings in `src/fight/` (its decision 060: the guns, the
-fighters, the cover's props and their sounds, each on record in `src/fight/ASSETS.md`). Photos may texture the city (braga-map's decision 002): they belong to
-the place, so they live in braga-map with the world, made by its `tools/textures.mjs` as KTX2
-files that stay compressed on the graphics card (its decision 030), and `render/photos.ts` draws
-them. The ground is drawn as braga-map says it is (its task 016, decision 034): each kind in its
-own photo (CC0, from Poly Haven) tinted with the place's colour, by `render/cover.ts` and the land's
+fighters, the cover's props and their sounds, each on record in `src/fight/ASSETS.md`). No photograph is drawn in the game (braga-map's decision 061, the owner's rule): photos are
+references only. The city's textures belong to the place, so they live in braga-map with the world,
+made, not photographed, by its `tools/textures.mjs` as KTX2 files that stay compressed on the
+graphics card (its decision 030), and `render/ktx2.ts` loads them. The ground is drawn as braga-map
+says it is (its task 016, decision 034): each kind in its own texture tinted with the place's colour, by `render/cover.ts` and the land's
 shader in `render/city.ts`. They spend from the city's budget (`docs/architecture.md`), as anything else does. The
 track and the city round it come from the map of Braga the games share: the `braga-map` package
 (https://github.com/pedroHenriques15/braga-map, a sibling repo at `../braga-map`), data made from
@@ -128,9 +128,8 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
 - The buildings' facades are the map's (braga-map's task 017, `render/facades.ts`): each building's
   kind of facade, drawn in its real proportions, its colours, its walls' material, its ground floor
   along a street, its balconies and its shutters, as a session saw it in its photos or as the map
-  guesses it. The shops' signs are the map's too (`render/signs.ts`). The ten facades photographed
-  well enough for a texture (`render/photos.ts`) are drawn always, as the ground's photos are (its
-  task 016), each in its building's colour.
+  guesses it. The shops' signs are the map's too (`render/signs.ts`). Every building's facade is the kit's: the ten photo facades were
+  taken out with braga-map's task 082.
 - `?stats` shows what the game costs in a corner, for measuring it on a phone (`src/stats.ts`): the
   frame rate and the worst second (of the race, or round the city since the last; after its first two), the graphics level, draw calls,
   triangles, the textures' memory, how long the city took to build and the page to be ready, what

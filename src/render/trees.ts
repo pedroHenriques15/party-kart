@@ -7,7 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RIVER_HALF_W } from '../track/layout.ts';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
 import type { Quality } from './look.ts';
-import { ktx2Loader } from './photos.ts';
+import { ktx2Loader } from './ktx2.ts';
 import { LAKE, riverDistance } from './world.ts';
 
 type Ground = (x: number, z: number) => number;
@@ -156,8 +156,8 @@ export function plantTrees(trees: Tree[], TILE = 300, plain: boolean | 'lean' = 
 //
 // Every tree the map has: as tall as DGT's LiDAR measured it, its crown as wide and its foot as high,
 // and of its kind (broadleaf, pine, eucalyptus, cypress or cedar, poplar, palm, and since braga-map's task
-// 061 the plane, the lime and the birch the photos show), each kind in the map's photos of its bark and
-// its leaves. Near the camera a tree is a trunk in its bark and a crown of sprays
+// 061 the plane, the lime and the birch the photos show), each kind in the map's textures of its bark and
+// its leaves (made, not photographed: braga-map's task 082). Near the camera a tree is a trunk in its bark and a crown of sprays
 // of its leaves, cards laid round the crown in its kind's shape, each card the same size in metres
 // whatever the crown's (a palm's fronds grow with its crown); further off it's a billboard of its kind,
 // made from the near tree when the city is built; and between the two they fade into each other,
@@ -185,8 +185,8 @@ interface Shape {
   // Cards on High (Medium has two thirds, Low half); each card's side as a share of the crown's width,
   // within [min, max] metres; the crown's radius at each height up it (0 its foot, 1 its top) as a share
   // of half its width; how far up the crown its trunk runs (a share of the crown's height); how far its
-  // cards lean from upright towards lying flat; and the green its photo of leaves is taken to (sRGB), as
-  // Braga's are in summer: the photos' leaves are paler and yellower.
+  // cards lean from upright towards lying flat; and the green its texture of leaves is taken to (sRGB), as
+  // Braga's are in summer: the texture's leaves, matched to Poly Haven's photos, are paler and yellower.
   cards: number;
   card: [number, number, number];
   outline: (v: number) => number;
@@ -261,7 +261,7 @@ function cardCrown(kind: MapTreeKind, n: number): THREE.BufferGeometry {
 }
 
 // A palm's crown over the unit crown: fronds from its top's middle, rising and then arching down to its
-// edge, each a strip of quads along its stem, its photo from its foot (the card's bottom row) to its tip.
+// edge, each a strip of quads along its stem, its texture from its foot (the card's bottom row) to its tip.
 function palmCrown(n: number): THREE.BufferGeometry {
   const rnd = seeded(5);
   const pos: number[] = [], cen: number[] = [], nor: number[] = [], uv: number[] = [], idx: number[] = [];
@@ -342,7 +342,7 @@ export interface TreeLooks {
 }
 
 // Loads each kind's bark and leaves at the graphics level, as the graphics card takes them; a kind the
-// map has no photo for is drawn in a colour alone.
+// map has no texture for is drawn in a colour alone.
 export async function loadTreeLooks(kinds: TreeKindOf[], renderer: THREE.WebGLRenderer, quality: Quality): Promise<Record<string, TreeLooks>> {
   const loader = ktx2Loader(renderer);
   const out: Record<string, TreeLooks> = {};

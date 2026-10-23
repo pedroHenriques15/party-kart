@@ -380,11 +380,9 @@ npm run deploy   # publish to GitHub Pages (the gh-pages branch)
 
 Map data © OpenStreetMap contributors, under the Open Database Licence. The ground is from DGT's
 LiDAR (CC BY 4.0), and what it is and its colour from that LiDAR and DGT's 2025 orthophoto (CC BY
-4.0): informação geográfica cedida pela Direção-Geral do Território. The ground's photos (asphalt,
-paving, setts, grass, soil and gravel) are from Poly Haven, CC0. The deathmatch's models are CC0, by Pichuliru (the Flat Guns packs), Quaternius
+4.0): informação geográfica cedida pela Direção-Geral do Território. No photograph is drawn: the ground's and the trees' textures are made by
+braga-map, matched to photos used only as references. The deathmatch's models are CC0, by Pichuliru (the Flat Guns packs), Quaternius
 (the fighter, the bullpup, the cars) and Rafael (the Desert Eagle), and its sounds CC0 from Freesound:
 `src/fight/ASSETS.md` names each. The horizon beyond the map is from Terrain Tiles, on AWS
 Open Data. Europe terrain data produced using Copernicus data and information funded by the
-European Union - EU-DEM layers. The facades' photos are © Mapillary contributors, CC BY-SA 4.0,
-and so are the textures made from them: How to play names their authors, and braga-map's
-`world/textures/` gives each one's author and link.
+European Union - EU-DEM layers.

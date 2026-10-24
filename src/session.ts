@@ -6,6 +6,7 @@ import { GUNS, isGun, NADE_IDS, WEAPON_IDS, type Cause, type WeaponId } from './
 import type { CompAct, CompState } from './game/comp.ts';
 import { byKills, tally, type FightEv } from './game/fight.ts';
 import type { ItemEv } from './game/items.ts';
+import { MarkBook, MarkSender, type MarkMsg, type RoomMark } from './game/marks.ts';
 import { driverById, DRIVERS, repeatOf } from './render/drivers.ts';
 import { map } from 'braga-map';
 import { courseById, lapLimit, TRACKS } from './tracks.ts';
@@ -120,6 +121,8 @@ type ToHost =
   | { t: 'ev'; ev: GameEv }
   | { t: 'comp'; a: CompAct }
   | { t: 'honk' }
+  // The room's mark of yours put or taken away (braga-map's task 110); old builds ignore it.
+  | { t: 'mark'; at: MarkMsg['at'] }
   | { t: 'ping' };
 
 type ToClient =
@@ -131,6 +134,7 @@ type ToClient =
   | { t: 'ev'; ev: GameEv }
   | { t: 'comp'; s: CompState }
   | { t: 'honk'; id: string }
+  | { t: 'marks'; list: RoomMark[] }
   | { t: 'bye'; why: string };
 
 export const cleanName = (n: unknown): string =>
@@ -176,6 +180,11 @@ export interface Room {
   onEv: (ev: GameEv) => void;
   // A competitive match: the host's word on it, and what you did in it, to the host.
   onComp: (s: CompState) => void;
+  // The room's marks (braga-map's task 110), one a player, as the host has them; and yours put at a
+  // place, or taken away (null).
+  marks: RoomMark[];
+  onMarks: () => void;
+  sendMark(at: { x: number; z: number } | null): void;
   onClose: (why: string) => void;
   pick(driver: string): void;
   rename(name: string): void;
@@ -312,9 +321,13 @@ export class HostRoom implements Room {
   onComp: (s: CompState) => void = () => {};
   // What a player did in a competitive match, for the host's Match (main.ts).
   onCompAct: (from: string, a: CompAct) => void = () => {};
+  marks: RoomMark[] = [];
+  onMarks = () => {};
   onClose: (why: string) => void = () => {};
   private peer: Peer;
   private remotes = new Map<string, Remote>();
+  private book: MarkBook;
+  private marker = new MarkSender((m) => this.markFor(HOST_ID, m));
   private latest = new Map<string, Snap>();
   private goAt = 0;
   private endAt = 0;
@@ -322,8 +335,9 @@ export class HostRoom implements Room {
   private grid: Record<string, number> = {};
   private timers: ReturnType<typeof setInterval>[] = [];
 
-  private constructor(peer: Peer, name: string, driver: string) {
+  private constructor(peer: Peer, name: string, driver: string, inside: (x: number, z: number) => boolean) {
     this.peer = peer;
+    this.book = new MarkBook(inside);
     this.lobby = {
       code: peer.id.slice(PREFIX.length),
       track: TRACKS[0].course.id,
@@ -366,10 +380,11 @@ export class HostRoom implements Room {
     );
   }
 
-  static async create(name: string, driver: string): Promise<HostRoom> {
+  // `inside` says where the open world's area is, for the room's marks.
+  static async create(name: string, driver: string, inside: (x: number, z: number) => boolean): Promise<HostRoom> {
     for (let i = 0; ; i++) {
       try {
-        return new HostRoom(await openPeer(PREFIX + makeCode()), name, driver);
+        return new HostRoom(await openPeer(PREFIX + makeCode()), name, driver, inside);
       } catch (e) {
         if (errType(e) !== 'unavailable-id' || i >= 3) throw e;
       }
@@ -434,6 +449,7 @@ export class HostRoom implements Room {
         this.send(c, { t: 'start', goIn: this.goAt - performance.now(), endIn: this.endAt - performance.now(), grid: this.grid });
       }
       this.send(c, { t: 'board', list: this.board });
+      this.send(c, { t: 'marks', list: this.marks });
     } else if (!r) {
       return;
     } else if (m.t === 'pick') {
@@ -461,7 +477,21 @@ export class HostRoom implements Room {
       if (a && this.lobby.racing) this.onCompAct(c.peer, a);
     } else if (m.t === 'honk') {
       this.honkFor(c.peer);
+    } else if (m.t === 'mark') {
+      this.markFor(c.peer, m);
     }
+  }
+
+  // A room's mark put or taken away, round the city only: the book checks it.
+  private markFor(id: string, m: unknown): void {
+    const name = this.lobby.members.find((x) => x.id === id)?.name ?? 'Piloto';
+    if (!this.lobby.racing && this.book.take(id, name, m, performance.now())) this.marksChanged();
+  }
+
+  private marksChanged(): void {
+    this.marks = this.book.list();
+    this.broadcast({ t: 'marks', list: this.marks });
+    this.onMarks();
   }
 
   private drop(id: string): void {
@@ -472,6 +502,7 @@ export class HostRoom implements Room {
     this.cars.delete(id);
     this.board = this.board.filter((e) => e.id !== id);
     this.changed();
+    if (this.book.drop(id)) this.marksChanged();
   }
 
   private entry(id: string): Entry {
@@ -539,6 +570,7 @@ export class HostRoom implements Room {
     m.name = cleanName(name);
     this.entry(id);
     this.changed();
+    if (this.book.rename(id, m.name)) this.marksChanged();
   }
 
   private lapFor(id: string, ms: number): void {
@@ -683,10 +715,15 @@ export class HostRoom implements Room {
     this.honkFor(HOST_ID);
   }
 
+  sendMark(at: { x: number; z: number } | null): void {
+    this.marker.push({ at });
+  }
+
   // The bye tells everyone the room closed, rather than their connection failing, and goes out
   // before the peer closes, as a full room's does.
   leave(): void {
     this.timers.forEach(clearInterval);
+    this.marker.stop();
     this.broadcast({ t: 'bye', why: 'O anfitrião fechou a sala.' });
     this.remotes.clear();
     setTimeout(() => this.peer.destroy(), 500);
@@ -706,9 +743,12 @@ export class ClientRoom implements Room {
   onBoard = () => {};
   onEv: (ev: GameEv) => void = () => {};
   onComp: (s: CompState) => void = () => {};
+  marks: RoomMark[] = [];
+  onMarks = () => {};
   onClose: (why: string) => void = () => {};
   private peer: Peer;
   private conn: DataConnection;
+  private marker = new MarkSender((m) => this.send({ t: 'mark', at: m.at }));
   private pinger: ReturnType<typeof setInterval>;
   private closed = false;
   private lastPos = 0;
@@ -786,6 +826,10 @@ export class ClientRoom implements Room {
       case 'honk':
         if (m.id !== this.you) this.onHonk(m.id);
         break;
+      case 'marks':
+        this.marks = Array.isArray(m.list) ? m.list : [];
+        this.onMarks();
+        break;
       case 'bye':
         this.close(m.why);
         break;
@@ -827,6 +871,10 @@ export class ClientRoom implements Room {
     this.send({ t: 'honk' });
   }
 
+  sendMark(at: { x: number; z: number } | null): void {
+    this.marker.push({ at });
+  }
+
   leave(): void {
     this.close('');
   }
@@ -835,6 +883,7 @@ export class ClientRoom implements Room {
     if (this.closed) return;
     this.closed = true;
     clearInterval(this.pinger);
+    this.marker.stop();
     this.peer.destroy();
     this.onClose(why);
   }

@@ -232,6 +232,25 @@ export interface Dot {
   x: number;
   z: number;
   color: string;
+  // Someone in the room (task 110): who, for a click on the full map and for the GPS following them.
+  id?: string;
+  name?: string;
+}
+
+// The room on the maps round the city (task 110): the friends where they are, and the room's marks,
+// each with the colour of who put it, and whether it's yours.
+export interface RoomMarkView {
+  id: string;
+  name: string;
+  color: string;
+  x: number;
+  z: number;
+  mine: boolean;
+}
+
+export interface RoomView {
+  friends: (Dot & { id: string; name: string })[];
+  marks: RoomMarkView[];
 }
 
 // The minimap shows this far round you, and is this wide on the screen (the stylesheet can make it
@@ -405,7 +424,7 @@ export class RoamHud {
 
   // The streets round you, turned so the way you face is up; the others as dots, at the rim when
   // they're further off than it shows.
-  minimap(me: { x: number; z: number; yaw: number }, others: Dot[], gps: Gps | null = null): void {
+  minimap(me: { x: number; z: number; yaw: number }, others: Dot[], gps: Gps | null = null, marks: RoomMarkView[] = []): void {
     const g = this.map.getContext('2d')!;
     const R = SIZE;
     const k = R / RANGE; // pixels a metre
@@ -497,6 +516,13 @@ export class RoamHud {
       }
       return { x: R + sx, y: R + sy, far: d > rim };
     };
+    // The room's marks (task 110), each a flag in the colour of who put it, with their name.
+    g.font = '700 19px system-ui, sans-serif';
+    for (const m of marks) {
+      const p = onScreen(m.x, m.z, R - 30);
+      flag(g, p.x, p.y + 10, m.color, 1.15);
+      if (!p.far) tag(g, m.name, p.x + 14, p.y - 12, 'left');
+    }
     for (const o of others) {
       const p = onScreen(o.x, o.z, R - 12);
       g.beginPath();
@@ -506,8 +532,9 @@ export class RoamHud {
       g.lineWidth = 3;
       g.strokeStyle = p.far ? '#ffffff' : '#111111';
       g.stroke();
+      if (o.id && o.id === gps?.follow) ring(g, p.x, p.y, 15, 4);
     }
-    if (gps?.mark) {
+    if (gps?.mark && !gps.follow) {
       const m = onScreen(gps.mark.x, gps.mark.z, R - 26);
       pin(g, m.x, m.y + 9, 0.9);
     }
@@ -561,6 +588,8 @@ export interface MapOpening {
 export interface Gps {
   route: [number, number][] | null;
   mark: { x: number; z: number } | null;
+  // Following a friend (task 110): their id, a ring round them in place of the pin.
+  follow?: string | null;
 }
 
 // The waypoint: a pin, its point at (x, y).
@@ -601,6 +630,59 @@ function trace(g: CanvasRenderingContext2D, pts: [number, number][], to: (x: num
   g.lineWidth = w;
   g.strokeStyle = '#3da5ff';
   g.stroke();
+}
+
+// A room's mark (task 110): a flag in the colour of who put it, its pole's foot at (x, y).
+function flag(g: CanvasRenderingContext2D, x: number, y: number, color: string, s = 1): void {
+  g.save();
+  g.translate(x, y);
+  g.scale(s, s);
+  g.lineJoin = 'round';
+  g.beginPath();
+  g.moveTo(0, 0);
+  g.lineTo(0, -22);
+  g.lineTo(13, -17);
+  g.lineTo(0, -12);
+  g.lineWidth = 5;
+  g.strokeStyle = 'rgba(8,10,16,0.85)';
+  g.stroke();
+  g.beginPath();
+  g.moveTo(0, -22);
+  g.lineTo(13, -17);
+  g.lineTo(0, -12);
+  g.closePath();
+  g.fillStyle = color;
+  g.fill();
+  g.lineWidth = 1.5;
+  g.strokeStyle = '#ffffff';
+  g.stroke();
+  g.beginPath();
+  g.moveTo(0, 0);
+  g.lineTo(0, -22);
+  g.lineWidth = 2;
+  g.stroke();
+  g.restore();
+}
+
+// The GPS following someone (task 110): a ring round them, blue as the route.
+function ring(g: CanvasRenderingContext2D, x: number, y: number, r: number, w: number): void {
+  g.beginPath();
+  g.arc(x, y, r, 0, Math.PI * 2);
+  g.lineWidth = w;
+  g.strokeStyle = '#3da5ff';
+  g.stroke();
+}
+
+// A name on a map, white on a dark edge, in the font already set.
+function tag(g: CanvasRenderingContext2D, text: string, x: number, y: number, align: CanvasTextAlign = 'center'): void {
+  g.textAlign = align;
+  g.textBaseline = 'middle';
+  g.lineJoin = 'round';
+  g.lineWidth = 3.5;
+  g.strokeStyle = 'rgba(8,10,16,0.9)';
+  g.strokeText(text, x, y);
+  g.fillStyle = '#ffffff';
+  g.fillText(text, x, y);
 }
 
 // Round you, it opens with this many metres across the screen's shorter side.
@@ -646,6 +728,13 @@ export class FullMap {
   // The search (task 109): the places whose names match what's typed, nearest first; and one picked.
   search = (_q: string): Found[] => [];
   onFound = (_f: Found) => {};
+  // The room (task 110): a friend clicked (on the map or in the list beside it), for the GPS to follow;
+  // a room's mark clicked, for the waypoint; and yours put for everyone at a place, or taken away
+  // (null), where you're in a room round the city.
+  onFriend = (_id: string) => {};
+  onRoomMark = (_m: RoomMarkView) => {};
+  onShare = (_at: { x: number; z: number } | null) => {};
+  shareable = () => false;
   private canvas: HTMLCanvasElement;
   private base = document.createElement('canvas');
   private title: HTMLElement;
@@ -673,6 +762,12 @@ export class FullMap {
   private find: HTMLInputElement;
   private found: HTMLElement;
   private mark: { x: number; z: number } | null = null;
+  // The room's list beside the map, what it shows (to make it again only when that changes), and
+  // where the friends and the room's marks were drawn last, for a click on them.
+  private room: HTMLElement;
+  private roomKey = '';
+  private roomView: RoomView | null = null;
+  private hits: { x: number; y: number; act: () => void }[] = [];
 
   constructor(m: FullMapData) {
     this.arenas = m.arenas;
@@ -732,7 +827,8 @@ export class FullMap {
         if (first) this.pickFound(first);
       }
     });
-    this.el = h('div', 'fullmap', this.canvas, h('div', 'fm-head', this.title, this.box, h('div', 'fm-hint', this.keyHint, this.touchHint), here, close), this.pop);
+    this.room = h('div', 'fm-room');
+    this.el = h('div', 'fullmap', this.canvas, h('div', 'fm-head', this.title, this.box, h('div', 'fm-hint', this.keyHint, this.touchHint), here, close), this.room, this.pop);
 
     // A drag pans; two fingers zoom about their middle and take it with them; the wheel zooms about
     // the pointer. A click that doesn't drag it puts the waypoint, or takes it away; a right click, or a
@@ -750,7 +846,7 @@ export class FullMap {
       this.press = this.fingers.size ? null : { id: e.pointerId, x: e.clientX, y: e.clientY };
       this.fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       c.classList.add('dragging');
-      if (this.press && e.pointerType !== 'mouse' && this.o?.go) {
+      if (this.press && e.pointerType !== 'mouse' && this.o?.pick) {
         this.holding = window.setTimeout(() => {
           const p = this.press;
           this.press = null;
@@ -760,13 +856,21 @@ export class FullMap {
     });
     c.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      if (this.o?.go) this.popAt(e.clientX, e.clientY);
+      if (this.o?.pick) this.popAt(e.clientX, e.clientY);
     });
     c.addEventListener('pointerup', (e) => {
       clearTimeout(this.holding);
       const p = this.press;
       this.press = null;
       if (!p || p.id !== e.pointerId || !this.o?.pick || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      // On a friend or a room's mark, the nearest within reach (a finger's is wider).
+      const reach = e.pointerType === 'mouse' ? 14 : 24;
+      let near: { d: number; act: () => void } | null = null;
+      for (const t of this.hits) {
+        const d = Math.hypot(e.clientX - t.x, e.clientY - t.y);
+        if (d < reach && (!near || d < near.d)) near = { d, act: t.act };
+      }
+      if (near) return near.act();
       const [W, H] = this.size();
       const m = this.mark;
       if (m) {
@@ -822,9 +926,16 @@ export class FullMap {
     this.o = o;
     this.me = { x: o.at.x, z: o.at.z };
     this.title.textContent = o.title;
-    this.keyHint.textContent = `Roda do rato aproxima e afasta · arrasta para mexer${o.pick ? ' · clica para pôr um destino' : ''}${o.go ? ' · botão direito: ir para aqui' : ''} · ${o.key ? `${o.key} ou ` : ''}Esc fecha`;
-    this.touchHint.textContent = `Dois dedos aproximam e afastam · arrasta para mexer${o.pick ? ' · toca para pôr um destino' : ''}${o.go ? ' · mantém o dedo para ir para lá' : ''} · ✕ fecha`;
+    const share = o.pick && this.shareable();
+    const right = [o.go && 'ir para aqui', share && 'marcar para todos'].filter(Boolean).join(' ou ');
+    this.keyHint.textContent = `Roda do rato aproxima e afasta · arrasta para mexer${o.pick ? ' · clica para pôr um destino' : ''}${right ? ` · botão direito: ${right}` : ''} · ${o.key ? `${o.key} ou ` : ''}Esc fecha`;
+    this.touchHint.textContent = `Dois dedos aproximam e afastam · arrasta para mexer${o.pick ? ' · toca para pôr um destino' : ''}${right ? ` · mantém o dedo para ${right.replace('ir para aqui', 'ir para lá')}` : ''} · ✕ fecha`;
     this.hidePop();
+    this.roomKey = '';
+    this.roomView = null;
+    this.hits = [];
+    this.room.replaceChildren();
+    this.room.classList.remove('on');
     // The search round the city only, where the waypoint is.
     this.box.style.display = o.pick ? '' : 'none';
     this.find.value = '';
@@ -860,9 +971,14 @@ export class FullMap {
       });
       return b;
     };
+    const inside = this.goable(x, z);
+    const mine = this.roomView?.marks.some((m) => m.mine);
+    const share = this.shareable();
     this.pop.replaceChildren(
-      this.goable(x, z) ? button('🚀 Ir para aqui', () => this.onGo({ x, z })) : h('span', 'out', 'Fora da zona'),
+      ...(!inside ? [h('span', 'out', 'Fora da zona')] : this.o?.go ? [button('🚀 Ir para aqui', () => this.onGo({ x, z }))] : []),
       ...(this.o?.pick ? [button('📍 Pôr o destino aqui', () => this.onPick({ x, z }))] : []),
+      ...(share && inside ? [button('🚩 Marcar para todos', () => this.onShare({ x, z }))] : []),
+      ...(share && mine ? [button('✕ Tirar a minha marca', () => this.onShare(null))] : []),
     );
     this.pop.style.left = `${Math.min(W - 210, Math.max(8, sx))}px`;
     this.pop.style.top = `${Math.min(H - 110, Math.max(64, sy))}px`;
@@ -900,6 +1016,50 @@ export class FullMap {
     if (document.activeElement === this.find) this.find.blur();
   }
 
+  // The room beside the map (task 110): the friends, nearest first, each a button for the GPS to
+  // follow them (again to stop); the room's marks, each for the waypoint, yours to take away. Made
+  // again only when what it says changes.
+  private listRoom(me: { x: number; z: number }, follow: string | null): void {
+    const r = this.roomView;
+    const far = (p: { x: number; z: number }) => Math.hypot(p.x - me.x, p.z - me.z);
+    const friends = (r?.friends ?? []).map((f) => ({ f, d: howFar(far(f)) })).sort((a, b) => far(a.f) - far(b.f));
+    const marks = (r?.marks ?? []).map((m) => ({ m, d: howFar(far(m)) }));
+    const share = !!r && this.shareable();
+    const key = `${share}|${follow}|${friends.map(({ f, d }) => `${f.id}:${f.name}:${f.color}:${d}`).join(',')}|${marks.map(({ m, d }) => `${m.id}:${m.name}:${m.color}:${m.mine}:${d}`).join(',')}`;
+    if (key === this.roomKey) return;
+    this.roomKey = key;
+    const on = !!r && (friends.length > 0 || marks.length > 0 || share);
+    this.room.classList.toggle('on', on);
+    if (!on) return this.room.replaceChildren();
+    const swatch = (color: string) => {
+      const s = h('span', 'sw');
+      s.style.background = color;
+      return s;
+    };
+    const row = (cls: string, kids: (HTMLElement | string)[], act: () => void, title: string) => {
+      const b = h('button', cls, ...kids);
+      b.title = title;
+      b.addEventListener('click', act);
+      return b;
+    };
+    this.room.replaceChildren(
+      h('div', 'fr-head', '👥 Na sala'),
+      ...friends.map(({ f, d }) =>
+        row(follow === f.id ? 'on' : '', [swatch(f.color), h('span', 'fn', f.name), h('small', '', follow === f.id ? `🧭 ${d}` : d)], () => this.onFriend(f.id), follow === f.id ? `Deixar de seguir ${f.name}` : `O GPS leva-te até ${f.name}`),
+      ),
+      ...(friends.length ? [] : [h('div', 'none', 'Ainda não há mais ninguém na sala')]),
+      ...marks.map(({ m, d }) =>
+        h(
+          'div',
+          'fr-mark',
+          row('', [h('span', 'fk', '🚩'), h('span', 'fn', m.mine ? 'A tua marca' : `Marca de ${m.name}`), h('small', '', d)], () => this.onRoomMark(m), 'Pôr o destino nesta marca'),
+          ...(m.mine ? [row('ghost small fr-off', ['✕'], () => this.onShare(null), 'Tirar a minha marca')] : []),
+        ),
+      ),
+      ...(share && !marks.some(({ m }) => m.mine) ? [h('div', 'none', h('span', 'keys-only', 'Botão direito no mapa: marcar para todos'), h('span', 'touch-only', 'Mantém o dedo no mapa para marcar para todos'))] : []),
+    );
+  }
+
   private hidePop(): void {
     this.pop.classList.remove('on');
   }
@@ -917,10 +1077,12 @@ export class FullMap {
   // dragged or zoomed, the last painting moved with it, and painted afresh once it's still: a painting
   // takes several milliseconds), the GPS's route and waypoint, and you and the others on it every frame,
   // at its edge when they're off it.
-  draw(me: { x: number; z: number; yaw: number }, others: Dot[], gps: Gps | null = null): void {
+  draw(me: { x: number; z: number; yaw: number }, others: Dot[], gps: Gps | null = null, room: RoomView | null = null): void {
     if (!this.o) return;
     this.me = { x: me.x, z: me.z };
-    this.mark = gps?.mark ?? null;
+    this.mark = gps?.follow ? null : (gps?.mark ?? null);
+    this.roomView = this.o.pick ? room : null;
+    this.listRoom(me, gps?.follow ?? null);
     const [W, H] = this.size();
     const r = Math.min(2, devicePixelRatio || 1);
     const c = this.canvas;
@@ -951,9 +1113,19 @@ export class FullMap {
       return { x: px, y: py, off: px !== sx || py !== sy };
     };
     if (gps?.route && gps.route.length > 1) trace(g, gps.route, (x, z) => toScreen(v, W, H, x, z), 5);
-    if (gps?.mark) {
-      const m = onScreen(gps.mark.x, gps.mark.z, 22);
+    if (this.mark) {
+      const m = onScreen(this.mark.x, this.mark.z, 22);
       pin(g, m.x, m.y + (m.off ? 12 : 0));
+    }
+    // The room's marks with the names of who put them, and the others, their names beside them; a
+    // click on one is theirs.
+    this.hits = [];
+    g.font = NAME_FONT;
+    for (const m of this.roomView?.marks ?? []) {
+      const p = onScreen(m.x, m.z, 26);
+      flag(g, p.x, p.y + (p.off ? 12 : 0), m.color);
+      tag(g, m.mine ? 'A tua marca' : m.name, p.x + 16, p.y - 17 + (p.off ? 12 : 0), 'left');
+      this.hits.push({ x: p.x + 4, y: p.y - 10 + (p.off ? 12 : 0), act: () => this.onRoomMark(m) });
     }
     for (const o of others) {
       const p = onScreen(o.x, o.z, 14);
@@ -964,6 +1136,10 @@ export class FullMap {
       g.lineWidth = 2;
       g.strokeStyle = p.off ? '#ffffff' : '#111111';
       g.stroke();
+      if (o.id && o.id === gps?.follow) ring(g, p.x, p.y, 12, 3);
+      if (o.name && this.o.pick) tag(g, o.name, p.x + 11, p.y, 'left');
+      const id = o.id;
+      if (id && this.o.pick) this.hits.push({ x: p.x, y: p.y, act: () => this.onFriend(id) });
     }
     // You, pointing the way you face, in a halo to find at a glance.
     const p = onScreen(me.x, me.z, 18);

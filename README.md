@@ -53,6 +53,15 @@ kart left where it was; flying, the camera, as high over the ground as it was. O
 menu says **Fora da zona**. The others see you go from one place to the other, with no trail across
 the city. Never in a race or a round.
 
+**Meeting the others**: in a room, round the city, the full map shows your friends where they are,
+in their karts or on foot, with their names, and a list of them at its bottom left. A click on one
+(on the map or in the list) and the GPS takes you to them, following them as they go (the route is
+worked out again every few seconds, and at once when they've gone 50 m), till you're there; them
+again, it stops. **🚩 Marcar para todos**, in the right click's menu (a long press), puts a mark
+everyone in the room sees on their maps and minimaps, a flag in your colour with your name; a click
+on it makes it their waypoint. One each: a new one takes the place of yours, **✕ Tirar a minha
+marca** takes it away, and it goes when you leave the room. Not in a race or a round.
+
 **Esc**, or **☰ Menu** at the top, opens the menu over the world, which goes on behind it: your name
 and driver, the graphics, the help, and
 
@@ -215,7 +224,7 @@ the left half, and pulls up when you lift it; in a race it goes by itself.
 | Derrapar | Hold it through a corner, as with Space |
 | Travar | Slows you down, and reverses once you've stopped |
 | Item | In a race: tap to use what it shows; swipe it down to throw backwards |
-| The minimap | Opens the full map: drag it to move it, two fingers to zoom, a tap to put the GPS's waypoint (on it, to take it away), a long press for **Ir para aqui**, ✕ to close it (with the minimap hidden in the settings, 🗺️ at the top opens it) |
+| The minimap | Opens the full map: drag it to move it, two fingers to zoom, a tap to put the GPS's waypoint (on it, to take it away; on a friend, to follow them), a long press for **Ir para aqui** and **Marcar para todos**, ✕ to close it (with the minimap hidden in the settings, 🗺️ at the top opens it) |
 | ☰ · ↺ · Voar · 🚶 A pé · 📢 · 🎥 · 🔊 (at the top) | The menu · back on the street (in a race, to your last checkpoint) · fly the camera · get out and walk · horn · camera · sound |
 
 Flying, the left half of the screen is a stick where your thumb lands, forward, back and sideways; a

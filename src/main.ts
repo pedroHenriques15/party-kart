@@ -17,10 +17,11 @@ import { along, blast, blinding, burning, CLOUD, douse, FIRE, fly as flyNade, in
 import { Flyer, landing, type Bound, type FlyInput } from './game/flyer.ts';
 import { SKILLS, Squad, type FootBot, type Mark } from './game/footbot.ts';
 import { ITEMS } from './game/items.ts';
+import { whereIs } from './game/marks.ts';
 import { NO_CONTROLS, Racer, type Controls, type Note } from './game/racer.ts';
 import { Roamer } from './game/roamer.ts';
 import { alight, EYE, FALL, STAND, type WalkInput, Walker } from './game/walker.ts';
-import { FightHud, fmt, fmtDiff, FullMap, guideOf, Hud, ordinal, RoamHud, SIDES, TEAMS, type CompView as CompHud, type Dot, type Gps, type ScoreRow, type Shop } from './hud.ts';
+import { FightHud, fmt, fmtDiff, FullMap, guideOf, Hud, ordinal, RoamHud, SIDES, TEAMS, type CompView as CompHud, type Dot, type Gps, type RoomView, type ScoreRow, type Shop } from './hud.ts';
 import { Keyboard, Mouse, TouchPad } from './input.ts';
 import { loadPrefs, savePrefs, type Prefs } from './prefs.ts';
 import { capturing, settingsScreen } from './settingsScreen.ts';
@@ -683,8 +684,8 @@ function howTo(): HTMLElement {
       h('li', { class: 'touch-only' }, h('b', {}, 'Itens, na corrida:'), ' passa pelas caixas ? e toca no botão do item (arrasta-o para baixo para atirar para trás). Quanto mais atrás fores, melhor o que te sai.'),
       h('li', {}, h('b', {}, 'Cone de aspiração:'), ' cola-te atrás de um carro e ele puxa-te, com mais força quanto mais perto; sai para ultrapassar e a velocidade a mais vai-se em poucos segundos.'),
       h('li', { class: 'keys-only' }, k('drive', 'respawn'), ' volta à rua (na corrida, ao último ponto de controlo). ', k('drive', 'horn'), ' buzina · ', k('drive', 'camera'), ' câmara · ', k('drive', 'mute'), ' som · ', h('b', {}, 'Esc'), ' menu.'),
-      h('li', { class: 'keys-only' }, h('b', {}, 'Mapa:'), ' ', k('drive', 'map'), ' abre o mapa de Braga inteiro, a conduzir, a voar, a pé, na corrida (a pista toda) e no tiroteio (a arena, só com a tua equipa): a roda do rato aproxima e afasta, arrastar mexe-o, e com o zoom aparecem os nomes das ruas. O jogo continua por baixo, com o teu kart parado. ', k('drive', 'map'), ' ou ', h('b', {}, 'Esc'), ' fecha-o. Pela cidade, um clique no mapa põe lá um destino, e outro em cima dele tira-o: o GPS leva-te pelas ruas, pelas regras do código, com o caminho a azul nos mapas, setas na estrada e a próxima viragem lá em cima. O botão direito no mapa abre «Ir para aqui»: o teu kart vai para a rua mais perto desse sítio. Na caixa lá em cima procuras uma rua, um sítio ou uma paragem pelo nome, com acentos ou sem eles: o que escolheres fica o destino.'),
-      h('li', { class: 'touch-only' }, h('b', {}, 'Mapa:'), ' toca no minimapa (ou em 🗺️ lá em cima, se o esconderes) para abrires o mapa de Braga inteiro (na corrida, a pista toda; no tiroteio, a arena, só com a tua equipa): dois dedos aproximam e afastam, arrastar mexe-o, e com o zoom aparecem os nomes das ruas. O jogo continua por baixo, com o teu kart parado. O ✕ fecha-o. Pela cidade, toca no mapa para pores lá um destino, e em cima dele para o tirares: o GPS leva-te pelas ruas, pelas regras do código, com o caminho a azul nos mapas, setas na estrada e a próxima viragem lá em cima. Mantém o dedo no mapa para «Ir para aqui»: o teu kart vai para a rua mais perto desse sítio. Na caixa lá em cima procuras uma rua, um sítio ou uma paragem pelo nome: o que escolheres fica o destino.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Mapa:'), ' ', k('drive', 'map'), ' abre o mapa de Braga inteiro, a conduzir, a voar, a pé, na corrida (a pista toda) e no tiroteio (a arena, só com a tua equipa): a roda do rato aproxima e afasta, arrastar mexe-o, e com o zoom aparecem os nomes das ruas. O jogo continua por baixo, com o teu kart parado. ', k('drive', 'map'), ' ou ', h('b', {}, 'Esc'), ' fecha-o. Pela cidade, um clique no mapa põe lá um destino, e outro em cima dele tira-o: o GPS leva-te pelas ruas, pelas regras do código, com o caminho a azul nos mapas, setas na estrada e a próxima viragem lá em cima. O botão direito no mapa abre «Ir para aqui»: o teu kart vai para a rua mais perto desse sítio. Na caixa lá em cima procuras uma rua, um sítio ou uma paragem pelo nome, com acentos ou sem eles: o que escolheres fica o destino. Numa sala, clica em alguém (no mapa ou na lista em baixo) e o GPS leva-te até essa pessoa, por onde ela for; e o botão direito tem «Marcar para todos», uma marca que todos na sala veem.'),
+      h('li', { class: 'touch-only' }, h('b', {}, 'Mapa:'), ' toca no minimapa (ou em 🗺️ lá em cima, se o esconderes) para abrires o mapa de Braga inteiro (na corrida, a pista toda; no tiroteio, a arena, só com a tua equipa): dois dedos aproximam e afastam, arrastar mexe-o, e com o zoom aparecem os nomes das ruas. O jogo continua por baixo, com o teu kart parado. O ✕ fecha-o. Pela cidade, toca no mapa para pores lá um destino, e em cima dele para o tirares: o GPS leva-te pelas ruas, pelas regras do código, com o caminho a azul nos mapas, setas na estrada e a próxima viragem lá em cima. Mantém o dedo no mapa para «Ir para aqui»: o teu kart vai para a rua mais perto desse sítio. Na caixa lá em cima procuras uma rua, um sítio ou uma paragem pelo nome: o que escolheres fica o destino. Numa sala, toca em alguém (no mapa ou na lista em baixo) e o GPS leva-te até essa pessoa, por onde ela for; e mantendo o dedo no mapa tens «Marcar para todos», uma marca que todos na sala veem.'),
       h('li', {}, h('b', {}, '⚙️ Definições:'), ' os gráficos (a resolução, o campo de visão), o som de cada coisa, a sensibilidade do rato, a mira, e as teclas de tudo, para conduzir, voar, andar a pé e no tiroteio: muda as que quiseres.'),
       h('li', { class: 'touch-only' }, h('b', {}, '↺'), ' volta à rua (na corrida, ao último ponto de controlo). O menu, a buzina, a câmara e o som estão lá em cima.'),
       h(
@@ -1060,7 +1061,7 @@ async function invite(): Promise<void> {
   busy = 'A abrir uma sala…';
   render();
   try {
-    enter(await HostRoom.create(myName(), myDriver()));
+    enter(await HostRoom.create(myName(), myDriver(), (x, z) => world.drive.d.inside.has(x, z)));
   } catch (e) {
     notice = `Não foi possível abrir uma sala (${(e as { type?: string }).type ?? 'erro'}). Tenta outra vez daqui a pouco.`;
   }
@@ -1160,6 +1161,16 @@ function wire(r: Room): void {
   r.onBoard = () => {};
   r.onEv = (ev) => (ev.k === 'shot' || ev.k === 'down' || ev.k === 'nade' ? onFightEv(ev) : race?.arena.apply(ev));
   r.onComp = (s) => onComp(s);
+  // The room's marks (braga-map's task 110): one put or moved by someone else is said in the feed.
+  const marked = new Map<string, { x: number; z: number }>();
+  r.onMarks = () => {
+    for (const m of r.marks) {
+      const was = marked.get(m.id);
+      if (m.id !== r.you && (!was || Math.hypot(was.x - m.x, was.z - m.z) > 5) && !r.lobby.racing) feed(`🚩 ${m.name} marcou um sítio para todos`, 'big');
+    }
+    marked.clear();
+    for (const m of r.marks) marked.set(m.id, { x: m.x, z: m.z });
+  };
   if (r instanceof HostRoom) r.onCompAct = (from, a) => fight?.comp?.match?.act(from, a, performance.now());
   r.onClose = (why) => {
     room = null;
@@ -1234,6 +1245,55 @@ fullMap.onFound = (f) => {
   feed(`📍 ${f.name}`);
 };
 
+// ---- Meeting the others (braga-map's task 110) ----
+
+// Round the city in a room: the friends where they are (on foot, their feet; in their karts, the
+// kart), and the room's marks, each in the colour of who put it. Not in a race or a round, as the
+// minimap keeps a round's foes off it.
+function roomView(): RoomView | null {
+  if (!room || inRound()) return null;
+  const now = performance.now();
+  const friends: RoomView['friends'] = [];
+  for (const m of room.lobby.members) {
+    if (m.bot || m.id === room.you) continue;
+    const at = whereIs(m.id, room.lobby.members, room.cars, now);
+    if (at) friends.push({ id: m.id, name: m.name, color: colorOf(m.id), ...at });
+  }
+  const marks = room.marks.map((m) => ({ ...m, color: colorOf(m.id), mine: m.id === room!.you }));
+  return { friends, marks };
+}
+
+// A friend clicked on the full map, or in the list beside it: the GPS takes you to them, following
+// them as they go; them again, it stops.
+fullMap.onFriend = (id) => {
+  if (mapFor !== 'roam' || !room) return;
+  if (gps.follow === id) {
+    setMark(null);
+    feed(`Deixaste de seguir ${nameOf(id)}`);
+    return;
+  }
+  const at = whereIs(id, room.lobby.members, room.cars, performance.now());
+  if (!at) return;
+  setMark(at);
+  gps.follow = id;
+  gps.name = nameOf(id);
+  gps.heard = performance.now();
+  feed(`🧭 A caminho de ${gps.name}`);
+};
+// A room's mark clicked: your waypoint there.
+fullMap.onRoomMark = (m) => {
+  if (mapFor !== 'roam') return;
+  setMark({ x: m.x, z: m.z });
+  feed(m.mine ? '📍 Destino na tua marca' : `📍 Destino na marca de ${m.name}`);
+};
+// Yours for everyone, or taken away: the host says who has which, and everyone's maps show it.
+fullMap.shareable = () => !!room && mapNow() === 'roam' && !room.lobby.racing;
+fullMap.onShare = (at) => {
+  if (!fullMap.shareable()) return;
+  room!.sendMark(at);
+  feed(at ? '🚩 Marcaste um sítio para todos na sala' : 'Tiraste a tua marca');
+};
+
 // ---- "Ir para aqui" (braga-map's task 108) ----
 
 // The room's lobby says a race or a round is on before this browser's has begun.
@@ -1282,15 +1342,21 @@ fullMap.onGo = (at) => {
 const router = new Router(world.drive.d.world.roads, world.drive.d.world.turns);
 const arrows = new GpsArrows();
 scene.add(arrows.mesh);
-const gps: { mark: { x: number; z: number } | null; route: Route | null; i: number; along: number; offFor: number; triedAt: number } = { mark: null, route: null, i: 0, along: 0, offFor: 0, triedAt: -Infinity };
+// Following a friend (braga-map's task 110), the waypoint is where they were when the route was last
+// worked out: again every few seconds as they move, at once when they've gone 50 m.
+const gps: { mark: { x: number; z: number } | null; route: Route | null; i: number; along: number; offFor: number; triedAt: number; follow: string | null; name: string; heard: number } = { mark: null, route: null, i: 0, along: 0, offFor: 0, triedAt: -Infinity, follow: null, name: '', heard: 0 };
 // Off the route this far (m) for 1.5 s, it's worked out again; this near the waypoint, you're there.
 const OFF_ROUTE = { car: 25, foot: 12 };
 const THERE = { car: 15, foot: 6 };
+const FOLLOW_EVERY = 4000;
+const FOLLOW_FAR = 50;
 
+// A waypoint of your own, or none: no longer following anyone.
 function setMark(at: { x: number; z: number } | null): void {
   gps.mark = at;
   gps.route = null;
   gps.triedAt = -Infinity;
+  gps.follow = null;
   if (!at) arrows.hide();
 }
 fullMap.onPick = (at) => {
@@ -1309,8 +1375,29 @@ function stepGps(r: RoamCtx, now: number, dt: number): Gps | null {
   }
   const travel: Travel = r.walk ? 'foot' : 'car';
   const p = r.walk?.p ?? r.me.car.p;
-  if (Math.hypot(p.x - gps.mark.x, p.z - gps.mark.z) < THERE[travel] || (gps.route && gps.route.travel === travel && gps.along > gps.route.length - THERE[travel] / 2)) {
-    feed('🏁 Chegaste ao destino', 'big');
+  // Following a friend: where they are now. Not heard of for a moment (a race's end clears everyone's
+  // positions), towards where they were; gone from the room, or not heard of for 5 s, the GPS stops.
+  let goal = gps.mark;
+  if (gps.follow) {
+    const at = room ? whereIs(gps.follow, room.lobby.members, room.cars, now) : null;
+    if (at) gps.heard = now;
+    else if (!room?.lobby.members.some((m) => m.id === gps.follow) || now - gps.heard > 5000) {
+      feed(room?.lobby.members.some((m) => m.id === gps.follow) ? `Já não se sabe onde está ${gps.name}` : `${gps.name} já não está na sala`);
+      setMark(null);
+      r.hud.guide(null);
+      return null;
+    }
+    goal = at ?? gps.mark;
+    const moved = Math.hypot(goal.x - gps.mark.x, goal.z - gps.mark.z);
+    if (moved > FOLLOW_FAR || (moved > THERE[travel] && now - gps.triedAt > FOLLOW_EVERY)) {
+      gps.mark = goal;
+      gps.route = null;
+      gps.triedAt = -Infinity;
+    }
+  }
+  // There: near the waypoint (the friend), or at the route's end while it still ends near them.
+  if (Math.hypot(p.x - goal.x, p.z - goal.z) < THERE[travel] || (gps.route && gps.route.travel === travel && gps.along > gps.route.length - THERE[travel] / 2 && Math.hypot(goal.x - gps.mark.x, goal.z - gps.mark.z) < 2 * THERE[travel])) {
+    feed(gps.follow ? `🏁 Chegaste ao pé de ${gps.name}` : '🏁 Chegaste ao destino', 'big');
     setMark(null);
     r.hud.guide(null);
     return null;
@@ -1331,13 +1418,14 @@ function stepGps(r: RoamCtx, now: number, dt: number): Gps | null {
   const route = gps.route;
   if (!route) {
     arrows.hide();
-    r.hud.guide({ icon: '⚠', dist: '', what: 'Não há caminho até lá', left: '' });
-    return { route: null, mark: gps.mark };
+    r.hud.guide({ icon: '⚠', dist: '', what: gps.follow ? `Não há caminho até ${gps.name}` : 'Não há caminho até lá', left: '' });
+    return { route: null, mark: gps.mark, follow: gps.follow };
   }
   const step = nextStep(route, gps.along);
-  r.hud.guide(guideOf(step, step ? step.at - gps.along : 0, route.length - gps.along));
+  const g = guideOf(step, step ? step.at - gps.along : 0, route.length - gps.along);
+  r.hud.guide(gps.follow && !step ? { ...g, what: `Segue até ${gps.name}` } : g);
   arrows.update(route, gps.along, p.y, (x, z, y) => world.drive.floor(x, z, y + 2).y);
-  return { route: [[p.x, p.z], ...route.pts.slice(gps.i + 1)], mark: gps.mark };
+  return { route: [[p.x, p.z], ...route.pts.slice(gps.i + 1)], mark: gps.mark, follow: gps.follow };
 }
 
 // Where free roam starts: where you last were, kept in this browser, if a car can still be there;
@@ -1616,14 +1704,16 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
   // Flying or on foot, round you, your kart a dot where it waits. In a round, nobody but you and your
   // team-mates who are up: neither map gives a foe away.
   const away = r.walk ? { x: r.walk.p.x, z: r.walk.p.z, yaw: r.walk.yaw } : r.fly ? { x: r.fly.p.x, z: r.fly.p.z, yaw: r.fly.yaw } : null;
-  const others: Dot[] = [...r.cars.values()].map((o) => ({ x: o.x, z: o.z, color: colorOf(o.id) }));
+  // The friends where they are, on foot as in their karts (braga-map's task 110), and the room's marks.
+  const view = roomView();
+  const others: Dot[] = [...(view?.friends ?? [])];
   if (away) others.push({ x: c.p.x, z: c.p.z, color: r.kart.model.driver.color });
   const fighters = () => [...standing.entries()].map(([id, a]) => ({ id, x: a.x, z: a.z, color: shade(id), fighting: a.fighting, down: !!a.downAt }));
   const dots = inRound() ? onTheMap(fighters(), { mate: (id) => mates(id, room?.you ?? '') }) : others;
   const here = away ?? { x: c.p.x, z: c.p.z, yaw: c.yaw };
   const way = stepGps(r, now, dt);
-  r.hud.minimap(here, dots, way);
-  fullMap.draw(here, dots, way);
+  r.hud.minimap(here, dots, way, view?.marks);
+  fullMap.draw(here, dots, way, view);
 
   if (now - r.kept > 3000) {
     r.kept = now;
@@ -3834,7 +3924,9 @@ function frame(now: number): void {
         mode: 'roam',
         map: fullMap.isOpen,
         muted: isMuted(),
-        gps: gps.mark ? { mark: gps.mark, route: gps.route ? { travel: gps.route.travel, length: Math.round(gps.route.length), along: Math.round(gps.along), steps: gps.route.steps.length, next: nextStep(gps.route, gps.along) } : null } : null,
+        gps: gps.mark ? { mark: gps.mark, follow: gps.follow, route: gps.route ? { travel: gps.route.travel, length: Math.round(gps.route.length), along: Math.round(gps.along), steps: gps.route.steps.length, next: nextStep(gps.route, gps.along) } : null } : null,
+        marks: room?.marks ?? [],
+        you: room?.you ?? null,
         fly: !!r.fly,
         walk: r.walk ? { x: r.walk.p.x, y: r.walk.p.y, z: r.walk.p.z, yaw: r.walk.yaw, pitch: r.walk.pitch, grounded: r.walk.grounded, speed: r.walk.speed() } : null,
         cam: { x: camera.position.x, y: camera.position.y, z: camera.position.z, yaw: Math.atan2(d.z, d.x), pitch: Math.asin(clamp(d.y, -1, 1)) },

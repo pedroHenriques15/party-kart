@@ -36,6 +36,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/game/matchbots.ts` | sim | `MatchBots`: the host's bots in a match: what each buys at a round's start, where each goes (the Terrorists to the round's site with the bomb, the Counter-Terrorists to the sites), and their planting, defusing and picking the bomb up |
 | `src/world/sight.ts` | sim | Line of sight: how far a ray goes before the world stops it (`sight`, `clear`), for a shot and a look |
 | `src/world/places.ts` | sim | Finding a place by its name (braga-map's task 109): the streets, landmarks, arenas and bus stops in the open world's area (`Places`), matched word by word without accents (`fold`), the nearest first, a street at its nearest point to you |
+| `src/game/marks.ts` | sim | The room's marks (braga-map's task 110): the host's `MarkBook` (one a player, inside the open world, under the sender's own id, one a second at most), a player's `MarkSender` (one every 1.2 s at most, the last asked for), and where a friend is for the GPS to follow (`whereIs`) |
 | `src/world/goto.ts` | sim | "Ir para aqui" (braga-map's task 108): when the full map offers it (round the city only, `mayGo`), and where a place puts your kart (`kartTo`: on the nearest carriageway inside the area, at the ground's level, facing along it) |
 | `src/world/route.ts` | sim | The GPS's routes (braga-map's task 107): the `Router` over the map's road graph, by car the right way down the one-way streets with no banned turn and no turning back but at a dead end, the quickest by each kind of street's speed, off the streets only where none reaches; on foot any way along the streets and the paths; each route's turns (`steps`: a roundabout as its exit), and where a point is along it (`onRoute`) |
 | `src/world/mapview.ts` | sim | The full map's sums (braga-map's task 106): its view (a centre and a scale), framing a place, zooming about a point and panning, kept over the map (`keep`); a point along a street, for its name; and who the maps show you (`onTheMap`: in a round, only your team-mates who are up) |
@@ -112,6 +113,13 @@ start; and goes back to it after a race, where you were before it.
 11. **Finding a place** (braga-map's task 109): the full map's search box asks `places.find` as you
    type (`fullMap.search`); one picked (`fullMap.onFound`) is the GPS's waypoint and the map goes to
    it. The box keeps its keys from the game's (its keydown goes no further), round the city only.
+12. **Meeting the others** (braga-map's task 110): in a room round the city, `roomView` puts the
+   friends where they are (their latest snapshot, `whereIs`) and the room's marks on both maps, and
+   the friends in a list beside the full map. A friend clicked (`fullMap.onFriend`) is followed: the
+   waypoint is where they were, worked out again every 4 s as they move and at once past 50 m, and
+   `stepGps` says when you're there or they've left. "Marcar para todos" (`fullMap.onShare`) sends
+   `mark` to the host, whose `MarkBook` checks it and sends everyone `marks`; a room's mark clicked
+   (`fullMap.onRoomMark`) is your waypoint. Not in a race or a round.
 
 The chase camera follows, or with a panel open the camera turns slowly round your kart (`orbit`),
 which stands on the right of the screen, clear of the menu. Flying, the camera is the flyer's
@@ -342,6 +350,7 @@ To the host (`ToHost` in `session.ts`):
 | `ev` | `ItemEv`, `FightEv` | Something I threw or that happened to me; in a round, a shot I fired or my going down. A shot or a grenade goes round the city too, out of a round (on foot, armed): seen and heard, hurting nobody |
 | `comp` | `CompAct` | In a match: a buy (its cost, numbered), the bomb planted or defused, a gun or the bomb dropped, one picked up |
 | `honk` | | |
+| `mark` | at | My mark for the room put at a place (`{x, z}`) or taken away (`null`), round the city. The host takes it only inside the open world, under the sender's own id (one naming someone else is dropped), at most one a second; clients send one every 1.2 s at most (braga-map's task 110) |
 | `ping` | | Every second. A client silent for 15 s is dropped |
 
 To the clients (`ToClient`):
@@ -356,6 +365,7 @@ To the clients (`ToClient`):
 | `ev` | `ItemEv`, `FightEv` | Someone else's event, relayed |
 | `comp` | `CompState` | A match as the host has it, whenever it changes and every second: the round, its phase and the time it has left, the score, everyone's money, who's up, the bomb, the guns on the ground and who took which |
 | `honk` | id | |
+| `marks` | `RoomMark[]` | The room's marks, one a player (id, name, x, z), whenever they change and to someone joining; a player's goes when they leave |
 | `bye` | why | You're out: the room is full, or the host has closed it |
 
 `start` gives times relative to when it was sent, so each browser's green light comes late by its
@@ -444,7 +454,7 @@ This is a game for friends, not a competitive one. A client can lie about its ow
 host does guard against is malformed or hostile input that could break other people's game.
 `cleanSnap` and `cleanEv` clamp every number, cut every string short, accept only the known kinds,
 and overwrite `owner`/`victim` with the sender's id, so nobody can throw things in someone else's
-name. On screen, names only ever go in as text (the `h()` helper in `main.ts`).
+name; the room's marks are `MarkBook`'s to check (`game/marks.ts`). On screen, names only ever go in as text (the `h()` helper in `main.ts`).
 
 Someone joining mid-race is put straight in at the back of the grid. When a race ends the host
 drops the bots' positions, and everyone the race's: round the city only the players are out. If the

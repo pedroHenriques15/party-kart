@@ -967,6 +967,86 @@ body.mapping .fullmap {
   flex: 1 1 100%;
 }
 
+/* The room beside the map (braga-map's task 110): the friends, for the GPS to follow, and the room's
+   marks; bottom left, over the scale. */
+.fm-room {
+  display: none;
+  position: absolute;
+  z-index: 1;
+  left: calc(16px + var(--sl));
+  bottom: calc(52px + var(--sb));
+  width: min(260px, calc(100vw - 32px));
+  max-height: 40vh;
+  overflow-y: auto;
+  touch-action: pan-y;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(20, 24, 33, 0.88);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  font-size: 14px;
+}
+
+.fm-room.on {
+  display: block;
+}
+
+.fm-room .fr-head {
+  padding: 2px 6px 6px;
+  font-weight: 800;
+}
+
+.fullmap .fm-room button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 14px;
+}
+
+.fullmap .fm-room button:hover,
+.fullmap .fm-room button:focus-visible,
+.fullmap .fm-room button.on {
+  background: rgba(61, 165, 255, 0.18);
+}
+
+.fm-room .sw {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+}
+
+.fm-room .fn {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fm-room small {
+  opacity: 0.75;
+}
+
+.fm-room .fr-mark {
+  display: flex;
+}
+
+.fullmap .fm-room .fr-off {
+  flex: none;
+  width: auto;
+}
+
+.fm-room .none {
+  padding: 4px 8px;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
 /* The menu a right click or a long press opens on the map (braga-map's task 108). */
 .fm-pop {
   position: absolute;

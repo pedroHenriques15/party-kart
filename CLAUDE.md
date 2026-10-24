@@ -223,8 +223,8 @@ How a race runs:
 - Build DOM with the `h()` helper in `main.ts`, which only ever sets text. Never use `innerHTML`:
   player names come from other people.
 - The host trusts nothing a client sends. `cleanSnap` and `cleanEv` in `session.ts` clamp every
-  number and overwrite `owner`/`victim` with the sender's id. Any new message or field needs the
-  same treatment.
+  number and overwrite `owner`/`victim` with the sender's id; the room's marks go through
+  `MarkBook` in `game/marks.ts`. Any new message or field needs the same treatment.
 - Style: comments are full sentences in plain English that say what a thing is for or why it is so,
   not what the next line does. Maths-heavy code uses short names (`c`, `s`, `r`, `a`, `P`, `N`). Use
   2 spaces, single quotes, semicolons and trailing commas. Long lines are fine, and no formatter is

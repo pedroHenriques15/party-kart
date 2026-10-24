@@ -49,6 +49,9 @@ const toSun = sunDir(when);
 export const SUN_DIR = new THREE.Vector3(toSun.x, toSun.y, toSun.z).normalize();
 // The street lamps are on once the sun is this low.
 export const LIT = SUN.el < 4;
+// The game's clock as the world's shaders read it (the trees' wind on Ultra, braga-map's task 089): the
+// seconds `render` was given, 0 for ?scenery's still city.
+export const clock = { value: 0 };
 // ?weather=grey: a grey Minho day, the sky overcast, the shadows faint and the streets wet; ?weather=rain,
 // the same in the rain.
 export const RAIN = q.get('weather') === 'rain';
@@ -277,6 +280,7 @@ export class Look {
   render(t = 0): void {
     this.sky.position.copy(this.camera.position);
     this.sky.material.uniforms.time.value = t;
+    clock.value = t;
     if (this.rain) {
       const u = (this.rain.material as THREE.ShaderMaterial).uniforms;
       u.time.value = t;

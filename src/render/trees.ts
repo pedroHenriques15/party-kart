@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RIVER_HALF_W } from '../track/layout.ts';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
-import { anisotropy, levelOf, type Graphics } from './look.ts';
+import { anisotropy, clock, levelOf, type Graphics } from './look.ts';
 import { ktx2Loader } from './ktx2.ts';
 import { LAKE, riverDistance } from './world.ts';
 
@@ -164,7 +164,8 @@ export function plantTrees(trees: Tree[], TILE = 300, plain: boolean | 'lean' = 
 // dithered. Its crown is where the map says its leaves are, over its trunk or off it, and no card of
 // leaves hangs below its foot (braga-map's task 063). Instanced: near, a crown and a trunk mesh a kind,
 // filled with the trees round the camera each time it has gone STEP metres; far, a mesh a kind holding
-// every tree, which draws none within the near ones' reach.
+// every tree, which draws none within the near ones' reach. On Ultra (braga-map's task 089) the near ones
+// sway in the wind, and those of the kinds that drop their leaves have their limbs drawn.
 
 export interface CityTree {
   kind: MapTreeKind;
@@ -260,6 +261,85 @@ function cardCrown(kind: MapTreeKind, n: number): THREE.BufferGeometry {
   return crownGeometry(pos, cen, nor, uv, idx);
 }
 
+// A deciduous crown's limbs over the unit crown: a few, each from its trunk's top (`aTrunkTop`, the tree's
+// own, as its trunk stands off its crown's middle and leans) out and up to a point well inside its
+// leaves (`aCentre`), a tube of a few lengths tapering to a twig; round it, `position.xy` the way out
+// from its middle line (the shader turns it to the limb's own way, which differs from tree to tree), and
+// how far along it, `aAlong`.
+const LIMB_SIDES = 6;
+function limbGeometry(kind: MapTreeKind): THREE.BufferGeometry {
+  const s = SHAPES[kind], rnd = seeded(29 + CITY_KINDS.indexOf(kind) * 53);
+  const pos: number[] = [], end: number[] = [], along: number[] = [], uv: number[] = [], idx: number[] = [];
+  const LIMBS = 4, SEG = 4;
+  for (let k = 0; k < LIMBS; k++) {
+    const th = (k / LIMBS) * Math.PI * 2 + rnd() * 1.2, y1 = 0.4 + rnd() * 0.25, r1 = 0.5 * s.outline(y1) * (0.3 + 0.25 * rnd());
+    const base = pos.length / 3;
+    for (let i = 0; i <= SEG; i++) {
+      for (let j = 0; j < LIMB_SIDES; j++) {
+        const a = (j / LIMB_SIDES) * Math.PI * 2;
+        pos.push(Math.cos(a), Math.sin(a), 0);
+        end.push(Math.cos(th) * r1, y1, Math.sin(th) * r1);
+        along.push(i / SEG);
+        uv.push(j / LIMB_SIDES, (i / SEG) * 3);
+      }
+      if (i)
+        for (let j = 0; j < LIMB_SIDES; j++) {
+          const a0 = base + (i - 1) * LIMB_SIDES + j, a1 = base + (i - 1) * LIMB_SIDES + ((j + 1) % LIMB_SIDES), b0 = a0 + LIMB_SIDES, b1 = a1 + LIMB_SIDES;
+          idx.push(a0, b0, a1, a1, b0, b1);
+        }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aCentre', new THREE.Float32BufferAttribute(end, 3));
+  g.setAttribute('aAlong', new THREE.Float32BufferAttribute(along, 1));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+
+// A limb's vertex, in the unit crown: along its line from its tree's trunk top to its end, bowed up a
+// little, round it at its radius in metres (k × the crown's width within [min, max], down to a fifth at
+// its end); and lit by the way out from its line, in metres.
+function limbVertex(sh: Shader, size: [number, number, number]): void {
+  sh.uniforms.cardSize = { value: new THREE.Vector3(...size) };
+  sh.uniforms.windTime = clock;
+  // Its shape in a function of its own, called for its normal and its place: a shadow's pass works out
+  // only the place.
+  sh.vertexShader = sh.vertexShader
+    .replace(
+      '#include <common>',
+      `#include <common>
+attribute vec3 aCentre;
+attribute float aAlong;
+attribute vec3 aTrunkTop;
+uniform vec3 cardSize;
+varying vec3 vTreeAt;
+${WIND}
+vec3 limbAt(out vec3 nrm) {
+  vec3 iS = max(vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz)), vec3(1e-3));
+  vec3 way = normalize((aCentre - aTrunkTop) * iS);
+  vec3 side = cross(way, vec3(0.0, 1.0, 0.0));
+  side = length(side) > 1e-3 ? normalize(side) : vec3(1.0, 0.0, 0.0);
+  vec3 outward = side * position.x + cross(way, side) * position.y;
+  nrm = outward * iS;
+  float cs = clamp(cardSize.x * iS.x, cardSize.y, cardSize.z) * (1.0 - 0.8 * aAlong);
+  return mix(aTrunkTop, aCentre, aAlong) + vec3(0.0, 0.12 * sin(3.1416 * aAlong), 0.0) + outward * cs / iS;
+}`,
+    )
+    .replace('#include <beginnormal_vertex>', 'vec3 objectNormal;\nlimbAt(objectNormal);')
+    .replace(
+      '#include <begin_vertex>',
+      `vec3 limbNormal;
+vec3 transformed = limbAt(limbNormal);
+vTreeAt = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+#ifdef TREE_WIND
+transformed += windPush(vTreeAt, max(0.0, transformed.y - aTrunkTop.y));
+#endif`,
+    );
+}
+
 // A palm's crown over the unit crown: fronds from its top's middle, rising and then arching down to its
 // edge, each a strip of quads along its stem, its texture from its foot (the card's bottom row) to its tip.
 function palmCrown(n: number): THREE.BufferGeometry {
@@ -306,13 +386,31 @@ const NEARNESS = 'clamp((treeNear.x - distance(cameraPosition.xz, vTreeAt.xz)) /
 
 type Shader = { uniforms: Record<string, THREE.IUniform>; vertexShader: string; fragmentShader: string };
 
+// The wind on Ultra (braga-map's task 089), where a material has TREE_WIND: how far a tree's top is
+// pushed, in metres, at a place and a moment. A breeze from the west-south-west, as the afternoon of the
+// photos had, in gusts that cross the city; each tree swaying on its own beat. Nothing at the clock's 0
+// (?scenery's still city) and all of it from 4 s on. A crown sways from its foot over a trunk that
+// stands still.
+const WIND = `uniform float windTime;
+vec2 windAt(vec2 xz, float t) {
+  float gust = 0.55 + 0.45 * sin(0.21 * t - dot(xz, vec2(0.011, 0.004)));
+  float beat = fract(sin(dot(floor(xz * 2.0), vec2(12.9898, 78.233))) * 43758.5453) * 6.2832;
+  float sway = sin(1.3 * t + beat - dot(xz, vec2(0.05, 0.02)));
+  return vec2(0.92, 0.38) * smoothstep(0.0, 4.0, t) * gust * (0.6 * gust + 0.4 * sway) * 0.3;
+}
+// A point of a tree's pushed, in its instance's own frame: by k, the share of its top's push there.
+#ifdef USE_INSTANCING
+vec3 windPush(vec3 at, float k) { vec2 w = windAt(at.xz, windTime); return inverse(mat3(instanceMatrix)) * vec3(w.x, 0.0, w.y) * k; }
+#endif`;
+
 // A near crown's vertex: each card scaled to its size in metres (k × the crown's width, within [min,
 // max]) round its middle, so a crown stretched to its height and width doesn't stretch its cards (a
 // palm's fronds, `fixed` 0, stretch with it); and where its tree stands, for the fade.
 function crownVertex(sh: Shader, card: [number, number, number], fixed: number): void {
   sh.uniforms.cardSize = { value: new THREE.Vector3(...card) };
   sh.uniforms.cardFixed = { value: fixed };
-  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 aCentre;\nuniform vec3 cardSize;\nuniform float cardFixed;\nvarying vec3 vTreeAt;').replace(
+  sh.uniforms.windTime = clock;
+  sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\nattribute vec3 aCentre;\nuniform vec3 cardSize;\nuniform float cardFixed;\nvarying vec3 vTreeAt;\n${WIND}`).replace(
     '#include <begin_vertex>',
     `vec3 transformed = aCentre + position;
 #ifdef USE_INSTANCING
@@ -322,6 +420,12 @@ function crownVertex(sh: Shader, card: [number, number, number], fixed: number):
   // No card hangs below the crown's foot: one whose lower edge would is lifted till it's there.
   transformed.y += cardFixed * max(0.0, abs(position.y) * cs - aCentre.y * iS.y) / iS.y;
   vTreeAt = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+#ifdef TREE_WIND
+  // The crown swaying from its foot, over a trunk that stands still (in its leaves there), the more
+  // the higher up; and each card fluttering on its own.
+  float flutter = 0.05 * sin(4.3 * windTime + dot(aCentre, vec3(17.0, 31.0, 23.0))) * smoothstep(0.0, 4.0, windTime);
+  transformed += windPush(vTreeAt, max(0.0, transformed.y)) + inverse(mat3(instanceMatrix)) * vec3(flutter, 0.5 * flutter, -flutter);
+#endif
 #else
   vTreeAt = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 #endif`,
@@ -381,12 +485,21 @@ const BAND = 25;
 const CELL_M = 50;
 // How far a trunk leans at most: the tangent of its angle from upright (25°).
 const LEAN = 0.47;
+// The kinds that drop their leaves (braga-map's map().treeKinds, decision 051), whose near crowns on Ultra
+// have their limbs drawn: the sky through such a crown shows its branches. test/trees.test.ts keeps it
+// the map's.
+export const DECIDUOUS: MapTreeKind[] = ['broadleaf', 'poplar', 'plane', 'lime', 'birch'];
+// A limb's radius at its foot: this share of its crown's width, within [min, max] metres; and how far
+// from the camera they're drawn (past it a limb in a crown is a pixel or less).
+const LIMB: [number, number, number] = [0.012, 0.05, 0.14];
+const LIMB_REACH = 150;
 
 export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, graphics: Graphics, renderer: THREE.WebGLRenderer): THREE.Group {
   const group = new THREE.Group();
   const quality = levelOf(graphics);
   const R = NEAR[graphics];
   const near = { value: new THREE.Vector2(R, BAND) };
+  const ultra = graphics === 'ultra';
   const cardsOf = (k: MapTreeKind) => Math.round(SHAPES[k].cards * (quality === 'high' ? 1 : quality === 'medium' ? 0.67 : 0.5));
   const sides = quality === 'high' ? 7 : quality === 'medium' ? 5 : 4;
   const trunkGeo = new THREE.CylinderGeometry(0.42, 0.5, 1, sides, 1, true).translate(0, 0.5, 0);
@@ -396,6 +509,8 @@ export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, g
   // Each tree's crown, trunk and billboard matrices and its tint, once: a tree's colour varies a little
   // from its kind's, by where it stands.
   const n = trees.length, crownM = new Float32Array(n * 16), trunkM = new Float32Array(n * 16), farM = new Float32Array(n * 16), tint = new Float32Array(n * 3);
+  // And where its trunk's top is in its crown's units, where its limbs start (on Ultra).
+  const trunkTop = new Float32Array(n * 3), top = new THREE.Vector3();
   const shear = new THREE.Matrix4();
   trees.forEach((t, i) => {
     const r = seeded(1 + Math.abs((Math.floor(t.x * 7.3) * 73856093) ^ (Math.floor(t.z * 3.7) * 19349663)));
@@ -408,6 +523,8 @@ export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, g
     const dx = t.cx - t.x, dz = t.cz - t.z, d = Math.hypot(dx, dz), k = d > 0 ? Math.min(Math.max(0, d - t.crown / 4), th * LEAN) / d : 0;
     shear.set(1, (dx * k) / th, 0, 0, 0, 1, 0, 0, 0, (dz * k) / th, 1, 0, 0, 0, 0, 1);
     m.compose(new THREE.Vector3(), q, new THREE.Vector3(t.trunk * 1.1, th, t.trunk * 1.1)).premultiply(shear).setPosition(t.x, t.y - 0.3, t.z).toArray(trunkM, i * 16);
+    top.set(t.x + dx * k - t.cx, t.y - 0.3 + th - (t.y + t.foot), t.z + dz * k - t.cz).applyQuaternion(q.clone().invert()).divide(new THREE.Vector3(t.crown, ch, t.crown));
+    trunkTop.set([top.x, top.y, top.z], i * 3);
     m.compose(new THREE.Vector3(t.cx, t.y, t.cz), new THREE.Quaternion(), new THREE.Vector3(t.crown, t.h, t.crown)).toArray(farM, i * 16);
     col.setRGB(1, 1, 1).multiplyScalar(0.82 + r() * 0.3).offsetHSL((r() - 0.5) * 0.04, 0, 0);
     tint.set([col.r, col.g, col.b], i * 3);
@@ -423,19 +540,22 @@ export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, g
     list.push(i);
   });
 
-  const nearMeshes: { kind: MapTreeKind; crowns: THREE.InstancedMesh; trunks: THREE.InstancedMesh; max: number }[] = [];
+  const nearMeshes: { kind: MapTreeKind; crowns: THREE.InstancedMesh; trunks: THREE.InstancedMesh; limbs: THREE.InstancedMesh | null; max: number }[] = [];
   for (const kind of CITY_KINDS) {
     const all = trees.filter((t) => t.kind === kind);
     if (!all.length) continue;
     const look = looks[kind] ?? none, s = SHAPES[kind], fixed = kind === 'palm' ? 0 : 1;
     const geo = kind === 'palm' ? palmCrown(cardsOf(kind)) : cardCrown(kind, cardsOf(kind));
     const crownMat = new THREE.MeshStandardMaterial({ color: look.leaves ? s.green : '#4f6b33', map: look.leaves, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9 });
+    const wind = ultra ? { TREE_WIND: '' } : {};
+    crownMat.defines = { ...wind };
     crownMat.onBeforeCompile = (sh) => {
       crownVertex(sh, s.card, fixed);
       nearFragment(sh, near);
     };
     crownMat.customProgramCacheKey = () => `crown-${kind}`;
     const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: look.leaves, alphaTest: 0.5, side: THREE.DoubleSide });
+    depth.defines = { ...wind };
     depth.onBeforeCompile = (sh) => crownVertex(sh, s.card, fixed);
     depth.customProgramCacheKey = () => `crown-depth-${kind}`;
     const trunkMat = new THREE.MeshStandardMaterial({ color: look.bark ? '#ffffff' : '#5e4630', map: look.bark, roughness: 1, normalMap: look.barkRelief?.normal ?? null, roughnessMap: look.barkRelief?.roughness ?? null });
@@ -459,7 +579,31 @@ export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, g
       group.add(im);
     }
     crowns.name = `trees: ${kind}`;
-    nearMeshes.push({ kind, crowns, trunks, max });
+    // On Ultra a deciduous crown's limbs, in its bark, from up its trunk out into its leaves.
+    let limbs: THREE.InstancedMesh | null = null;
+    if (ultra && DECIDUOUS.includes(kind)) {
+      const limbMat = new THREE.MeshStandardMaterial({ color: look.bark ? '#ffffff' : '#5e4630', map: look.bark, roughness: 1, side: THREE.DoubleSide });
+      limbMat.defines = { ...wind };
+      limbMat.onBeforeCompile = (sh) => {
+        limbVertex(sh, LIMB);
+        nearFragment(sh, near);
+      };
+      limbMat.customProgramCacheKey = () => 'limbs';
+      const limbDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
+      limbDepth.defines = { ...wind };
+      limbDepth.onBeforeCompile = (sh) => limbVertex(sh, LIMB);
+      limbDepth.customProgramCacheKey = () => 'limbs-depth';
+      const limbGeo = limbGeometry(kind);
+      limbGeo.setAttribute('aTrunkTop', new THREE.InstancedBufferAttribute(new Float32Array(max * 3), 3).setUsage(THREE.DynamicDrawUsage));
+      limbs = new THREE.InstancedMesh(limbGeo, limbMat, max);
+      limbs.customDepthMaterial = limbDepth;
+      limbs.count = 0;
+      limbs.frustumCulled = false;
+      limbs.castShadow = limbs.receiveShadow = true;
+      limbs.instanceMatrix = crowns.instanceMatrix;
+      group.add(limbs);
+    }
+    nearMeshes.push({ kind, crowns, trunks, limbs, max });
 
     // Far: its billboard, a quad turned to face the camera about the upright, as wide as its tree's crown
     // and as tall as the tree, lit from the sky; none within the near reach but the band they fade over.
@@ -509,14 +653,17 @@ if (distance(cameraPosition.xz, tAt.xz) < treeNear.x - treeNear.y - 2.0) gl_Posi
   // kinds' meshes, nearest cells first. What's written now reaches the graphics card at the next frame,
   // so the meshes take their new counts then.
   const last = new THREE.Vector2(Infinity, Infinity);
-  let pending: number[] | null = null;
+  let pending: { counts: number[]; limbs: number[] } | null = null;
   const gather = (cx: number, cz: number) => {
     const counts = nearMeshes.map(() => 0), slot = new Map(nearMeshes.map((nm, k) => [nm.kind, k]));
+    // The trees with limbs: those gathered before the first cell wholly past LIMB_REACH.
+    let limbs: number[] | null = null;
     const reach = R + STEP, ci = Math.floor(cx / CELL_M), cj = Math.floor(cz / CELL_M), span = Math.ceil(reach / CELL_M);
     const order: [number, number, number][] = [];
     for (let i = -span; i <= span; i++) for (let j = -span; j <= span; j++) order.push([Math.hypot(i, j), ci + i, cj + j]);
     order.sort((a, b) => a[0] - b[0]);
-    for (const [, i, j] of order) {
+    for (const [d, i, j] of order) {
+      if (!limbs && (d - Math.SQRT2) * CELL_M > LIMB_REACH) limbs = [...counts];
       for (const t of cells.get(key(i, j)) ?? []) {
         const tr = trees[t];
         if ((tr.x - cx) ** 2 + (tr.z - cz) ** 2 > reach * reach) continue;
@@ -525,21 +672,28 @@ if (distance(cameraPosition.xz, tAt.xz) < treeNear.x - treeNear.y - 2.0) gl_Posi
         (nm.crowns.instanceMatrix.array as Float32Array).set(crownM.subarray(t * 16, t * 16 + 16), c * 16);
         (nm.trunks.instanceMatrix.array as Float32Array).set(trunkM.subarray(t * 16, t * 16 + 16), c * 16);
         (nm.crowns.instanceColor!.array as Float32Array).set(tint.subarray(t * 3, t * 3 + 3), c * 3);
+        if (nm.limbs) (nm.limbs.geometry.getAttribute('aTrunkTop').array as Float32Array).set(trunkTop.subarray(t * 3, t * 3 + 3), c * 3);
         counts[k] = c + 1;
       }
     }
     for (const nm of nearMeshes) {
       nm.crowns.instanceMatrix.needsUpdate = nm.trunks.instanceMatrix.needsUpdate = true;
       nm.crowns.instanceColor!.needsUpdate = true;
+      if (nm.limbs) nm.limbs.geometry.getAttribute('aTrunkTop').needsUpdate = true;
     }
-    return counts;
+    return { counts, limbs: limbs ?? counts };
   };
   // A mesh with nothing to draw, drawn every frame, which sees where the camera is.
   const watch = new THREE.Mesh(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Array(9).fill(0), 3)), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
   watch.frustumCulled = false;
   watch.onBeforeRender = (_r, _s, camera) => {
     if (pending) {
-      pending.forEach((c, k) => (nearMeshes[k].crowns.count = nearMeshes[k].trunks.count = c));
+      const { counts, limbs } = pending;
+      counts.forEach((c, k) => {
+        const nm = nearMeshes[k];
+        nm.crowns.count = nm.trunks.count = c;
+        if (nm.limbs) nm.limbs.count = limbs[k];
+      });
       pending = null;
     }
     const p = camera.getWorldPosition(new THREE.Vector3());

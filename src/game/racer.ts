@@ -371,10 +371,38 @@ export class Racer {
   }
 }
 
+// How near two karts' axes come, each CAR_L either side of its middle (world/ground.ts), and which way
+// from theirs to yours: (dx, dz) from their middle to yours, (fx, fz) and (gx, gz) which way each
+// faces. Two karts meet as capsules CAR_R round their axes: the walls' two circles with no waist
+// between them, where the other's circle would settle and lock two side by side half a length apart.
+function axes(dx: number, dz: number, fx: number, fz: number, gx: number, gz: number): { d: number; nx: number; nz: number } {
+  const L = CAR_L;
+  const md = Math.hypot(dx, dz);
+  // Crossed (each axis' ends either side of the other's): as far into each other as can be.
+  const yours = (x: number, z: number) => fx * (z - dz) - fz * (x - dx);
+  const theirs = (x: number, z: number) => gx * z - gz * x;
+  if (yours(gx * L, gz * L) * yours(-gx * L, -gz * L) < 0 && theirs(dx + fx * L, dz + fz * L) * theirs(dx - fx * L, dz - fz * L) < 0) return { d: 0, nx: dx / md, nz: dz / md };
+  // Else the nearest points are an end of one and the nearest point of the other to it.
+  let best = { d: Infinity, nx: dx / md, nz: dz / md };
+  const take = (ax: number, az: number, bx: number, bz: number) => {
+    const q = Math.hypot(ax - bx, az - bz);
+    if (q < best.d) best = q > 1e-6 ? { d: q, nx: (ax - bx) / q, nz: (az - bz) / q } : { d: 0, nx: dx / md, nz: dz / md };
+  };
+  for (const e of [L, -L]) {
+    const [ax, az] = [dx + fx * e, dz + fz * e];
+    const t = clamp(ax * gx + az * gz, -L, L);
+    take(ax, az, gx * t, gz * t);
+    const [bx, bz] = [gx * e, gz * e];
+    const u = clamp((bx - dx) * fx + (bz - dz) * fz, -L, L);
+    take(dx + fx * u, dz + fz * u, bx, bz);
+  }
+  return best;
+}
+
 // Bumping into the others: each car pushes only itself away, so it's fair on both sides, in a race
-// or driving round the city. A car is its footprint's two circles (CAR_R and CAR_L, world/ground.ts),
-// as the walls meet it, so two touch 1.8 m apart side by side and 2.8 m nose to tail. Returns how
-// strongly the slipstream of a car ahead pulls (0 to 1), and a gold car it touched, if any.
+// or driving round the city. Two touch 1.8 m apart side by side and 2.8 m nose to tail, their
+// footprints (KART, world/ground.ts) as capsules (axes). Returns how strongly the slipstream of a car
+// ahead pulls (0 to 1), and a gold car it touched, if any.
 export function bump(c: Car, id: string, cars: Iterable<CarInfo>, notes: Note[]): { pull: number; gold: CarInfo | null } {
   const fx = Math.cos(c.yaw);
   const fz = Math.sin(c.yaw);
@@ -386,23 +414,8 @@ export function bump(c: Car, id: string, cars: Iterable<CarInfo>, notes: Note[])
     const dz = c.p.z - o.z;
     const d = Math.hypot(dx, dz);
     if (d < KART.long && Math.abs(c.p.y - o.y) < 1.6 && d > 0.01) {
-      // The two circles, one of each car's, deepest into each other: pushed apart along the line between them.
-      const ox = Math.cos(o.yaw) * CAR_L;
-      const oz = Math.sin(o.yaw) * CAR_L;
-      let deep = 0;
-      let nx = 0;
-      let nz = 0;
-      for (const s of [1, -1]) {
-        for (const t of [1, -1]) {
-          const qx = dx + fx * CAR_L * s - ox * t;
-          const qz = dz + fz * CAR_L * s - oz * t;
-          const q = Math.hypot(qx, qz);
-          if (q < 1e-6 || 2 * CAR_R - q <= deep) continue;
-          deep = 2 * CAR_R - q;
-          nx = qx / q;
-          nz = qz / q;
-        }
-      }
+      const { d: q, nx, nz } = axes(dx, dz, fx, fz, Math.cos(o.yaw), Math.sin(o.yaw));
+      const deep = 2 * CAR_R - q;
       if (deep > 0) {
         c.p.x += (nx * deep) / 2;
         c.p.z += (nz * deep) / 2;

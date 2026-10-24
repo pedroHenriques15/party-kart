@@ -202,12 +202,14 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
   a carriageway's or a tile's (`trimmed`, braga-map's task 078). The car is two circles, 1.8 m
   across and 1.0 m apart (its footprint, `KART`, 2.8 by 1.8 m since braga-map's task 105, every
   kart's the same and drawn within it), pushed out of what they're in a few times over, and back the
-  way it came if it went through a wall in one step. Two karts bump as the same two circles each
-  (`bump` in `game/racer.ts`, a `CarInfo` carrying the other's `yaw`): 1.8 m apart side by side, 2.8 m
-  nose to tail. The land is a wall where it would rise more than a step in
-  front of the car, or off the carriageway or a path steeper than 35°. A car going up a kerb hops
-  (it flies until it comes down) and loses 12% of its speed across the kerb; so up each riser of a
-  flight of steps, and down one it drops to the tread below.
+  way it came if it went through a wall in one step. Two karts bump as capsules 0.9 m round their
+  axes (`bump` in `game/racer.ts`, a `CarInfo` carrying the other's `yaw`): 1.8 m apart side by side,
+  2.8 m nose to tail. Not as the two circles: another kart's circle settles in the waist between
+  them, and two side by side in a street narrower than two karts lock there, half a length apart.
+  The land is a wall where it would rise more than a step in front of the car, or off the
+  carriageway or a path steeper than 35°. A car going up a kerb hops (it flies until it comes down)
+  and loses 12% of its speed across the kerb; so up each riser of a flight of steps, and down one it
+  drops to the tread below.
 - **Lost:** a car in the land, in the river, wedged between walls or out of the world counts towards
   a respawn, and `spawn` puts it on the nearest street's carriageway at its level (in a tunnel,
   in the tunnel), facing along the street. A car never turns over in this handling.

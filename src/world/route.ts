@@ -258,7 +258,12 @@ export class Router {
     const starts = this.spots(a.x, a.z, travel);
     const goals = this.spots(b.x, b.z, travel);
     if (!starts.length || !goals.length) return null;
-    const r = this.search(starts, goals, travel, a.yaw);
+    // By car, from a street to a street first, as a car's GPS goes (off them on the way only where it
+    // must); a path to start or end on only where no street near gets there.
+    const onStreets = (s: Spot[]) => (travel === 'car' ? s.filter((p) => this.roads[p.road].car) : s);
+    const ss = onStreets(starts);
+    const gs = onStreets(goals);
+    const r = (ss.length && gs.length ? this.search(ss, gs, travel, a.yaw) : null) ?? (ss.length < starts.length || gs.length < goals.length ? this.search(starts, goals, travel, a.yaw) : null);
     return r && { ...r, goal: { x: b.x, z: b.z } };
   }
 
@@ -449,7 +454,8 @@ export function onRoute(route: Route, x: number, z: number, from = 0): { along: 
   let best = { along: 0, off: Infinity, i: 0 };
   const lo = Math.max(1, from - 20);
   for (let i = lo; i < p.length; i++) {
-    if (route.along[i - 1] - route.along[lo - 1] > 400 && best.off < 30) break;
+    // On 400 m past the nearest so far, if that's near: a route can come back near itself.
+    if (route.along[i - 1] - Math.max(best.along, route.along[lo - 1]) > 400 && best.off < 30) break;
     const [ax, az] = p[i - 1];
     const dx = p[i][0] - ax;
     const dz = p[i][1] - az;

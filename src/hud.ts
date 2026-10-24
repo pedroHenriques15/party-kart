@@ -8,6 +8,7 @@ import { COMP, priceOf, sells, type Side } from './game/comp.ts';
 import { ITEMS, type ItemKind } from './game/items.ts';
 import type { Track } from './track/track.ts';
 import { boundsOf, fit, keep, lengths, limits, pan, pointAt, toMap, toScreen, zoomAt, type Bounds, type View } from './world/mapview.ts';
+import type { Found, PlaceKind } from './world/places.ts';
 import type { Step } from './world/route.ts';
 
 type Child = Node | string | null | false | undefined;
@@ -254,6 +255,9 @@ const KEYS = {
   // In a round, two lines (the stylesheet keeps the line break), faded away after its first 20 s.
   fight: 'WASD anda · o rato aponta · clique dispara · botão direito: mira, facada, lançar · R recarrega · 1–4 armas (Q a anterior, roda do rato)\nB compra · Shift caminha · Ctrl ou C agacha · Espaço salta · F inspeciona · Tab pontuação · M mapa · Esc menu',
 };
+
+// What the search (task 109) finds: a street, a landmark, an arena, a bus stop.
+const FOUND_ICON: Record<PlaceKind, string> = { street: '🛣️', place: '🏛️', arena: '🎯', stop: '🚏' };
 
 // What the GPS says (task 107): the next turn's arrow, how far to it, what to do there, and how far
 // there is to go.
@@ -639,6 +643,9 @@ export class FullMap {
   // open world's area).
   onGo = (_at: { x: number; z: number }) => {};
   goable = (_x: number, _z: number) => true;
+  // The search (task 109): the places whose names match what's typed, nearest first; and one picked.
+  search = (_q: string): Found[] => [];
+  onFound = (_f: Found) => {};
   private canvas: HTMLCanvasElement;
   private base = document.createElement('canvas');
   private title: HTMLElement;
@@ -662,6 +669,9 @@ export class FullMap {
   // A finger held still, till it's a long press; and the menu a right click or a long press opens.
   private holding = 0;
   private pop: HTMLElement;
+  private box: HTMLElement;
+  private find: HTMLInputElement;
+  private found: HTMLElement;
   private mark: { x: number; z: number } | null = null;
 
   constructor(m: FullMapData) {
@@ -699,7 +709,30 @@ export class FullMap {
     close.title = 'Fechar o mapa';
     close.addEventListener('click', () => this.onClose());
     this.pop = h('div', 'fm-pop');
-    this.el = h('div', 'fullmap', this.canvas, h('div', 'fm-head', this.title, h('div', 'fm-hint', this.keyHint, this.touchHint), here, close), this.pop);
+    // The search box (task 109): what's typed in it is its own, never the game's keys; Esc leaves it,
+    // Enter takes the first place found.
+    this.find = h('input', 'fm-find');
+    this.find.type = 'search';
+    this.find.placeholder = 'Procurar uma rua ou um sítio';
+    this.find.autocomplete = 'off';
+    this.find.spellcheck = false;
+    this.find.enterKeyHint = 'search';
+    this.found = h('ul', 'fm-found');
+    this.box = h('div', 'fm-box', this.find, this.found);
+    this.find.addEventListener('input', () => this.list());
+    this.find.addEventListener('focus', () => this.list());
+    this.find.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this.leaveFind();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const first = this.search(this.find.value)[0];
+        if (first) this.pickFound(first);
+      }
+    });
+    this.el = h('div', 'fullmap', this.canvas, h('div', 'fm-head', this.title, this.box, h('div', 'fm-hint', this.keyHint, this.touchHint), here, close), this.pop);
 
     // A drag pans; two fingers zoom about their middle and take it with them; the wheel zooms about
     // the pointer. A click that doesn't drag it puts the waypoint, or takes it away; a right click, or a
@@ -712,6 +745,7 @@ export class FullMap {
         /* a synthetic event */
       }
       this.hidePop();
+      this.leaveFind();
       clearTimeout(this.holding);
       this.press = this.fingers.size ? null : { id: e.pointerId, x: e.clientX, y: e.clientY };
       this.fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -791,6 +825,10 @@ export class FullMap {
     this.keyHint.textContent = `Roda do rato aproxima e afasta · arrasta para mexer${o.pick ? ' · clica para pôr um destino' : ''}${o.go ? ' · botão direito: ir para aqui' : ''} · ${o.key ? `${o.key} ou ` : ''}Esc fecha`;
     this.touchHint.textContent = `Dois dedos aproximam e afastam · arrasta para mexer${o.pick ? ' · toca para pôr um destino' : ''}${o.go ? ' · mantém o dedo para ir para lá' : ''} · ✕ fecha`;
     this.hidePop();
+    // The search round the city only, where the waypoint is.
+    this.box.style.display = o.pick ? '' : 'none';
+    this.find.value = '';
+    this.found.classList.remove('on');
     // It isn't shown yet: the window's size is the map's.
     const W = innerWidth;
     const H = innerHeight;
@@ -829,6 +867,37 @@ export class FullMap {
     this.pop.style.left = `${Math.min(W - 210, Math.max(8, sx))}px`;
     this.pop.style.top = `${Math.min(H - 110, Math.max(64, sy))}px`;
     this.pop.classList.add('on');
+  }
+
+  // Puts the map's middle on (x, z), close enough to see the streets there.
+  centre(x: number, z: number): void {
+    const [W, H] = this.size();
+    this.view = keep({ x, z, k: Math.max(this.view.k, 1.5) }, limits(this.bounds, W, H));
+  }
+
+  // What the search box has found, each a button: what it is, its name, how far.
+  private list(): void {
+    const all = this.search(this.find.value);
+    this.found.replaceChildren(
+      ...all.map((f) => {
+        const b = h('button', '', h('span', 'fk', FOUND_ICON[f.kind]), h('span', 'fn', f.name), h('small', '', howFar(f.d)));
+        b.addEventListener('click', () => this.pickFound(f));
+        return h('li', '', b);
+      }),
+    );
+    this.found.classList.toggle('on', all.length > 0 || this.find.value.trim().length > 0);
+    if (!all.length && this.find.value.trim()) this.found.replaceChildren(h('li', 'none', 'Nada com esse nome na zona'));
+  }
+
+  private pickFound(f: Found): void {
+    this.leaveFind();
+    this.find.value = '';
+    this.onFound(f);
+  }
+
+  private leaveFind(): void {
+    this.found.classList.remove('on');
+    if (document.activeElement === this.find) this.find.blur();
   }
 
   private hidePop(): void {

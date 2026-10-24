@@ -35,6 +35,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/game/comp.ts` | sim | The competitive mode, after Counter-Strike 2's: its numbers (`COMP`: the freeze, the buy time, the round, the bomb, the money), each side's guns (`sells`, `startKit`), a buy's price (`priceOf`), a kill's money (`killReward`), an arena's spawns and bomb sites (`compMap`, `siteAt`, `inBuyZone`), the bomb's blast (`blastAt`), the match as the host runs it (`Match`: its rounds and phases, the score, everyone's money, who's up, the bomb, the guns on the ground, its state `CompState` and what a player tells it `CompAct`), and what a bot buys (`botBuy`) |
 | `src/game/matchbots.ts` | sim | `MatchBots`: the host's bots in a match: what each buys at a round's start, where each goes (the Terrorists to the round's site with the bomb, the Counter-Terrorists to the sites), and their planting, defusing and picking the bomb up |
 | `src/world/sight.ts` | sim | Line of sight: how far a ray goes before the world stops it (`sight`, `clear`), for a shot and a look |
+| `src/world/places.ts` | sim | Finding a place by its name (braga-map's task 109): the streets, landmarks, arenas and bus stops in the open world's area (`Places`), matched word by word without accents (`fold`), the nearest first, a street at its nearest point to you |
 | `src/world/goto.ts` | sim | "Ir para aqui" (braga-map's task 108): when the full map offers it (round the city only, `mayGo`), and where a place puts your kart (`kartTo`: on the nearest carriageway inside the area, at the ground's level, facing along it) |
 | `src/world/route.ts` | sim | The GPS's routes (braga-map's task 107): the `Router` over the map's road graph, by car the right way down the one-way streets with no banned turn and no turning back but at a dead end, the quickest by each kind of street's speed, off the streets only where none reaches; on foot any way along the streets and the paths; each route's turns (`steps`: a roundabout as its exit), and where a point is along it (`onRoute`) |
 | `src/world/mapview.ts` | sim | The full map's sums (braga-map's task 106): its view (a centre and a scale), framing a place, zooming about a point and panning, kept over the map (`keep`); a point along a street, for its name; and who the maps show you (`onTheMap`: in a round, only your team-mates who are up) |
@@ -108,6 +109,9 @@ start; and goes back to it after a race, where you were before it.
    the place at the ground's level (`kartTo`: `WorldGround.spawn` from `groundAt`), you on foot there,
    or the flying camera over it. The others draw the jump as one (`syncOthers` takes 30 m between two
    snapshots for one), the chase camera snaps past 150 m, and the GPS works its route out again.
+11. **Finding a place** (braga-map's task 109): the full map's search box asks `places.find` as you
+   type (`fullMap.search`); one picked (`fullMap.onFound`) is the GPS's waypoint and the map goes to
+   it. The box keeps its keys from the game's (its keydown goes no further), round the city only.
 
 The chase camera follows, or with a panel open the camera turns slowly round your kart (`orbit`),
 which stands on the right of the screen, clear of the menu. Flying, the camera is the flyer's

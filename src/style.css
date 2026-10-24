@@ -893,6 +893,80 @@ body.mapping .fullmap {
   padding: 4px 12px;
 }
 
+/* The search on the map (braga-map's task 109): in the title's row, what it finds under it; the
+   hints on a row of their own. */
+.fm-box {
+  position: relative;
+  flex: 0 1 320px;
+  pointer-events: auto;
+}
+
+.fm-find {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 9px;
+  background: rgba(20, 24, 33, 0.88);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+}
+
+.fm-found {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  border-radius: 10px;
+  background: rgba(20, 24, 33, 0.96);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.fm-found.on {
+  display: block;
+}
+
+.fullmap .fm-found button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 14px;
+}
+
+.fullmap .fm-found button:hover,
+.fullmap .fm-found button:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.fm-found .fn {
+  flex: 1;
+}
+
+.fm-found small {
+  opacity: 0.7;
+}
+
+.fm-found .none {
+  padding: 6px 8px;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.fm-head .fm-hint {
+  order: 9;
+  flex: 1 1 100%;
+}
+
 /* The menu a right click or a long press opens on the map (braga-map's task 108). */
 .fm-pop {
   position: absolute;

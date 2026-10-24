@@ -39,6 +39,13 @@ and how far there is to go. Leave the route and it's worked out again from where
 it's a walker's, any way along the streets and the paths, up and down the steps. Once you're there it
 says so and clears. It's yours alone, and not in a race or a round, whose own routes rule.
 
+**Finding a place**: the full map's search box, round the city, finds the streets, the landmarks
+(the Picoto, the Parque da Ponte, the Estádio 1.º de Maio…), the arenas and the bus stops in the
+area as you type their names, Portugal's accents or not ("joao xxi" finds the Avenida João XXI), the
+nearest first. Picking one (or Enter for the first) makes it the GPS's waypoint, a street at its
+nearest point to you, and takes the map there. What you type is the box's alone, never the game's
+keys; Esc leaves it.
+
 **Ir para aqui**: round the city, a right click on the full map (a long press on a touch screen)
 opens a menu with **🚀 Ir para aqui**, which puts your kart on the street nearest that place, on the
 ground (not a bridge over it), facing along it, and closes the map; on foot it puts you there, your

@@ -42,6 +42,9 @@ export const CAR_R = KART.wide / 2; // the car's two circles: their radius, and 
 export const CAR_L = KART.long / 2 - CAR_R;
 const CLIMB = 0.7; // the steepest land a car climbs off the carriageway (35°)
 const SMOOTH = 1.5; // a surface's normal is taken over this either side
+// The steepest a street, a pavement or a path climbs (40%): ground further off its level than that
+// over SMOOTH is past its edge (a wall's step, the land), or another street's below or above it.
+const STEEP = 0.4;
 const TRUNK = 0.15; // the thinnest trunk a kart hits
 const PARAPET = 1.0; // over a deck, as levels.ts draws it
 const BORE = 3; // how high a tunnel's sides stand over its road, at most
@@ -587,9 +590,27 @@ export class WorldGround implements Ground {
           }
           return y;
         };
-    const gx = (h(x + SMOOTH, z) - h(x - SMOOTH, z)) / (2 * SMOOTH);
-    const gz = (h(x, z + SMOOTH) - h(x, z - SMOOTH)) / (2 * SMOOTH);
-    return norm(v3(-gx, 1, -gz));
+    // On a street, a pavement or a path, only its own level counts (braga-map's task 066): a side whose
+    // ground is off it is read nearer, or left out, the slope taken on the side that's still its own.
+    // The race's car on the Avenida João XXI's 3.3 m upper lane read the cutting 6 m down past its
+    // edge and was tipped to 64° on a flat road.
+    const own = f.kind === 'road' || f.kind === 'pavement' || f.kind === 'path';
+    const h0 = h(x, z);
+    const slope = (dx: number, dz: number): number => {
+      let sum = 0;
+      let n = 0;
+      for (const side of [1, -1]) {
+        for (const r of [SMOOTH, SMOOTH / 3]) {
+          const y = h(x + dx * r * side, z + dz * r * side);
+          if (own && Math.abs(y - h0) > STEEP * r) continue;
+          sum += ((y - h0) / r) * side;
+          n++;
+          break;
+        }
+      }
+      return n ? sum / n : 0;
+    };
+    return norm(v3(-slope(1, 0), 1, -slope(0, 1)));
   }
 
   under(c: Car): { n: V; boost: boolean } {

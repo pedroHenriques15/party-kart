@@ -377,6 +377,23 @@ test('a riser more than a step high is a wall, and how many there are', () => {
   assert.ok(c2['risers over a step'] > 0 && c2['risers over a step'] < c2.risers / 20, `${c2['risers over a step']} of ${c2.risers}`);
 });
 
+// The Avenida João XXI's upper lane beside the tunnels' west mouth, 3.3 m wide on the cutting's top
+// (braga-map's tasks 045 and 066): a car tilts by the lane, flat at 24.4 m, not by the cutting's street
+// 6 m down past its edge, which tipped the race's car to 64° there and threw it.
+test("on the Avenida João XXI's upper lane, a car tilts by the lane, not by the cutting beside it", () => {
+  let n = 0;
+  for (let x = 555; x <= 572; x += 0.5) {
+    for (let z = 232; z <= 245; z += 0.5) {
+      const f = ground.floor(x, z, 30);
+      if (f.kind !== 'road' || f.buried || f.y < 24.2 || f.y > 25) continue; // the lane, not its wall's face
+      n++;
+      const up = ground.normal(f, x, z).y;
+      assert.ok(up > 0.97, `tipped ${((Math.acos(up) * 180) / Math.PI).toFixed(0)}° at (${x}, ${z}), on the lane at ${f.y.toFixed(2)} m`);
+    }
+  }
+  assert.ok(n > 50, `${n} points on the lane`);
+});
+
 test('a respawn puts the car on the nearest carriageway at its level, along the street', () => {
   // From the land in the middle of a block on Fujacal: onto a street, on its carriageway.
   const c = ground.spawn(145, 820, ground.land(145, 820), 0);

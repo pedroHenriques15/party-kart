@@ -660,10 +660,13 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   (`Quality`: what a phone or a laptop holds, the budget's three), and **Ultra** above them, for a PC only
   (braga-map's task 081): offered where the device isn't played by touch first and its graphics card takes
   textures 16,384 pixels wide or is a discrete one by its name (`ultraOffered`); `?quality=` sets any level
-  whatever the device. Ultra builds the city at High's level (`levelOf`: High's files from braga-map, until
-  its own come) but where a task gives it its own: so far the screen's every pixel (no cap at 2), the near
-  trees to 700 m, and its frame (below). Everything past what a phone holds goes to Ultra. The game steps
-  itself down a level when it runs slowly, Ultra to High, never up to it.
+  whatever the device. Ultra builds the city at High's level (`levelOf`) but where a task gives it its own:
+  so far the screen's every pixel (no cap at 2), the near trees to 700 m, its frame (below), and its
+  textures (braga-map's task 085): the map's own Ultra files (each made texture at twice High's size, the
+  ground's and the barks' relief), the streets' drawings made 4× finer (1024 px a layer, `finer` in
+  `textures.ts`), and every texture filtered at the card's most (`anisotropy` in `look.ts`, set before the
+  city is built). Everything past what a phone holds goes to Ultra. The game steps itself down a level when
+  it runs slowly, Ultra to High, never up to it (what was built for Ultra stays).
 - **Ultra's frame** (`UltraFrame`, `render/post.ts`, braga-map's task 090; made the first time Ultra draws,
   given up when it's left): the scene drawn into a buffer as the screen would show it (three tone maps and
   encodes only for the screen or an XR device's buffer, and this one says it's the latter, so the haze is
@@ -677,8 +680,8 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     duller), so `UltraFrame` puts three's back and gives each lit material three's chunk with only CSM's
     loop over the suns in it (`cascadedLights`; `test/post.test.ts` checks it at each three upgrade). Every
     lit material in the scene takes the cascades before it's first drawn (the scene swept each frame). With
-    them, the land's material samples 16 textures, all a card gives WebGL on the owner's PC: one more map on
-    it doesn't compile on Ultra.
+    them, the land's material sampled 16 textures, all a card gives WebGL on the owner's PC; since braga-map's
+    task 085 it samples 12, the six kinds of ground's textures one array texture and their relief another.
   - **Occlusion** (three's `GTAOPass`), from the frame's own depth, its normals worked out from that depth (a
     pass of its own for them would draw the trees' leaf cards whole), 1.5 m round, on no more than 720
     lines; `?ao=` sets how strongly it darkens (0.7; 0 for none). Its deepest is eased and its noise
@@ -738,7 +741,11 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     (`groundMaterial`, with `cover.ts`): each 50 cm cell's kind (asphalt, paving, setts, grass, bare
     soil, gravel, water, a roof) in its own seamless texture (made by braga-map, its task 082), tiled at its real
     size, its own mean colour divided out and the place's put in: that kind's colour over the tile,
-    the orthophoto's without its cars and shadows. A cell's kind blends into its neighbours' over
+    the orthophoto's without its cars and shadows. The six kinds' textures are one array texture, a
+    layer each (`stack` in `cover.ts`: a fragment shader has 16 in WebGL). On Ultra each is braga-map's
+    finest (2048 px), with its relief, a normal map a layer of a second array, weighed as its colour is
+    and laid along the world's x and z square to the land's normal, and each kind's roughness the map's
+    number (its task 085), so the sun's grazing light shows the setts' joints. A cell's kind blends into its neighbours' over
     half its width; under a tree's crown the ground is 15% darker, and from 40 m off to 160 m a
     crown's cells turn the green of the game's trees (the orthophoto's canopy reads slate-blue under
     the game's light). The orthophoto's blue haze is taken out, and its brightness eased (`TONE`: as
@@ -1040,6 +1047,26 @@ alone runs slower than frames one after another, as the card and the browser don
 cascades whole (they're drawn without culling), the most of the cascades' cost; braga-map's task 089
 remakes the trees to the horizon, and their cost with them. The buffers it draws through take about 120 MB more
 on the card at 2560 by 1440 (worked out from their sizes, not measured).
+
+**Ultra's textures** (braga-map's task 085, 2026-10-24: party-kart on braga-map's branch for it, the same card,
+`shots/2026-10-24-after085b/` against main's `before085b`, shot back to back at `lobato-pavement`,
+`travessa-fujacal` and `capela-sao-joao`, 720 pixels high; High, Medium and Low draw as before):
+
+| | Ultra with its textures | Ultra before them (090) |
+|---|---|---|
+| The map's textures | each at twice High's size (2048 px a kind of ground, 1024 a bark or leaves), the ground's and the barks' relief, the barks' roughness | High's |
+| The streets' drawings | 1024 px a layer, drawn 4× finer | 256 px |
+| Anisotropic filtering | the card's most, every texture | 8 for most |
+| Textures, as `textureBytes` counts them | 462 MB | 373 MB |
+| The streets' layers, which it doesn't count (uniforms only) | 90 MB | 6 MB |
+| The map's textures downloaded | 41.9 MB | 2.4 MB (High's) |
+| A frame (the three viewpoints) | 4.25–6.22 ms | 4.33–6.19 ms |
+| Building the city | 9.7–10.1 s | 9.4–9.6 s |
+
+So Ultra takes about 170 MB more on the card (some 550 MB in all with the streets' layers) and downloads
+about 40 MB more than High, the ground's normal maps 28 MB of it; its frame is as it was. The land's shader
+samples 12 of WebGL's 16 textures on Ultra (8 on High, 7 on Low). Ultra's colours in UASTC as well (some 20
+MB more) looked the same at these three viewpoints, so they're ETC1S as the other levels' are.
 
 **What every street in the area cost** (task 035, against `shots/2026-10-14-task012/`, the same 29
 viewpoints): before it, the city was 58–184 draw calls on High and Medium and 40–165 on Low,

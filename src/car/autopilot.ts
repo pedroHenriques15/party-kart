@@ -28,17 +28,21 @@ const SHORT = 2.1;
 // velocity still has to make onto the street, which is 3 m wide and bends again.
 const STREET = 16;
 const SETTLE = 60;
+// Slower than this (m/s) a kart can't fly the jump (hit, bumped): it drives its line up the ramp as
+// anywhere, rather than being swung onto the flight, which at a walking pace turns it into a wall.
+const FLY = 15;
 
-// The steering onto ramp r's axis (its foot to its lip, as the race stands it): how far right of the
-// axis the kart is (y), how far its velocity points off it (e) and how far its nose leads its velocity
-// (b), the grip turning the velocity towards the nose at GRIP per second.
-function ontoRamp(c: Car, track: Track, r: Ramp): number {
+// The steering onto ramp r's axis (its foot to its lip, as the race stands it), or onto a line `off` m
+// right of it and along it: how far right of that line the kart is (y), how far its velocity points
+// off it (e) and how far its nose leads its velocity (b), the grip turning the velocity towards the
+// nose at GRIP per second.
+function ontoRamp(c: Car, track: Track, r: Ramp, off = 0): number {
   const F = track.samples[r.foot].p;
   const T = track.samples[r.lip].p;
   const L = Math.hypot(T.x - F.x, T.z - F.z);
   const ux = (T.x - F.x) / L;
   const uz = (T.z - F.z) / L;
-  const y = (c.p.x - F.x) * -uz + (c.p.z - F.z) * ux;
+  const y = (c.p.x - F.x) * -uz + (c.p.z - F.z) * ux - off;
   const v = Math.atan2(c.v.z, c.v.x);
   const e = angleDiff(v, Math.atan2(uz, ux));
   const b = angleDiff(c.yaw, v);
@@ -49,7 +53,8 @@ function ontoRamp(c: Car, track: Track, r: Ramp): number {
 }
 
 // line: where across the road to drive, from -1 (the left edge) to 1 (the right), 0 the middle.
-export function autopilot(c: Car, track: Track, caution = 1, line = 0): Input {
+// across: how far right of a ramp's axis to take it (m), to go round a kart stopped on its run-up.
+export function autopilot(c: Car, track: Track, caution = 1, line = 0, across = 0): Input {
   const N = track.samples.length;
   const s = track.samples;
   const speed = speedOf(c);
@@ -65,7 +70,7 @@ export function autopilot(c: Car, track: Track, caution = 1, line = 0): Input {
   const onto = ramp && ramp.k <= ramp.r.lip - ramp.r.foot + ONTO ? ramp.r : null;
   // A ramp behind, from its lip to SETTLE m past its landing: m since the lip.
   const off = track.ramps.map((r) => ({ r, d: (c.idx - r.lip + N) % N })).find((q) => q.d <= ((q.r.land - q.r.lip + N) % N) + SETTLE);
-  if (speed > 1 && (onto || (off && off.d < LIFT))) steer = ontoRamp(c, track, onto ?? off!.r);
+  if (speed > FLY && (onto || (off && off.d < LIFT))) steer = ontoRamp(c, track, onto ?? off!.r, across);
   else if (off && !c.grounded && c.air >= COYOTE) {
     const q = s[(off.r.land + STREET) % N].p;
     steer = clamp(angleDiff(Math.atan2(q.z - c.p.z, q.x - c.p.x), c.yaw) * 8, -1, 1);

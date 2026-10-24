@@ -2,12 +2,12 @@ import { loadWorld } from 'braga-map';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { newCar, stepCar, trackGround, TURBO2 } from '../src/car/car.ts';
-import { Arena, type Rules } from '../src/game/arena.ts';
+import { Arena, type CarInfo, type Rules } from '../src/game/arena.ts';
 import { botControls, newBrain, type Brain } from '../src/game/bot.ts';
 import { boxRows, itemOdds, ITEMS, rollItem, type ItemEv, type ItemKind } from '../src/game/items.ts';
 import { NO_CONTROLS, Racer, type Controls } from '../src/game/racer.ts';
 import { LAYOUT } from '../src/track/layout.ts';
-import { buildTrack, surfacePoint, type Track } from '../src/track/track.ts';
+import { buildTrack, rampSpeed, surfacePoint, type Track } from '../src/track/track.ts';
 import { TRACKS } from '../src/tracks.ts';
 import { worldGround } from '../src/world/ground.ts';
 import { raceGround } from '../src/world/race.ts';
@@ -273,3 +273,117 @@ for (const { course, on, race } of raced) {
     assert.ok(spread < 60000, `finishes spread over ${spread} ms: catch-up keeps it close`);
   });
 }
+
+// The Volta dos Amigos' jump with bots on it (braga-map's task 114): on its run-up they drive the
+// ramp's axis in single file, so a kart stopped there sent those behind into it and short of the
+// landing. Now they go round it, and one too slow to fly gets out of their way.
+const { on: jumpTrack, race: jumpRace } = raced.find((r) => r.course.id === 'amigos')!;
+const ramp = jumpTrack.ramps[0];
+
+// A bot at sample i, going at a speed, lat m right of the line, past the checkpoints before it.
+function onRunUp(id: string, i: number, speed: number, lat = 0): Racer {
+  const r = new Racer(jumpTrack, id, id, true, 0, jumpRace);
+  const c = newCar(jumpTrack, i, speed);
+  c.p = surfacePoint(jumpTrack.samples[i], lat, 0.01);
+  c.lat = lat;
+  r.car = r.put(c);
+  r.run.nextCp = jumpTrack.checkpoints.filter((k) => k < i).length;
+  return r;
+}
+
+// The bots `after` the karts in `before` (still, or driven by the autopilot as bots), items off, till
+// they're all well past the landing or 12 s are up: each bot put back, and whether it got past.
+function pastTheRamp(before: (CarInfo | Racer)[], bots: Racer[]): { back: number; past: number } {
+  const a = new Arena(jumpTrack, { mode: 'race', laps: 1, items: false, catchUp: false });
+  a.send = () => {};
+  const racers = [...before.filter((o): o is Racer => o instanceof Racer), ...bots];
+  a.locals = racers;
+  a.started = true;
+  a.t = 0;
+  const brains = new Map<string, Brain>(racers.map((r, k) => [r.id, newBrain(seeded(k + 1))]));
+  const past = new Set<string>();
+  let back = 0;
+  for (let i = 0; i < 12 / DT; i++) {
+    a.t += DT * 1000;
+    for (const o of before) if (!(o instanceof Racer)) a.cars.set(o.id, o);
+    for (const r of racers) {
+      r.step(a, botControls(r, brains.get(r.id)!, a, DT), DT);
+      a.cars.set(r.id, r.info());
+      if (bots.includes(r)) back += r.notes.filter((n) => n.k === 'respawn').length;
+      if (r.car.idx > ramp.land + 20 && r.car.idx < ramp.land + 300) past.add(r.id);
+      r.notes = [];
+    }
+  }
+  return { back, past: bots.filter((r) => past.has(r.id)).length };
+}
+
+test("a kart stopped on the jump's run-up: the bots behind it go round it, along the ramp, and fly the jump", () => {
+  const out: string[] = [];
+  // How far before the ramp's foot it stopped, how far across, and how far apart the four behind it are.
+  for (const [before, lat, gap] of [[10, 0, 20], [16, 0, 15], [16, -1, 15], [16, 1, 15], [30, 0, 15], [50, 0, 15]]) {
+    const i = ramp.foot - before;
+    const s = jumpTrack.samples[i];
+    const p = surfacePoint(s, lat, 0.01);
+    const stopped: CarInfo = { id: 'stopped', name: 'Parado', P: i, x: p.x, y: p.y, z: p.z, yaw: Math.atan2(s.t.z, s.t.x), vx: 0, vz: 0, flags: 0, fin: null };
+    const bots = Array.from({ length: 4 }, (_, k) => onRunUp(`bot${k}`, i - 40 - k * gap, rampSpeed(ramp) - 2));
+    const { back, past } = pastTheRamp([stopped], bots);
+    out.push(`${before} m before, ${lat} m across: ${past} of 4 past the landing, ${back} put back`);
+    assert.equal(back, 0, `stopped ${before} m before the foot, ${lat} m across: ${back} put back`);
+    assert.equal(past, 4, `stopped ${before} m before the foot, ${lat} m across: ${past} of 4 past the landing`);
+  }
+  console.log(`a kart stopped on the run-up: ${out.join('; ')}`);
+});
+
+// As a race has it: the eight bots in a pack onto the jump, 5 to 20 m apart, anywhere across the
+// road at about the ramp's speed, and a pudim dropped on its run-up, 10 to 45 m before the ramp's foot.
+// The bot it hits can't fly and is put back; before task 114 those behind ran into it on the ramp's
+// axis and fell short after it: 85 put back over these 32 packs, 53 of them not the one hit.
+test("eight bots in a pack onto the jump, a pudim on its run-up, 32 seeded times: few put back", () => {
+  let back = 0;
+  let hit = 0;
+  let past = 0;
+  for (let run = 0; run < 32; run++) {
+    const rand = seeded(run * 7919 + 17);
+    const bots: Racer[] = [];
+    for (let k = 0, i = ramp.foot - 60 - Math.floor(rand() * 30); k < 8; k++, i -= 5 + Math.floor(rand() * 15)) {
+      const lat = (rand() * 2 - 1) * 1.5;
+      bots.push(onRunUp(`bot${k}`, i, rampSpeed(ramp) - 2 - rand() * 3, lat));
+    }
+    const a = new Arena(jumpTrack, { mode: 'race', laps: 1, items: false, catchUp: false });
+    a.send = () => {};
+    a.locals = bots;
+    a.started = true;
+    a.t = 0;
+    a.apply({ k: 'haz', id: 'pudim', kind: 'pudim', owner: 'x', t0: 0, idx: ramp.foot - 10 - Math.floor(rand() * 35), lat: (rand() * 2 - 1) * 1.2 });
+    const brains = new Map<string, Brain>(bots.map((r, k) => [r.id, newBrain(seeded(run * 31 + k + 1))]));
+    const done = new Set<string>();
+    for (let s = 0; s < 15 / DT && done.size < 8; s++) {
+      a.t += DT * 1000;
+      for (const r of bots) {
+        r.step(a, botControls(r, brains.get(r.id)!, a, DT), DT);
+        a.cars.set(r.id, r.info());
+        back += r.notes.filter((n) => n.k === 'respawn').length;
+        hit += r.notes.filter((n) => n.k === 'hit').length;
+        if (r.car.idx > ramp.land + 20 && r.car.idx < ramp.land + 300) done.add(r.id);
+        r.notes = [];
+      }
+    }
+    past += done.size;
+  }
+  console.log(`32 packs onto the jump with a pudim on its run-up: ${back} put back (${hit} hit by it), ${past} of 256 past the landing within 15 s`);
+  assert.equal(past, 256, 'every bot past the landing');
+  assert.ok(back <= hit + 20, `${back} put back over 32 packs, ${back - hit} of them not hit: it was 85, 53 not hit`);
+});
+
+test("a bot too slow to fly on the jump's run-up gets out of the way of those behind it", () => {
+  const out: string[] = [];
+  for (const [before, speed] of [[20, 4], [35, 8], [45, 2]]) {
+    const slow = onRunUp('slow', ramp.foot - before, speed);
+    const bots = Array.from({ length: 4 }, (_, k) => onRunUp(`bot${k}`, ramp.foot - before - 40 - k * 15, rampSpeed(ramp) - 2));
+    const { back, past } = pastTheRamp([slow], bots);
+    out.push(`${before} m before at ${speed} m/s: ${past} of 4 past the landing, ${back} put back`);
+    assert.equal(back, 0, `slow ${before} m before the foot: ${back} put back`);
+    assert.equal(past, 4, `slow ${before} m before the foot: ${past} of 4 past the landing`);
+  }
+  console.log(`a bot too slow to fly on the run-up: ${out.join('; ')}`);
+});

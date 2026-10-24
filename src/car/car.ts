@@ -248,3 +248,14 @@ export function trackGround(track: Track): Ground {
 }
 
 export const clampSteer = (x: number) => clamp(x, -1, 1);
+
+// How fast a kart going v m/s (forwards) is going d m on, flat out on the level, as stepCar
+// accelerates it: for a bot judging whether it can still make a ramp's speed (game/bot.ts).
+export function speedAfter(v: number, d: number): number {
+  let u = Math.max(0, v);
+  for (let x = 0; x < d; x += 0.5) {
+    const a = ACC * Math.max(0, 1 - u / VMAX) - u * u * DRAG - ROLL;
+    u = Math.sqrt(Math.max(0, u * u + 2 * a * Math.min(0.5, d - x)));
+  }
+  return u;
+}

@@ -108,7 +108,10 @@ read the printed line from "the autopilot flies the jump's flight" after a chang
 
 Run `npm test` and read the printed line from "the autopilot laps the track cleanly". It gives the
 lap times, respawns, longest airtime, top speed and wall hits. The eight-bot race prints finish
-times and hits.
+times and hits. The jump's tests after them print how the bots get past a kart stopped on the Volta
+dos Amigos' run-up, and how many of eight in a pack are put back there after a pudim: read them after
+a change to the bots, the autopilot or the karts' size (`bot.ts` judges what a kart can still make
+of a run-up by `speedAfter` in `car.ts`, which follows the handling's constants).
 
 ## A new item
 

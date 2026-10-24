@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RIVER_HALF_W } from '../track/layout.ts';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
-import type { Quality } from './look.ts';
+import { levelOf, type Graphics, type Quality } from './look.ts';
 import { ktx2Loader } from './ktx2.ts';
 import { LAKE, riverDistance } from './world.ts';
 
@@ -362,17 +362,20 @@ export async function loadTreeLooks(kinds: TreeKindOf[], renderer: THREE.WebGLRe
 }
 
 // How far near trees reach at each level; the step the camera takes before they're gathered again; the
-// band they fade over; and the cells they're gathered by.
-const NEAR: Record<Quality, number> = { high: 260, medium: 180, low: 120 };
+// band they fade over; and the cells they're gathered by. Ultra's is the most whose gathering keeps a
+// frame under 16 ms on the owner's PC at 2560 by 1440 (braga-map's task 081): the frame that takes a
+// new gather up was 8 ms at 260 m, 12 at 700 and 18 at 1,000; a still frame stays under 5 ms.
+const NEAR: Record<Graphics, number> = { ultra: 700, high: 260, medium: 180, low: 120 };
 const STEP = 20;
 const BAND = 25;
 const CELL_M = 50;
 // How far a trunk leans at most: the tangent of its angle from upright (25°).
 const LEAN = 0.47;
 
-export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, quality: Quality, renderer: THREE.WebGLRenderer): THREE.Group {
+export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, graphics: Graphics, renderer: THREE.WebGLRenderer): THREE.Group {
   const group = new THREE.Group();
-  const R = NEAR[quality];
+  const quality = levelOf(graphics);
+  const R = NEAR[graphics];
   const near = { value: new THREE.Vector2(R, BAND) };
   const cardsOf = (k: MapTreeKind) => Math.round(SHAPES[k].cards * (quality === 'high' ? 1 : quality === 'medium' ? 0.67 : 0.5));
   const sides = quality === 'high' ? 7 : quality === 'medium' ? 5 : 4;

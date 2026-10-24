@@ -18,7 +18,7 @@ import { buildSights, horizon, TOURIGALO_CLEAR } from './sights.ts';
 import { bake, box, mat } from './kit.ts';
 import { Holes, Lattice, Surface } from './lattice.ts';
 import { buildLevels, isDeck, nearLevels } from './levels.ts';
-import type { Quality } from './look.ts';
+import { levelOf, type Graphics, type Quality } from './look.ts';
 import { GRIDS, KINDS, loadCover, type Cover } from './cover.ts';
 import { raceMarks } from './road.ts';
 import { clipConvex, convexPieces, faces, shapeOf, wallTop } from './roofs.ts';
@@ -229,7 +229,8 @@ ${kinds.map((k) => `  if (w[${k}] > 0.0) coverRgb += w[${k}] * ${lawn && k === G
 // takes them.
 // The city is built round `track`, the home track (tracks.ts): its plinth, eggs and landmarks' signs, and
 // the world's walls its race takes down drawn apart (`cleared`). raceOn() adds a race on any track.
-export async function buildCity(track: Track, course: Course, quality: Quality, renderer: THREE.WebGLRenderer): Promise<World & { eggs: Eggs; drive: WorldGround; stageYaw: number; raceOn: (track: Track, course: Course) => RaceWorld; cleared: THREE.Object3D; above: (x: number, z: number) => number; horizon: Bound }> {
+export async function buildCity(track: Track, course: Course, graphics: Graphics, renderer: THREE.WebGLRenderer): Promise<World & { eggs: Eggs; drive: WorldGround; stageYaw: number; raceOn: (track: Track, course: Course) => RaceWorld; cleared: THREE.Object3D; above: (x: number, z: number) => number; horizon: Bound }> {
+  const quality = levelOf(graphics); // Ultra builds at High's level (braga-map's task 081)
   const map = await loadWorld(course.box);
   // Fetched, and turned for the graphics card in workers, while the land is worked out. If they can't be
   // had, the city goes without them: the ground painted from the map, as it was before task 016.
@@ -648,7 +649,7 @@ export async function buildCity(track: Track, course: Course, quality: Quality, 
       if (keepOut.some((c) => Math.hypot(t.x - c.x, t.z - c.z) < c.r)) continue;
       trees.push({ kind: t.kind, x: t.x, y: ground(t.x, t.z), z: t.z, cx: t.cx, cz: t.cz, h: t.h, crown: t.crown, foot: t.foot, trunk: t.trunk });
     }
-    group.add(Object.assign(cityTrees(trees, treeLooks, quality, renderer), { name: 'trees' }));
+    group.add(Object.assign(cityTrees(trees, treeLooks, graphics, renderer), { name: 'trees' }));
   }
 
   // ---- The sights: Bom Jesus and the Sameiro on the hills, the cross on the Picoto, the stadium,

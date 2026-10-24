@@ -3,7 +3,7 @@
 // to build and the page to be ready, what it downloaded, and the graphics card. It's for measuring
 // the game on a phone, which has no developer tools: a screenshot of the corner is the measurement.
 import * as THREE from 'three';
-import type { Quality } from './render/look.ts';
+import type { Graphics } from './render/look.ts';
 
 // About how many bytes of the graphics card's memory the scene's textures take, once everything in
 // it has been drawn: each texture a material uses, the sky's reflections and the sun's shadows. Four
@@ -59,7 +59,7 @@ function gpuName(renderer: THREE.WebGLRenderer): string {
 }
 
 const MB = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
-const LEVEL = { high: 'Alta', medium: 'Média', low: 'Baixa' };
+const LEVEL: Record<Graphics, string> = { ultra: 'Ultra', high: 'Alta', medium: 'Média', low: 'Baixa' };
 
 export class Stats {
   private el = document.createElement('div');
@@ -77,7 +77,7 @@ export class Stats {
   // first two, and the level it began on.
   private worst = Infinity;
   private skip = 0;
-  private from: Quality | null = null;
+  private from: Graphics | null = null;
   private what: 'roam' | 'walk' | 'fight' | 'race' | null = null;
 
   // buildMs: how long the city took to build; readyMs: from opening the page until it was built.
@@ -93,7 +93,7 @@ export class Stats {
 
   // Once a frame, after it's drawn, with what you're doing: driving round the city, on foot, racing,
   // or neither.
-  frame(quality: Quality, what: 'roam' | 'walk' | 'fight' | 'race' | null): void {
+  frame(quality: Graphics, what: 'roam' | 'walk' | 'fight' | 'race' | null): void {
     if (what !== this.what) {
       this.what = what;
       this.from = what ? quality : null;

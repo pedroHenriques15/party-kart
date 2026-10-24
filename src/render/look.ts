@@ -1,12 +1,28 @@
 // The look: Braga's sky and sun at a moment of the day (braga-map's task 022), reflections of that sky
 // on everything shiny, the haze, and soft shadows that follow the action. Three levels of quality, for
-// laptops that can't keep up. (The street lamps' glow is their own halos, in streets.ts, lit once the
-// sun is down: a bloom pass can't tell this sky from a light.)
+// laptops and phones that can't keep up, and Ultra above them on a PC. (The street lamps' glow is their
+// own halos, in streets.ts, lit once the sun is down: a bloom pass can't tell this sky from a light.)
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { braga, sunAt, sunDir } from '../sun.ts';
 
+// The three levels the city is built at, a phone's and a laptop's; and the graphics a player picks,
+// which has Ultra above them, for a PC only (braga-map's task 081): everything past what a phone holds
+// goes there. Ultra builds the city at High's level but where a task gives it its own.
 export type Quality = 'high' | 'medium' | 'low';
+export type Graphics = 'ultra' | Quality;
+export const GRAPHICS: Graphics[] = ['ultra', 'high', 'medium', 'low'];
+export const levelOf = (g: Graphics): Quality => (g === 'ultra' ? 'high' : g);
+
+// Whether a device is offered Ultra: not one played by touch first (a phone, a tablet), and with a
+// graphics card to hold it: one that takes textures 16,384 pixels wide, or a discrete one by its name.
+export function ultraOffered(renderer: THREE.WebGLRenderer, touchFirst: boolean): boolean {
+  if (touchFirst) return false;
+  const gl = renderer.getContext();
+  if (gl.getParameter(gl.MAX_TEXTURE_SIZE) >= 16384) return true;
+  const info = gl.getExtension('WEBGL_debug_renderer_info');
+  return !!info && /nvidia|geforce|quadro|radeon rx|radeon pro|intel.*arc/i.test(String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)));
+}
 
 const q = new URLSearchParams(location.search);
 const knob = (k: string, v: number) => (q.has(k) ? Number(q.get(k)) : v);
@@ -162,7 +178,7 @@ export class Look {
   // the map's middle, and the sky's colour is only the way you look.
   private sky: Sky;
   private rain: THREE.LineSegments | null = null;
-  quality: Quality = 'high';
+  quality: Graphics = 'high';
   // The resolution, as a share of what the quality draws (the settings'): lower, quicker.
   scale = 1;
   // Drawn over the world once it's drawn, its depth cleared: your gun in first person (render/arms.ts,
@@ -203,13 +219,14 @@ export class Look {
     if (RAIN) scene.add((this.rain = rain()));
   }
 
-  setQuality(q: Quality): void {
+  // Ultra draws at the screen's every pixel (no cap at 2), its sun's shadows at 4096.
+  setQuality(q: Graphics): void {
     this.quality = q;
     const r = this.renderer;
-    r.setPixelRatio(Math.min(q === 'high' ? 2 : q === 'medium' ? 1.25 : 1, devicePixelRatio) * this.scale);
+    r.setPixelRatio(Math.min(q === 'ultra' ? Infinity : q === 'high' ? 2 : q === 'medium' ? 1.25 : 1, devicePixelRatio) * this.scale);
     r.shadowMap.enabled = q !== 'low';
     this.sun.castShadow = q !== 'low';
-    const size = q === 'high' ? 2048 : 1024;
+    const size = q === 'ultra' ? 4096 : q === 'high' ? 2048 : 1024;
     if (this.sun.shadow.mapSize.x !== size) {
       this.sun.shadow.mapSize.set(size, size);
       this.sun.shadow.map?.dispose();

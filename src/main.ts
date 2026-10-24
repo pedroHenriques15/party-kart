@@ -36,7 +36,7 @@ import { buildFighter, type Fighter } from './render/soldier.ts';
 import { buildKart, buildWalker, driverById, DRIVERS, type KartModel, type WalkerModel } from './render/drivers.ts';
 import { Particles } from './render/fx.ts';
 import { ItemsView } from './render/items3d.ts';
-import { Look, SUN_DIR, type Quality } from './render/look.ts';
+import { GRAPHICS, Look, SUN_DIR, ultraOffered, type Graphics } from './render/look.ts';
 import { Skids } from './render/skids.ts';
 import { nameTag } from './render/textures.ts';
 import { buildCity, type RaceWorld } from './render/city.ts';
@@ -99,7 +99,13 @@ const camera = new THREE.PerspectiveCamera(68, 1, 0.3, 30000);
 const look = new Look(renderer, scene, camera);
 // A phone or a tablet starts at medium, and one with 4 GB or less at low: Braga takes some 500 MB to build.
 const SMALL = ((navigator as { deviceMemory?: number }).deviceMemory ?? 8) <= 4;
-let quality = stored('pk-quality', PHONE ? (SMALL ? 'low' : 'medium') : 'high') as Quality;
+// Ultra on a PC only (braga-map's task 081); ?quality= sets the level whatever the device (the shots).
+const ULTRA = ultraOffered(renderer, PHONE);
+const ASKED = new URLSearchParams(location.search).get('quality') as Graphics | null;
+let quality: Graphics = ASKED && GRAPHICS.includes(ASKED) ? ASKED : (stored('pk-quality', PHONE ? (SMALL ? 'low' : 'medium') : 'high') as Graphics);
+if (quality === 'ultra' && !ULTRA && ASKED !== 'ultra') quality = 'high';
+// A level down from each, as far as Low: Ultra down to High, never up to it.
+const LOWER: Record<Graphics, Graphics> = { ultra: 'high', high: 'medium', medium: 'low', low: 'low' };
 // A phone that runs out of memory for the graphics loses them: the canvas goes blank and stays so,
 // under the HUD. Say so, and open a step lower the next time.
 canvas.addEventListener('webglcontextlost', lostGraphics, { once: true });
@@ -125,7 +131,7 @@ addEventListener('resize', () => look.resize());
 
 function lostGraphics(e: Event): void {
   e.preventDefault();
-  const lower: Quality = quality === 'high' ? 'medium' : 'low';
+  const lower = LOWER[quality];
   remember('pk-quality', lower);
   const lost = document.createElement('div');
   lost.id = 'lost';
@@ -204,7 +210,8 @@ const settingsHost = {
   get quality() {
     return quality;
   },
-  setQuality(q: Quality) {
+  ultra: ULTRA,
+  setQuality(q: Graphics) {
     quality = q;
     remember('pk-quality', q);
     look.setQuality(q);
@@ -543,19 +550,19 @@ function driverGrid(current: string, taken: Map<string, string>, onPick: (id: st
   );
 }
 
-const QUALITY_NAME: Record<Quality, string> = { high: 'Alta', medium: 'Média', low: 'Baixa' };
+const QUALITY_NAME: Record<Graphics, string> = { ultra: 'Ultra', high: 'Alta', medium: 'Média', low: 'Baixa' };
 
 function qualityPicker(): HTMLElement {
   const sel = h(
     'select',
     {
       onchange: () => {
-        quality = sel.value as Quality;
+        quality = sel.value as Graphics;
         remember('pk-quality', quality);
         look.setQuality(quality);
       },
     },
-    ...(['high', 'medium', 'low'] as Quality[]).map((q) => h('option', { value: q, selected: q === quality }, QUALITY_NAME[q])),
+    ...GRAPHICS.filter((q) => q !== 'ultra' || ULTRA || quality === 'ultra').map((q) => h('option', { value: q, selected: q === quality }, QUALITY_NAME[q])),
   );
   return h('label', { class: 'inline' }, 'Gráficos ', sel);
 }
@@ -3868,7 +3875,7 @@ function watchSpeed(dt: number): void {
   slow.time += dt;
   if (slow.time < 6) return;
   if (slow.frames / slow.time < 35) {
-    quality = quality === 'high' ? 'medium' : 'low';
+    quality = LOWER[quality];
     remember('pk-quality', quality);
     look.setQuality(quality);
     feed(`Gráficos baixados para ${QUALITY_NAME[quality]}, para o jogo não engasgar`, 'big');

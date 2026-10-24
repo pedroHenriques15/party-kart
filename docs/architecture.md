@@ -655,6 +655,14 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
 
 ## Rendering
 
+- **The graphics levels** (`Graphics` in `render/look.ts`): High, Medium and Low, at which the city is built
+  (`Quality`: what a phone or a laptop holds, the budget's three), and **Ultra** above them, for a PC only
+  (braga-map's task 081): offered where the device isn't played by touch first and its graphics card takes
+  textures 16,384 pixels wide or is a discrete one by its name (`ultraOffered`); `?quality=` sets any level
+  whatever the device. Ultra builds the city at High's level (`levelOf`: High's files from braga-map, until
+  its own come) but where a task gives it its own: so far the screen's every pixel (no cap at 2), the sun's
+  shadows at 4096 px, and the near trees to 700 m. Everything past what a phone holds goes to Ultra. The game
+  steps itself down a level when it runs slowly, Ultra to High, never up to it.
 - **`Look`** (`render/look.ts`, braga-map's task 022): Braga's light at a moment of the day, by default the clear
   March afternoon of the photos of the Rua do Fujacal (`DEFAULT_TIME`), or `?time=`'s; the sun where `sun.ts` puts
   it, its colour what's left of it through the air (Preetham's extinction, as the sky's shader has it). Matched to
@@ -957,6 +965,25 @@ The race of 8 karts is from 2026-10-13, party-kart `ac47bf0` and braga-map 1.2.0
 | A race of 8 karts: triangles | 1.22 M | 1.00 M | 0.61 M |
 | Textures | 91 MB | 57 MB | 42 MB |
 | Building the city | 3.8–5.3 s | 2.9–4.9 s | 2.6–4.5 s |
+
+**Ultra beside the three** (braga-map's task 081, 2026-10-24: party-kart on braga-map 1.36.0, the same
+RTX 4060 Ti, the round `shots/2026-10-24-after081/`, its 33 viewpoints shot at all four levels, 720 pixels
+high; Ultra is for a PC only and takes nothing from the phones' budget, decision 013's three levels):
+
+| | Ultra | High | Medium | Low |
+|---|---|---|---|---|
+| Pixel ratio, the sun's shadows | the screen's, 4096 px | 2, 2048 px | 1.25, 1024 px | 1, none |
+| Near trees, out to | 700 m | 260 m | 180 m | 120 m |
+| The city alone: draw calls (median) | 103–271 (174) | 99–264 (168) | 99–259 (164) | 66–227 (115) |
+| The city alone: triangles (median) | 2.68–5.36 M (4.14) | 1.43–3.19 M (2.25) | 1.13–2.44 M (1.74) | 0.67–1.63 M (1.06) |
+| Textures | 181 MB | 133 MB | 78 MB | 45 MB |
+| Building the city | 6.7–9.0 s | 6.3–7.4 s | 5.9–6.6 s | 5.3–5.9 s |
+| A frame (median) | 1.36–3.44 ms (2.02) | 0.78–1.94 ms (1.33) | 0.72–2.27 ms (0.97) | 0.42–2.00 ms (0.73) |
+| Download | the same at every level, Ultra fetching High's files (below) | | | |
+
+At 2560 by 1440 a frame at Ultra is at most 4.2 ms at the tree-heaviest viewpoints (`falperra`, 3.6 ms at
+High's 260 m); the frame that takes a new gather of the near trees up, every 20 m the camera goes, is 12 ms
+on average at 700 m (8 at 260 m, 18 at 1,000, which is why it stops at 700).
 
 **What every street in the area cost** (task 035, against `shots/2026-10-14-task012/`, the same 29
 viewpoints): before it, the city was 58–184 draw calls on High and Medium and 40–165 on Low,

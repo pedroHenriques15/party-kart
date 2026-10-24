@@ -3,7 +3,7 @@
 // changed by pressing the key (or the mouse's button) wanted. Every change is made and kept at once.
 import { CONTROLS, keyName, keysOf, MODE_NAMES, RESERVED, type Mode } from './binds.ts';
 import { CROSS_COLOURS, DEFAULTS, type Crosshair, type Prefs } from './prefs.ts';
-import type { Quality } from './render/look.ts';
+import { GRAPHICS, type Graphics } from './render/look.ts';
 
 type Child = Node | string | null | false | undefined;
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...kids: Child[]): HTMLElementTagNameMap[K] {
@@ -25,8 +25,9 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, 
 // and going back to the menu.
 export interface SettingsHost {
   prefs: Prefs;
-  quality: Quality;
-  setQuality(q: Quality): void;
+  quality: Graphics;
+  ultra: boolean; // whether this device is offered Ultra (a PC: braga-map's task 081)
+  setQuality(q: Graphics): void;
   changed(p: Prefs): void;
   muted(): boolean;
   toggleMute(): void;
@@ -78,8 +79,8 @@ export function settingsScreen(host: SettingsHost, redraw: () => void): HTMLElem
   if (at.tab === 'graphics') {
     const q = h(
       'select',
-      { onchange: () => host.setQuality(q.value as Quality) },
-      ...(['high', 'medium', 'low'] as Quality[]).map((v) => h('option', { value: v, selected: v === host.quality }, { high: 'Alta', medium: 'Média', low: 'Baixa' }[v])),
+      { onchange: () => host.setQuality(q.value as Graphics) },
+      ...GRAPHICS.filter((v) => v !== 'ultra' || host.ultra || host.quality === 'ultra').map((v) => h('option', { value: v, selected: v === host.quality }, { ultra: 'Ultra', high: 'Alta', medium: 'Média', low: 'Baixa' }[v])),
     );
     body = h(
       'div',

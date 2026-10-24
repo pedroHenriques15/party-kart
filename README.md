@@ -319,9 +319,11 @@ Capelas's car for sale for parts (rusty, roofless, its bumper hanging off), and 
 giant alarm clock on the back, because he's always late. With more than five on the grid, the bots
 drive the same cars again in a second paint ("Pedro II").
 
-**Graphics** (*Gráficos*): *Alta*, *Média* or *Baixa*, in the menu, and the rest in **⚙️ Definições**.
-Phones start on Medium. If the game runs slowly, it steps down a level by itself, as far as Low (the
-settings can turn that off).
+**Graphics** (*Gráficos*): *Alta*, *Média* or *Baixa*, in the menu, and the rest in **⚙️ Definições**;
+on a PC with a graphics card to hold it, *Ultra* above them: Braga at its most real, drawn at every
+pixel of the screen, with sharper shadows and the trees in full further off. Phones start on Medium.
+If the game runs slowly, it steps down a level by itself (Ultra to High, as far as Low; the settings
+can turn that off).
 
 The keys in the tables are the defaults: every one can be changed in **⚙️ Definições › Controlos**,
 and the keys' line at the bottom and the help say them as they're bound.

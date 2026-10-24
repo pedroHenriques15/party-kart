@@ -126,7 +126,8 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   A race needs a room, so it needs internet access. About 7 minutes.
 - `?scenery` shows the city alone from `?view=`, with no menus, room, karts or network: built as a
   race builds it, still, and the same every time (its textures' noise is seeded). The graphics are
-  whatever `localStorage['pk-quality']` says. `window.__kart` has the build time, draw calls,
+  whatever `localStorage['pk-quality']` says, or `?quality=` (`ultra`, `high`, `medium`, `low`) whatever
+  the device. `window.__kart` has the build time, draw calls,
   triangles, textures and geometries, and `__kart.timeFrames(60)` the milliseconds a frame takes.
 - The buildings' facades are the map's (braga-map's task 017, `render/facades.ts`): each building's
   kind of facade, drawn in its real proportions, its colours, its walls' material, its ground floor
@@ -140,7 +141,8 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
 - `node scripts/download.mjs` builds the game as it's shipped, opens it and adds up what the page
   fetched before you can drive, as it is and gzipped.
 - `node scripts/shots.mjs <label>` shoots braga-map's viewpoints (`../braga-map/refs/viewpoints.json`)
-  with `?scenery`, at High and Low (and Medium with `--medium`), into `shots/<date>-<label>/` (ignored
+  with `?scenery`, at High and Low (and Medium with `--medium`; with `--ultra`, Ultra in High's place,
+  as the rounds are shot since braga-map's task 081, and `--high` for High as well), into `shots/<date>-<label>/` (ignored
   by git): a PNG each, the shape of its photo and 720 pixels high, `stats.json` with each one's cost
   (draw calls, triangles, textures' memory, build and frame time), and `index.html` setting
   each beside its real photo (`../braga-map/.cache/refs/`) and the round before's. Name viewpoints

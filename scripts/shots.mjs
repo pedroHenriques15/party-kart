@@ -1,6 +1,7 @@
 // Shoots every viewpoint in the game, to see whether the city looks more like Braga than it did.
 // For each of braga-map's viewpoints (../braga-map/refs/viewpoints.json), at High and at Low (and
-// Medium, with --medium), it opens the city alone (?scenery) from the viewpoint's camera and saves
+// Medium, with --medium; Ultra in High's place with --ultra, and High as well with --high), it opens
+// the city alone (?scenery) at that level (?quality=) from the viewpoint's camera and saves
 // shots/<round>/<quality>/<id>.png, the shape of the viewpoint's photo and 720 pixels high. What
 // each frame costs goes in shots/<round>/stats.json, and shots/<round>/index.html sets each shot
 // beside the real photo (braga-map's .cache/refs/, which its tools/refs.mjs fetches) and the round
@@ -10,6 +11,8 @@
 // node scripts/shots.mjs baseline                   every viewpoint, into shots/<today>-baseline/
 // node scripts/shots.mjs facades estadio devesa     only the viewpoints named
 // node scripts/shots.mjs budget --medium            Medium too, for the budget (task 004)
+// node scripts/shots.mjs after081 --ultra           Ultra and Low: a round since braga-map's task 081,
+//                                                   Ultra as real as it gets, Low what a phone sees
 // node scripts/shots.mjs landmarks --map=../braga-map-021   the viewpoints and photos of another
 //                                                   braga-map checkout, such as a worktree's
 import { execSync } from 'node:child_process';
@@ -23,11 +26,12 @@ const H = 720;
 
 const flags = process.argv.slice(2).filter((a) => a.startsWith('--'));
 const MAP = path.resolve(ROOT, flags.find((a) => a.startsWith('--map='))?.slice(6) ?? '../braga-map');
-const QUALITIES = flags.includes('--medium') ? ['high', 'medium', 'low'] : ['high', 'low'];
-const LEVEL = { high: 'High', medium: 'Medium', low: 'Low' };
+const ULTRA = flags.includes('--ultra');
+const QUALITIES = [ULTRA && 'ultra', (!ULTRA || flags.includes('--high')) && 'high', flags.includes('--medium') && 'medium', 'low'].filter(Boolean);
+const LEVEL = { ultra: 'Ultra', high: 'High', medium: 'Medium', low: 'Low' };
 const [label, ...only] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 if (!label || !/^[\w-]+$/.test(label)) {
-  console.error('node scripts/shots.mjs <label> [viewpoint ids…] [--medium] [--map=<braga-map folder>]   the label in letters, numbers and dashes');
+  console.error('node scripts/shots.mjs <label> [viewpoint ids…] [--ultra] [--high] [--medium] [--map=<braga-map folder>]   the label in letters, numbers and dashes');
   process.exit(1);
 }
 const day = new Date();
@@ -119,7 +123,7 @@ try {
       try {
         errors.length = 0;
         await page.setViewportSize(size);
-        await page.goto(`${server.url}?scenery&view=${[v.x, v.y, v.z, v.tx, v.ty, v.tz, v.fov].join(',')}`);
+        await page.goto(`${server.url}?scenery&quality=${quality}&view=${[v.x, v.y, v.z, v.tx, v.ty, v.tz, v.fov].join(',')}`);
         // The city built and two frames drawn; then what a frame costs, over 60 of them.
         await page.waitForFunction(() => window.__kart?.frames >= 2, null, { timeout: 120_000 });
         await page.screenshot({ path: path.join(OUT, quality, `${v.id}.png`) });
@@ -161,9 +165,11 @@ const rows = views.map((v) => {
     : '<div class="none">The photo isn’t fetched: <code>node tools/refs.mjs</code> in braga-map</div>';
   const p = v.photo;
   const credit = `Photo: <a href="${esc(p.url)}">${esc(p.author)}</a>, ${esc(p.licence)}, ${esc(p.source === 'mapillary' ? 'Mapillary' : p.source)}, ${esc(p.date)}`;
+  // An Ultra shot beside the round before's High, where that round has no Ultra.
+  const was = (q) => (before?.shots[q] || q !== 'ultra' ? q : 'high');
   const figs = QUALITIES.flatMap((q) => [
     shot(q, stats.shots[q]?.[v.id], `${q}/${v.id}.png`, 'This round'),
-    before ? shot(q, before.shots[q]?.[v.id], `../${before.round}/${q}/${v.id}.png`, `${before.round}`) : `<figure class="q ${q}"><div class="none">No round before this one</div></figure>`,
+    before ? shot(q, before.shots[was(q)]?.[v.id], `../${before.round}/${was(q)}/${v.id}.png`, `${before.round}${was(q) === q ? '' : `, ${LEVEL[was(q)]}`}`) : `<figure class="q ${q}"><div class="none">No round before this one</div></figure>`,
   ]);
   return `<section><h2>${esc(v.name)} <small>${esc(v.id)} · ${esc(v.kind)}</small></h2><div class="row"><figure>${photo}<figcaption>${credit}</figcaption></figure>${figs.join('')}</div></section>`;
 });

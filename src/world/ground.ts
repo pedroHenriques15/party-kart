@@ -35,8 +35,11 @@ const KERB = 0.15; // a kerb's height over its carriageway, as braga-map's stree
 const DROP = 1.2; // how far a pavement slopes up from a kerb dropped at a crossing
 const GRADE = 0.7; // a piece off the ground meets the land "at grade" within this, and is eased to it
 const EASE = 10; // over this many metres from where it meets it
-export const CAR_R = 0.8; // the car's two circles: their radius, and how far ahead and behind its middle
-export const CAR_L = 0.95;
+// A kart's footprint, every kart's alike so a race stays fair (braga-map's task 105): halfway from the
+// first karts' size to a real racing kart's (1.9 by 1.4 m). It's drawn within it (render/drivers.ts).
+export const KART = { long: 2.8, wide: 1.8 } as const;
+export const CAR_R = KART.wide / 2; // the car's two circles: their radius, and how far ahead and behind its middle
+export const CAR_L = KART.long / 2 - CAR_R;
 const CLIMB = 0.7; // the steepest land a car climbs off the carriageway (35°)
 const SMOOTH = 1.5; // a surface's normal is taken over this either side
 const TRUNK = 0.15; // the thinnest trunk a kart hits

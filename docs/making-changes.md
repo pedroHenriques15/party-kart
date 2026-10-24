@@ -157,7 +157,9 @@ Work through the list. The ones in bold fail silently if you miss them.
 1. Add an entry to `DRIVERS` in `src/render/drivers.ts`:
    - `id`: short and permanent. It's saved in `localStorage` (`pk-driver`) and sent over the
      network.
-   - `body`: one of the existing bodies, or a new case in `buildKart`.
+   - `body`: one of the existing bodies, or a new case in `buildKart`, with how much smaller than
+     it's modelled it's drawn (`SIZE`): within every kart's footprint, 2.8 by 1.8 m (`KART` in
+     `src/world/ground.ts`), its driver the same size as in the others (0.7).
    - `extras`: from `Extra`. New ones are built in `buildDriverFigure`/`buildKart`.
    - `trail`: a key of `STYLE` in `src/render/fx.ts`, or `null`.
    - `horn`: notes in Hz.

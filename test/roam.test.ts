@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { carAt, speedOf, stepCar, type Car, type Input } from '../src/car/car.ts';
 import type { CarInfo } from '../src/game/arena.ts';
+import { bump, type Note } from '../src/game/racer.ts';
 import { Roamer } from '../src/game/roamer.ts';
 import { v3 } from '../src/math.ts';
-import { worldGround } from '../src/world/ground.ts';
+import { CAR_L, CAR_R, KART, worldGround } from '../src/world/ground.ts';
 
 // Free roam (braga-map's decision 019): a car this browser drives anywhere in the open world's area,
 // on the world's ground, from the map's real tiles.
@@ -82,6 +83,85 @@ test('a building the game leaves out, round the plinth or an egg, is no wall eit
   assert.ok(went > 3, `stopped ${(-went).toFixed(1)} m short of where its front stood`);
 });
 
+test("a kart's footprint (braga-map's task 105), 2.8 by 1.8 m: a wall keeps it 0.9 m off its side and 1.4 m off its nose, another kart 1.8 m off side by side and 2.8 m nose to tail", () => {
+  assert.equal(2 * CAR_R, KART.wide);
+  assert.equal(2 * (CAR_L + CAR_R), KART.long);
+  // Put a little into the plinth's sides from the street, alongside them and nose on: pushed out.
+  for (const s of [-1, 1]) {
+    const side = B.x + s * 3;
+    for (const [yaw, off] of [[Math.PI / 2, KART.wide / 2], [s < 0 ? 0 : Math.PI, KART.long / 2]]) {
+      const x = side + s * (off - 0.1);
+      const c = plinthed.place(carAt(v3(x, plinthed.land(x, B.z) + 0.3, B.z), yaw, v3(0, 1, 0)), plinthed.land(x, B.z) + 0.5);
+      for (let i = 0; i < 3; i++) stepCar(c, still, plinthed, DT);
+      assert.ok(Math.abs(s * (c.p.x - side) - off) < 0.01, `${(s * (c.p.x - side)).toFixed(3)} m off the side, for ${off} m`);
+    }
+  }
+  // Another kart, still, beside it or ahead, a little further than it touches and a little nearer.
+  const other = (x: number, z: number, yaw = 0): CarInfo => ({ id: 'o', name: 'O', P: 0, x, y: 0, z, yaw, vx: 0, vz: 0, flags: 0, fin: null });
+  const touches = (o: CarInfo) => {
+    const c = carAt(v3(0, 0, 0), 0, v3(0, 1, 0));
+    const notes: Note[] = [];
+    bump(c, 'me', [o], notes);
+    return c.p.x !== 0 || c.p.z !== 0;
+  };
+  for (const [x, z] of [[0, KART.wide], [KART.long, 0], [-KART.long, 0]]) {
+    const d = Math.hypot(x, z);
+    assert.ok(!touches(other((x * (d + 0.05)) / d, (z * (d + 0.05)) / d)), `touches at ${(d + 0.05).toFixed(2)} m`);
+    assert.ok(touches(other((x * (d - 0.05)) / d, (z * (d - 0.05)) / d)), `doesn't touch at ${(d - 0.05).toFixed(2)} m`);
+  }
+  // Across it, nose to its side: its nose's circle against the nearer of yours.
+  const across = KART.long / 2 + KART.wide / 2;
+  assert.ok(!touches(other(CAR_L, across + 0.05, Math.PI / 2)));
+  assert.ok(touches(other(CAR_L, across - 0.05, Math.PI / 2)));
+});
+
+// The lane off the Praceta João XXI, between two retaining walls 3.6 to 3.8 m apart for some 7 m: two
+// karts fit side by side in it, where the first karts (two 0.8 m circles, touching 2.2 m apart)
+// needed 3.8 m.
+test('two karts side by side in the lane off the Praceta João XXI, 3.7 m between its walls', () => {
+  const [ax, az, bx, bz] = [202, 553.5, 222, 543]; // its line on the map
+  const L = Math.hypot(bx - ax, bz - az);
+  const [tx, tz] = [(bx - ax) / L, (bz - az) / L];
+  const [nx, nz] = [-tz, tx]; // to the right, going from a to b
+  const floor = (x: number, z: number) => ground.floor(x, z, ground.land(x, z) + 1.5).y;
+  // How far the wall on that side is from the line, s m along it.
+  const wall = (s: number, side: number) => {
+    const [x, z] = [ax + tx * s, az + tz * s];
+    const y = floor(x, z) + 0.05;
+    let r = 0;
+    while (r < 5 && !ground.circle(x + nx * r * side, z + nz * r * side, x + nx * r * side, z + nz * r * side, y, 0.01)) r += 0.01;
+    return r;
+  };
+  for (let s = 2; s <= 7; s++) {
+    const across = wall(s, -1) + wall(s, 1);
+    assert.ok(across > 2 * KART.wide && across < 0.8 + 2.2 + 0.8, `${across.toFixed(2)} m across ${s} m along`);
+  }
+  // A kart along each wall, 2 cm off it, side by side or one a length's half on: clear of the walls,
+  // and of each other.
+  const kart = (s: number, side: number) => {
+    const off = wall(s, side) - CAR_R - 0.02;
+    const [x, z] = [ax + tx * s + nx * off * side, az + tz * s + nz * off * side];
+    const yaw = Math.atan2(tz, tx) + Math.atan((side * (wall(s + 1, side) - wall(s - 1, side))) / 2);
+    return carAt(v3(x, floor(x, z), z), yaw, v3(0, 1, 0));
+  };
+  for (let s = 3; s <= 6; s += 0.5) {
+    for (const ahead of [0, KART.long / 2]) {
+      const left = kart(s, -1);
+      const right = kart(s + ahead, 1);
+      for (const c of [left, right]) {
+        for (const e of [1, -1]) {
+          const [qx, qz] = [c.p.x + Math.cos(c.yaw) * CAR_L * e, c.p.z + Math.sin(c.yaw) * CAR_L * e];
+          assert.equal(ground.circle(qx, qz, qx, qz, c.p.y, CAR_R), null, `in a wall ${s} m along`);
+        }
+      }
+      const was = { ...right.p };
+      bump(right, 'r', [{ id: 'l', name: 'L', P: 0, x: left.p.x, y: left.p.y, z: left.p.z, yaw: left.yaw, vx: 0, vz: 0, flags: 0, fin: null }], []);
+      assert.deepEqual(right.p, was, `touching ${s} m along, ${ahead} m on`);
+      if (!ahead) assert.ok(Math.hypot(right.p.x - left.p.x, right.p.z - left.p.z) < 2.2, 'where the first karts touched');
+    }
+  }
+});
+
 // A Roamer at a point of the Rua do Fujacal, going up it.
 const roamer = (x: number, z: number, speed = 0) => {
   const c = ground.place(carAt(v3(x, ground.land(x, z) + 0.3, z), UP, v3(0, 1, 0)));
@@ -99,14 +179,14 @@ test('free roam: driving up a street, bumping into a friend, and back on the str
   assert.equal(r.notes.filter((n) => n.k === 'respawn').length, 0);
   // Into a friend standing still in the street 12 m on: a bump, and never through them.
   const b = roamer(176, 832, 8);
-  const friend: CarInfo = { id: 'friend', name: 'Amigo', P: 0, x: 176 + 12 * Math.cos(UP), y: ground.land(176 + 12 * Math.cos(UP), 832 + 12 * Math.sin(UP)), z: 832 + 12 * Math.sin(UP), vx: 0, vz: 0, flags: 0, fin: null };
+  const friend: CarInfo = { id: 'friend', name: 'Amigo', P: 0, x: 176 + 12 * Math.cos(UP), y: ground.land(176 + 12 * Math.cos(UP), 832 + 12 * Math.sin(UP)), z: 832 + 12 * Math.sin(UP), yaw: UP, vx: 0, vz: 0, flags: 0, fin: null };
   let closest = Infinity;
   for (let i = 0; i < 240; i++) {
     b.step([friend], ahead, DT);
     closest = Math.min(closest, Math.hypot(b.car.p.x - friend.x, b.car.p.z - friend.z));
   }
   assert.ok(b.notes.some((n) => n.k === 'bump'), 'never bumped');
-  assert.ok(closest > 2, `${closest.toFixed(2)} m from the friend's middle`);
+  assert.ok(closest > KART.long - 0.2, `${closest.toFixed(2)} m from the friend's middle`);
   // Fallen into the land in the middle of a block: back on a street's carriageway within a second
   // or so, facing along it.
   const lost = new Roamer(ground, 'me', 'Eu', carAt(v3(145, ground.land(145, 820) - 3, 820), 0, v3(0, 1, 0)));

@@ -274,7 +274,7 @@ How a race runs:
   animate needs `userData.moves = true` on it or a parent, or it gets frozen into the merged mesh.
 - **`mat()` caches materials by colour and settings**, so changing one changes every mesh that
   uses it. A kart's body paint is its own because gold plating recolours it.
-- **The peer id prefix** `partykart-pk41-` in `src/session.ts` decides which builds can see each
+- **The peer id prefix** `partykart-pk44-` in `src/session.ts` decides which builds can see each
   other's rooms. The deployed game and a dev build share rooms while it matches. Change it when the
   message format changes incompatibly, or a track changes or is added.
 - **Item rolls and bot patience use `Math.random`.** That's fine because only one browser ever

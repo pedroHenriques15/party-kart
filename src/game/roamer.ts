@@ -55,6 +55,6 @@ export class Roamer {
     if (c.drift >= 1.7) flags |= FLAG.turbo2;
     else if (c.drift >= 0.8) flags |= FLAG.turbo1;
     if (this.slip > 0.2) flags |= FLAG.slip;
-    return { id: this.id, name: this.name, P: 0, x: c.p.x, y: c.p.y, z: c.p.z, vx: c.v.x, vz: c.v.z, flags, fin: null };
+    return { id: this.id, name: this.name, P: 0, x: c.p.x, y: c.p.y, z: c.p.z, yaw: c.yaw, vx: c.v.x, vz: c.v.z, flags, fin: null };
   }
 }

@@ -199,9 +199,12 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
   each street and path leaving it. A building is trimmed at a path's passage under it as at a
   carriageway (the owner's answer to braga-map's task 050), so it's open too; a cut's edge in a
   building is a wall only where the building is on its other side, not where a passage's floor meets
-  a carriageway's or a tile's (`trimmed`, braga-map's task 078). The car is two circles, 1.6 m
-  across and 1.9 m apart, pushed out of what they're in a few times over, and back the way it came
-  if it went through a wall in one step. The land is a wall where it would rise more than a step in
+  a carriageway's or a tile's (`trimmed`, braga-map's task 078). The car is two circles, 1.8 m
+  across and 1.0 m apart (its footprint, `KART`, 2.8 by 1.8 m since braga-map's task 105, every
+  kart's the same and drawn within it), pushed out of what they're in a few times over, and back the
+  way it came if it went through a wall in one step. Two karts bump as the same two circles each
+  (`bump` in `game/racer.ts`, a `CarInfo` carrying the other's `yaw`): 1.8 m apart side by side, 2.8 m
+  nose to tail. The land is a wall where it would rise more than a step in
   front of the car, or off the carriageway or a path steeper than 35°. A car going up a kerb hops
   (it flies until it comes down) and loses 12% of its speed across the kerb; so up each riser of a
   flight of steps, and down one it drops to the tread below.
@@ -292,7 +295,7 @@ flowchart LR
 
 Everyone connects to the host over WebRTC data channels. PeerJS's free public server only
 introduces them, and relays the traffic when a router is strict. The host's peer id is
-`partykart-pk41-` plus a five-character room code, and the invite link is `?room=<code>`, which
+`partykart-pk44-` plus a five-character room code, and the invite link is `?room=<code>`, which
 opens the game straight into the room. A room is made only when someone invites friends ("Convidar
 amigos") or starts a race; until then the game is alone, with no network at all.
 

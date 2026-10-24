@@ -29,6 +29,7 @@ import { buildEdge, ShotsView, Viewmodel, type HandState } from './render/arms.t
 import { CompView } from './render/comp.ts';
 import { buildProps } from './render/props.ts';
 import { loadParked, type Parked } from './world/cover.ts';
+import { CAR_L, CAR_R } from './world/ground.ts';
 import { NadesView } from './render/nades.ts';
 import { buildFighter, type Fighter } from './render/soldier.ts';
 import { buildKart, buildWalker, driverById, DRIVERS, type KartModel, type WalkerModel } from './render/drivers.ts';
@@ -272,7 +273,7 @@ function showKart(driverId: string, label: string | null, ghost = false): Shown 
   if (label) {
     tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: nameTag(label, driverById(driverId).color), depthTest: false }));
     tag.scale.set(3, 0.75, 1);
-    tag.position.set(0, 3.4, 0);
+    tag.position.set(0, 2.6, 0);
     tag.renderOrder = 10;
     model.group.add(tag);
   }
@@ -318,7 +319,7 @@ function kartEffects(id: string, s: Shown, x: number, y: number, z: number, yaw:
   const pos = new THREE.Vector3(x, y, z);
   fx.trail(id, s.model.driver.trail, pos, back, speed, !!(flags & FLAG.boost), dt);
   const drifting = !!(flags & FLAG.drift) && grounded;
-  const rear = (side: number) => pos.clone().addScaledVector(back, 1.1).addScaledVector(right, side * 0.9).add(new THREE.Vector3(0, 0.05, 0));
+  const rear = (side: number) => pos.clone().addScaledVector(back, 0.8).addScaledVector(right, side * 0.7).add(new THREE.Vector3(0, 0.05, 0));
   skids.mark(id, drifting, rear(-1), rear(1));
   if (drifting) {
     const color = flags & FLAG.turbo2 ? ['#ff9a2e', '#ffd04d'] : flags & FLAG.turbo1 ? ['#5ad1ff', '#ffffff'] : null;
@@ -1614,9 +1615,10 @@ const standing = new Map<string, Afoot>();
 const kartBlocks: Blocker[] = [];
 let block: Blocker[] = [];
 
-// A kart as someone on foot and a bullet meet it: its two circles, as it bumps, up to its roll bar.
+// A kart as someone on foot and a bullet meet it: its two circles, as it bumps (CAR_R and CAR_L,
+// world/ground.ts), up to its roll bar.
 function kartBlock(out: Blocker[], x: number, y: number, z: number, yaw: number): void {
-  for (const s of [1, -1]) out.push({ x: x + Math.cos(yaw) * 0.95 * s, z: z + Math.sin(yaw) * 0.95 * s, r: 0.8, y0: y - 0.3, y1: y + 1.1 });
+  for (const s of [1, -1]) out.push({ x: x + Math.cos(yaw) * CAR_L * s, z: z + Math.sin(yaw) * CAR_L * s, r: CAR_R, y0: y - 0.3, y1: y + 0.9 });
 }
 
 // Whether a round (or a match) is on, rather than your guns out round the city; and the match, if
@@ -3249,7 +3251,7 @@ function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local
     if (foot) {
       afoot.add(id);
       if (!m.bot) {
-        cars.set(id, { id, name: m.name, P: 0, x: b.kx, y: b.ky, z: b.kz, vx: 0, vz: 0, flags: 0, fin });
+        cars.set(id, { id, name: m.name, P: 0, x: b.kx, y: b.ky, z: b.kz, yaw: b.kw, vx: 0, vz: 0, flags: 0, fin });
         pose(k.model.group, b.kx, b.ky, b.kz, b.kw, { x: b.ux, y: b.uy, z: b.uz });
         k.model.update(0, 0, dt, true, 0);
         kartBlock(kartBlocks, b.kx, b.ky, b.kz, b.kw);
@@ -3297,7 +3299,7 @@ function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local
       afoot.delete(id);
       standing.delete(id);
       kartBlock(kartBlocks, x, y, z, yaw);
-      cars.set(id, { id, name: m.name, P: L(a.P, b.P), x, y, z, vx: Math.cos(b.yaw) * b.spd, vz: Math.sin(b.yaw) * b.spd, flags: b.fl, fin });
+      cars.set(id, { id, name: m.name, P: L(a.P, b.P), x, y, z, yaw, vx: Math.cos(b.yaw) * b.spd, vz: Math.sin(b.yaw) * b.spd, flags: b.fl, fin });
       pose(k.model.group, x, y, z, yaw, { x: L(a.ux, b.ux), y: L(a.uy, b.uy), z: L(a.uz, b.uz) });
       k.model.update(b.spd, b.st, dt, !!b.g, b.fl);
       kartEffects(id, k, x, y, z, yaw, Math.abs(b.spd), b.fl, !!b.g, dt);
@@ -3309,7 +3311,7 @@ function syncOthers(karts: Map<string, Shown>, cars: Map<string, CarInfo>, local
     const over = foot ? (k.fighter?.group.visible ? k.fighter.group : k.walker!.group) : k.model.group;
     if (k.tag && k.tag.parent !== over) {
       over.add(k.tag);
-      k.tag.position.y = foot ? 2.2 : 3.4;
+      k.tag.position.y = foot ? 2.2 : 2.6;
     }
     if (k.tag) k.tag.visible = !inRound() || mates(id, room!.you);
   }
@@ -3497,6 +3499,8 @@ function widen(fov: number, dt: number, rate = 4): void {
   }
 }
 
+// Behind your kart, or close behind it, framing it as the karts are drawn (2.8 m long since braga-map's
+// task 105, the camera brought in with them).
 function chase(r: Driving, dt: number): void {
   if (VIEW && VIEW.length >= 6) {
     holdView(VIEW);
@@ -3506,13 +3510,13 @@ function chase(r: Driving, dt: number): void {
   const close = r.cam === 1;
   const f = new THREE.Vector3(Math.cos(c.yaw), 0, Math.sin(c.yaw));
   const spd = speedOf(c);
-  const dist = close ? 4.8 : 7.6 + spd * 0.045;
-  const want = new THREE.Vector3(c.p.x, c.p.y, c.p.z).addScaledVector(f, -dist).add(new THREE.Vector3(0, close ? 2.0 : 3.2, 0));
+  const dist = close ? 3.4 : 5.3 + spd * 0.032;
+  const want = new THREE.Vector3(c.p.x, c.p.y, c.p.z).addScaledVector(f, -dist).add(new THREE.Vector3(0, close ? 1.4 : 2.25, 0));
   want.y = Math.max(want.y, world.ground(want.x, want.z) + 1.2);
   // Somewhere else altogether (the game opening, a friend's side): straight there.
   if (camPos.distanceTo(want) > 150) camPos.copy(want);
   camPos.lerp(want, 1 - Math.exp(-dt * (close ? 14 : 8)));
-  camLook.set(c.p.x, c.p.y + 1.3, c.p.z).addScaledVector(f, 5);
+  camLook.set(c.p.x, c.p.y + 0.9, c.p.z).addScaledVector(f, 3.5);
   camera.position.copy(camPos);
   if (!prefs.shake) r.shake = 0;
   if (r.shake > 0.01) {
@@ -3532,13 +3536,13 @@ function orbit(c: Car, t: number, dt: number): void {
     return;
   }
   const ang = c.yaw + Math.PI * 0.8 + Math.sin(t * 0.2) * 0.6;
-  const want = new THREE.Vector3(c.p.x + Math.cos(ang) * 7.5, c.p.y + 2.6, c.p.z + Math.sin(ang) * 7.5);
+  const want = new THREE.Vector3(c.p.x + Math.cos(ang) * 5.3, c.p.y + 1.8, c.p.z + Math.sin(ang) * 5.3);
   want.y = Math.max(want.y, world.ground(want.x, want.z) + 1.2);
   if (camPos.distanceTo(want) > 150) camPos.copy(want);
   camPos.lerp(want, 1 - Math.exp(-dt * 2.5));
   camera.position.copy(camPos);
   const toKart = new THREE.Vector3(c.p.x - camPos.x, 0, c.p.z - camPos.z).normalize();
-  camera.lookAt(c.p.x + toKart.z * 2.4, c.p.y + 1.1, c.p.z - toKart.x * 2.4);
+  camera.lookAt(c.p.x + toKart.z * 1.7, c.p.y + 0.8, c.p.z - toKart.x * 1.7);
   widen(58, dt);
 }
 

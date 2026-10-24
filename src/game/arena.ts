@@ -21,6 +21,7 @@ export interface CarInfo {
   x: number;
   y: number;
   z: number;
+  yaw: number; // which way it faces, for bumping into its footprint
   vx: number;
   vz: number;
   flags: number;

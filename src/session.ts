@@ -17,8 +17,9 @@ import { courseById, lapLimit, TRACKS } from './tracks.ts';
 // pk40 the players on foot (braga-map's task 073), whom an older build would draw as karts; pk41 the
 // deathmatch (braga-map's tasks 074 and 075), its settings, its shots and its scores, and its bots on
 // foot; pk42 the deathmatch after Counter-Strike 2's: its arsenal, grenades, teams and flags; pk43 the
-// competitive mode (game/comp.ts), its settings and messages, and the shots fired on foot round the city.
-const PREFIX = 'partykart-pk43-';
+// competitive mode (game/comp.ts), its settings and messages, and the shots fired on foot round the city;
+// pk44 the smaller karts (braga-map's task 105), which an older build would bump into at their old size.
+const PREFIX = 'partykart-pk44-';
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 export const HOST_ID = 'host';
 export const MAX_RACERS = 8;

@@ -5,6 +5,7 @@ import { newCar, NO_INPUT, speedOf, stepCar, stopInput, trackGround, type Car, t
 import { clamp } from '../math.ts';
 import { advance, newRun, noteSpeed, respawn, restart, type Run, type RunEvent } from '../race.ts';
 import { surfacePoint, type Track } from '../track/track.ts';
+import { CAR_L, CAR_R, KART } from '../world/ground.ts';
 import { FLAG, type Arena, type CarInfo } from './arena.ts';
 import {
   BALL_BACK,
@@ -51,7 +52,11 @@ export type Note =
 
 const BOX_RESPAWN = 2500;
 const ROLL_TIME = 1.1;
-const CAR_RADIUS = 1.1;
+// How near an item comes to a kart to hit it: the bola (0.62 m round) along and across the kart's
+// footprint (KART, world/ground.ts), the pudim (its flan 0.78 m round, low) from the kart's middle.
+const BOLA_ALONG = KART.long / 2 + 0.6;
+const BOLA_ACROSS = KART.wide / 2 + 0.6;
+const PUDIM_NEAR = 1.5;
 // The slipstream, GTA-style: behind a car the pull builds up over a second or so, more the closer
 // you are, and when you pull out to pass it wears off over a few seconds, so the speed bleeds away
 // instead of stopping dead.
@@ -119,7 +124,7 @@ export class Racer {
     if (c.drift >= 1.7) flags |= FLAG.turbo2;
     else if (c.drift >= 0.8) flags |= FLAG.turbo1;
     if (this.slip > 0.2) flags |= FLAG.slip;
-    return { id: this.id, name: this.name, P: this.P, x: c.p.x, y: c.p.y, z: c.p.z, vx: c.v.x, vz: c.v.z, flags, fin: this.fin };
+    return { id: this.id, name: this.name, P: this.P, x: c.p.x, y: c.p.y, z: c.p.z, yaw: c.yaw, vx: c.v.x, vz: c.v.z, flags, fin: this.fin };
   }
 
   private nextId(): string {
@@ -301,7 +306,7 @@ export class Racer {
       if (p.owner === this.id && age < (p.v < 0 ? 1500 : 700)) continue;
       const at = projProgress(p, t);
       if (p.kind === 'bola') {
-        if (Math.abs(loopDelta(at, P, N)) < 2.2 && Math.abs(latAt(this.track, at, p.lat) - c.lat) < 1.9 && c.h < 1.6) this.hit(a, p.id, a.nameOf(p.owner), 'bola');
+        if (Math.abs(loopDelta(at, P, N)) < BOLA_ALONG && Math.abs(latAt(this.track, at, p.lat) - c.lat) < BOLA_ACROSS && c.h < 1.6) this.hit(a, p.id, a.nameOf(p.owner), 'bola');
       } else if (p.kind === 'pombo') {
         if (p.target === this.id && at >= P - 1) this.hit(a, p.id, a.nameOf(p.owner), 'pombo');
       } else if (p.kind === 'foguete') {
@@ -316,7 +321,7 @@ export class Racer {
       if (h.owner === this.id && t - h.t0 < 1000) continue;
       if (Math.abs(loopDelta(h.idx, c.idx, N)) > 4) continue;
       const p = surfacePoint(this.track.samples[h.idx], h.lat, 0);
-      if (Math.hypot(p.x - c.p.x, p.z - c.p.z) < 1.9 && c.h < 1) {
+      if (Math.hypot(p.x - c.p.x, p.z - c.p.z) < PUDIM_NEAR && c.h < 1) {
         this.hit(a, h.id, a.nameOf(h.owner), 'pudim');
         if (this.spin > 0) return;
       }
@@ -367,8 +372,9 @@ export class Racer {
 }
 
 // Bumping into the others: each car pushes only itself away, so it's fair on both sides, in a race
-// or driving round the city. Returns how strongly the slipstream of a car ahead pulls (0 to 1), and
-// a gold car it touched, if any.
+// or driving round the city. A car is its footprint's two circles (CAR_R and CAR_L, world/ground.ts),
+// as the walls meet it, so two touch 1.8 m apart side by side and 2.8 m nose to tail. Returns how
+// strongly the slipstream of a car ahead pulls (0 to 1), and a gold car it touched, if any.
 export function bump(c: Car, id: string, cars: Iterable<CarInfo>, notes: Note[]): { pull: number; gold: CarInfo | null } {
   const fx = Math.cos(c.yaw);
   const fz = Math.sin(c.yaw);
@@ -379,19 +385,35 @@ export function bump(c: Car, id: string, cars: Iterable<CarInfo>, notes: Note[])
     const dx = c.p.x - o.x;
     const dz = c.p.z - o.z;
     const d = Math.hypot(dx, dz);
-    if (d < CAR_RADIUS * 2 && Math.abs(c.p.y - o.y) < 1.6 && d > 0.01) {
-      const nx = dx / d;
-      const nz = dz / d;
-      const push = (CAR_RADIUS * 2 - d) / 2;
-      c.p.x += nx * push;
-      c.p.z += nz * push;
-      const vn = (c.v.x - o.vx) * nx + (c.v.z - o.vz) * nz;
-      if (vn < 0) {
-        c.v.x -= nx * vn * 0.8;
-        c.v.z -= nz * vn * 0.8;
-        notes.push({ k: 'bump', strength: -vn });
+    if (d < KART.long && Math.abs(c.p.y - o.y) < 1.6 && d > 0.01) {
+      // The two circles, one of each car's, deepest into each other: pushed apart along the line between them.
+      const ox = Math.cos(o.yaw) * CAR_L;
+      const oz = Math.sin(o.yaw) * CAR_L;
+      let deep = 0;
+      let nx = 0;
+      let nz = 0;
+      for (const s of [1, -1]) {
+        for (const t of [1, -1]) {
+          const qx = dx + fx * CAR_L * s - ox * t;
+          const qz = dz + fz * CAR_L * s - oz * t;
+          const q = Math.hypot(qx, qz);
+          if (q < 1e-6 || 2 * CAR_R - q <= deep) continue;
+          deep = 2 * CAR_R - q;
+          nx = qx / q;
+          nz = qz / q;
+        }
       }
-      if (o.flags & FLAG.gold) gold ??= o;
+      if (deep > 0) {
+        c.p.x += (nx * deep) / 2;
+        c.p.z += (nz * deep) / 2;
+        const vn = (c.v.x - o.vx) * nx + (c.v.z - o.vz) * nz;
+        if (vn < 0) {
+          c.v.x -= nx * vn * 0.8;
+          c.v.z -= nz * vn * 0.8;
+          notes.push({ k: 'bump', strength: -vn });
+        }
+        if (o.flags & FLAG.gold) gold ??= o;
+      }
     }
     // In the slipstream: up to 30 m behind someone going the same way, close to their line. It's
     // strongest within 8 m.

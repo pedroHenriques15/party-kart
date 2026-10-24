@@ -19,7 +19,7 @@ export const GRIP = 9;
 const DRIFT_GRIP = 1.8;
 export const STICK = 0.05; // how far the road can fall away and the car still hugs it
 export const COYOTE = 0.12; // s after leaving the ground that the car still drives as if on it
-const HALF_W = 1.0;
+const HALF_W = 0.9; // half a kart's width (KART in world/ground.ts): how near the first track's walls its middle comes
 export const WALL_H = 1.3; // a car this far over a wall's foot flies over it
 const FALL_RESPAWN = 0.9; // s off the road and well below it before a respawn
 // The drift mini-turbo: drift this long, let go, and get this much boost.

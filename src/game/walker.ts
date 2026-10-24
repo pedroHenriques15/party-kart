@@ -4,7 +4,7 @@
 // its face; and the walls, fences, hedges, gates, buildings and trees stop it at its own radius
 // (WorldGround.circle). Pure, like the karts' physics, so the tests walk it.
 import { angleDiff, clamp, v3, type V } from '../math.ts';
-import { STEP, type Floor, type WorldGround } from '../world/ground.ts';
+import { CAR_R, KART, STEP, type Floor, type WorldGround } from '../world/ground.ts';
 import type { Blocker } from '../world/sight.ts';
 
 export const HEIGHT = 1.75;
@@ -327,7 +327,7 @@ export class Walker {
 
 // Out of the kart at (p, yaw): beside it on the side with the pavement, if there's room on it (the
 // walls and trees clear, and nothing between it and the kart), else on the other side, in front,
-// behind, or where the kart is.
+// behind, or where the kart is. Beside it, just clear of its footprint (KART) and further out.
 export function alight(g: WorldGround, p: V, yaw: number): Walker {
   const rx = -Math.sin(yaw);
   const rz = Math.cos(yaw);
@@ -335,8 +335,9 @@ export function alight(g: WorldGround, p: V, yaw: number): Walker {
   const fz = Math.sin(yaw);
   let best: { x: number; y: number; z: number; score: number } | null = null;
   const spots: [number, number, number][] = [];
-  for (const s of [1, -1]) for (const d of [1.6, 2.2, 2.8]) spots.push([rx * s * d, rz * s * d, d]);
-  for (const s of [1, -1]) spots.push([fx * s * 3, fz * s * 3, 6]);
+  for (const s of [1, -1]) for (const d of [0.2, 0.8, 1.4].map((o) => CAR_R + RADIUS + o)) spots.push([rx * s * d, rz * s * d, d]);
+  const end = KART.long / 2 + RADIUS + 0.7;
+  for (const s of [1, -1]) spots.push([fx * s * end, fz * s * end, 6]);
   for (const [dx, dz, d] of spots) {
     const x = p.x + dx;
     const z = p.z + dz;

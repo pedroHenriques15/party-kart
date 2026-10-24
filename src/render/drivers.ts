@@ -340,6 +340,12 @@ export interface KartModel {
 // Where Joel sits in his chair.
 const CHAIR_SEAT = V(-0.15, 0.95, 0);
 
+// How much smaller than it's modelled each body is drawn (braga-map's task 105): within the karts'
+// footprint, 2.8 by 1.8 m (KART in world/ground.ts), as they collide, with its driver the same size in
+// every one, so the chair and the trolley stay shorter than the karts, as they were. Capelas's banger,
+// the longest, a little smaller to fit.
+const SIZE: Record<Body, number> = { kart: 0.7, trolley: 0.7, chair: 0.7, banger: 0.65 };
+
 const GOLD = 1;
 const SHIELD = 2;
 const SPIN = 4;
@@ -349,11 +355,16 @@ const SLIP = 256;
 
 let windTex: THREE.CanvasTexture | null = null;
 
-// The car around the figure. Forward is +x, right is +z; the wheels sit on y = 0.
+// The car around the figure. Forward is +x, right is +z; the wheels sit on y = 0. It's modelled
+// bigger than it's drawn: `size` scales it down to the footprint (SIZE).
 export function buildKart(d: Driver): KartModel {
-  const group = new THREE.Group();
+  const group = new THREE.Group(); // shrinks with the martelinho
+  const k = SIZE[d.body];
+  const size = new THREE.Group();
+  size.scale.setScalar(k);
+  group.add(size);
   const body = new THREE.Group(); // tilts and spins
-  group.add(body);
+  size.add(body);
   const p = new Parts();
   // Capelas's paint is faded and dull; everyone else's is glossy.
   const shell: THREE.MeshStandardMaterial = d.body === 'banger' ? new THREE.MeshStandardMaterial({ color: d.color, roughness: 0.85, metalness: 0.05 }) : paint(d.color, 0.25);
@@ -609,7 +620,7 @@ export function buildKart(d: Driver): KartModel {
     });
     const under = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 2.6).rotateX(-Math.PI / 2), glow);
     under.position.y = 0.04;
-    group.add(under);
+    size.add(under);
     for (const s of [-1, 1]) p.add(new THREE.BoxGeometry(1.5, 0.05, 0.03), std(d.trim, { emissive: d.trim, emissiveIntensity: 2 }), [0.05, 0.2, s * 1.0]);
   }
   if (has('antenna')) {
@@ -799,12 +810,12 @@ export function buildKart(d: Driver): KartModel {
     [1.4, 0.9],
     [1.8, -0.35],
     [1.8, 0.35],
-  ].map(([y, z], k) => {
+  ].map(([y, z], j) => {
     const m = new THREE.Mesh(windGeo, new THREE.MeshBasicMaterial({ color: '#e4f6ff', map: windTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
     m.position.set(0, y, z);
     m.visible = false;
-    group.add(m);
-    return { m, phase: (k * 3) / 8 + Math.random() * 0.1 };
+    size.add(m);
+    return { m, phase: (j * 3) / 8 + Math.random() * 0.1 };
   });
   let wind = 0;
 
@@ -884,11 +895,11 @@ export function buildKart(d: Driver): KartModel {
     group,
     driver: d,
     figure: fig,
-    exhaust,
+    exhaust: exhaust.map((e) => e.clone().multiplyScalar(k)),
     ember,
     update(speed, steer, dt, grounded, flags, vice = false) {
       t += dt;
-      for (const w of wheels) w.rotation.z -= (speed / 0.42) * dt;
+      for (const w of wheels) w.rotation.z -= (speed / (0.42 * k)) * dt;
       for (const pv of pivots) pv.rotation.y = -steer * 0.45;
       if (wobbly) wobbly.rotation.x = Math.sin(t * 23) * 0.09 * Math.min(1, speed / 5);
       for (const m of moving) m(t, speed);

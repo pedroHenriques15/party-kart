@@ -680,7 +680,10 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     it doesn't compile on Ultra.
   - **Occlusion** (three's `GTAOPass`), from the frame's own depth, its normals worked out from that depth (a
     pass of its own for them would draw the trees' leaf cards whole), 1.5 m round, on no more than 720
-    lines; `?ao=` sets how strongly it darkens (0 for none).
+    lines; `?ao=` sets how strongly it darkens (0.7; 0 for none). Its deepest is eased and its noise
+    smoothed only close by: from the depth alone it finds a crease between two walls too dark, and wider
+    smoothing spread that over a narrow face beside it. A buffer of the surfaces' own normals (which
+    reflections would want too) would let it go further.
   - **SMAA** for the edges; not TAA, as three's `TAARenderPass` doesn't reproject (it adds up frames only
     while the camera is still).
 - **`Look`** (`render/look.ts`, braga-map's task 022): Braga's light at a moment of the day, by default the clear
@@ -1014,12 +1017,13 @@ card, 720 pixels high: Ultra's frame, `render/post.ts`; High, Medium and Low dra
 | The city alone: draw calls (median), the cascades' passes counted | 233–618 (483) | 103–271 (174) |
 | The city alone: triangles (median) | 6.35–11.60 M (8.68) | 2.68–5.36 M (4.14) |
 | Textures (the cascades' four maps, the sun's one hidden) | 373 MB | 181 MB |
-| A frame (median) | 3.22–7.12 ms (4.60) | 1.36–3.44 ms (2.02) |
+| A frame (median) | 3.34–7.58 ms (4.84) | 1.36–3.44 ms (2.02) |
 
-At 2560 by 1440 a frame is at most 9.6 ms (`falperra`; 6.8 at `alameda-fujacal`): the cascades' shadow
-maps about 4.8 ms of it, the occlusion 1.3 (on no more than 720 lines: 5.1 at the screen's), SMAA 0.5. The
-frame that takes a new gather of the near trees up is 15.0 ms on average at 700 m, 17.3 with the gather
-itself (11.9 before): over 16 ms about once a second as you drive. The near trees go into each of the four
+At 2560 by 1440 a frame is at most 9.8 ms (`falperra`; 7.1 at `alameda-fujacal`): the cascades' shadow
+maps about 4.8 ms of it, the occlusion about 1.5 (on no more than 720 lines: 5 at the screen's), SMAA 0.5.
+The frame that takes a new gather of the near trees up is 15.0–16.4 ms on average at 700 m, 17–18 with the
+gather itself (11.9 before): over 16 ms about once a second as you drive; the worst single steps, 42 and
+108 ms in two runs (27–56 before, and at High). The near trees go into each of the four
 cascades whole (they're drawn without culling), the most of the cascades' cost; braga-map's task 089
 remakes the trees to the horizon, and their cost with them. The buffers it draws through take about 120 MB more
 on the card at 2560 by 1440 (worked out from their sizes, not measured).

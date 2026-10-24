@@ -1050,7 +1050,9 @@ on the card at 2560 by 1440 (worked out from their sizes, not measured).
 
 **Ultra's textures** (braga-map's task 085, 2026-10-24: party-kart on braga-map's branch for it, the same card,
 `shots/2026-10-24-after085b/` against main's `before085b`, shot back to back at `lobato-pavement`,
-`travessa-fujacal` and `capela-sao-joao`, 720 pixels high; High, Medium and Low draw as before):
+`travessa-fujacal` and `capela-sao-joao`, 720 pixels high; High, Medium and Low draw as before, but that the
+canvases' noise is another draw of it: `?scenery` seeds `Math.random`, three takes four of its numbers for each
+object it makes, and the land's array texture is one more):
 
 | | Ultra with its textures | Ultra before them (090) |
 |---|---|---|

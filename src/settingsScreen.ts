@@ -95,7 +95,7 @@ export function settingsScreen(host: SettingsHost, redraw: () => void): HTMLElem
     body = h(
       'div',
       { class: 'prefs' },
-      toggle('Som ligado', !host.muted(), () => (host.toggleMute(), redraw()), `(${keyName(keysOf(p.binds, 'drive', 'mute')[0] ?? 'KeyM')} liga e desliga)`),
+      toggle('Som ligado', !host.muted(), () => (host.toggleMute(), redraw()), keysOf(p.binds, 'drive', 'mute').length ? `(${keyName(keysOf(p.binds, 'drive', 'mute')[0])} liga e desliga)` : ''),
       slider('Volume geral', p.volume, 0, 1, 0.05, pct, (volume) => set({ volume })),
       slider('Motores', p.engines, 0, 1, 0.05, pct, (engines) => set({ engines })),
       slider('Efeitos e armas', p.effects, 0, 1, 0.05, pct, (effects) => set({ effects })),

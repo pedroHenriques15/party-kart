@@ -20,7 +20,7 @@ import { ITEMS } from './game/items.ts';
 import { NO_CONTROLS, Racer, type Controls, type Note } from './game/racer.ts';
 import { Roamer } from './game/roamer.ts';
 import { alight, EYE, FALL, STAND, type WalkInput, Walker } from './game/walker.ts';
-import { FightHud, fmt, fmtDiff, Hud, ordinal, RoamHud, SIDES, TEAMS, type CompView as CompHud, type ScoreRow, type Shop } from './hud.ts';
+import { FightHud, fmt, fmtDiff, FullMap, Hud, ordinal, RoamHud, SIDES, TEAMS, type CompView as CompHud, type Dot, type ScoreRow, type Shop } from './hud.ts';
 import { Keyboard, Mouse, TouchPad } from './input.ts';
 import { loadPrefs, savePrefs, type Prefs } from './prefs.ts';
 import { capturing, settingsScreen } from './settingsScreen.ts';
@@ -43,6 +43,7 @@ import { ClientRoom, cleanName, HOST_ID, HostRoom, MAX_RACERS, teamed, type Entr
 import { Stats, textureBytes } from './stats.ts';
 import { buildTrack, locate, type Track } from './track/track.ts';
 import { courseById, HOME, km, TRACKS } from './tracks.ts';
+import { onTheMap } from './world/mapview.ts';
 import { streetNames } from './world/names.ts';
 import { clear, sight, type Blocker } from './world/sight.ts';
 
@@ -236,13 +237,13 @@ function hints(mode: 'drive' | 'fly' | 'walk' | 'fight'): string {
   const m: Mode = mode === 'walk' ? 'foot' : mode;
   const k = (id: string) => keyName(keysOf(b, m, id)[0] ?? '') || '—';
   const move = `${k('fwd')}${k('left')}${k('back')}${k('right')}`;
-  if (mode === 'drive') return `${k('throttle')} ${k('brake')} ${k('steerLeft')} ${k('steerRight')} conduzem · ${k('drift')} derrapa · ${k('respawn')} volta à rua · ${k('horn')} buzina · ${k('camera')} câmara · ${k('fly')} voa · ${k('walk')} a pé · Esc menu`;
-  if (mode === 'fly') return `${move} voa · ${k('turnLeft')}${k('turnRight')} vira · ${k('rise')} sobe · ${k('sink')} desce · ${k('fast')} mais depressa · arrasta o rato para olhar · ${k('fly')} volta ao kart · Esc menu`;
+  if (mode === 'drive') return `${k('throttle')} ${k('brake')} ${k('steerLeft')} ${k('steerRight')} conduzem · ${k('drift')} derrapa · ${k('respawn')} volta à rua · ${k('horn')} buzina · ${k('camera')} câmara · ${k('fly')} voa · ${k('walk')} a pé · ${k('map')} mapa · Esc menu`;
+  if (mode === 'fly') return `${move} voa · ${k('turnLeft')}${k('turnRight')} vira · ${k('rise')} sobe · ${k('sink')} desce · ${k('fast')} mais depressa · arrasta o rato para olhar · ${k('fly')} volta ao kart · ${k('map')} mapa · Esc menu`;
   const arms = `${k('fire')} dispara · ${k('alt')}: mira, facada, lançar · ${k('reload')} recarrega · ${k('slot1')}–${k('slot4')} armas (${k('last')} a anterior) · ${k('buy')} compra`;
   if (mode === 'walk') return `${move} anda · o rato olha · ${k('quiet')} caminha · ${k('crouch')} agacha · ${k('jump')} salta · ${arms}
-${k('inspect')} inspeciona · ${k('walk')} volta ao kart · Esc menu`;
+${k('inspect')} inspeciona · ${k('walk')} volta ao kart · ${k('map')} mapa · Esc menu`;
   return `${move} anda · o rato aponta · ${arms}
-${k('quiet')} caminha · ${k('crouch')} agacha · ${k('jump')} salta · ${k('use')} planta, desativa, apanha · ${k('inspect')} inspeciona · ${k('scores')} pontuação · Esc menu`;
+${k('quiet')} caminha · ${k('crouch')} agacha · ${k('jump')} salta · ${k('use')} planta, desativa, apanha · ${k('inspect')} inspeciona · ${k('scores')} pontuação · ${k('map')} mapa · Esc menu`;
 }
 
 // ---- Karts on screen ----
@@ -677,6 +678,8 @@ function howTo(): HTMLElement {
       h('li', { class: 'touch-only' }, h('b', {}, 'Itens, na corrida:'), ' passa pelas caixas ? e toca no botão do item (arrasta-o para baixo para atirar para trás). Quanto mais atrás fores, melhor o que te sai.'),
       h('li', {}, h('b', {}, 'Cone de aspiração:'), ' cola-te atrás de um carro e ele puxa-te, com mais força quanto mais perto; sai para ultrapassar e a velocidade a mais vai-se em poucos segundos.'),
       h('li', { class: 'keys-only' }, k('drive', 'respawn'), ' volta à rua (na corrida, ao último ponto de controlo). ', k('drive', 'horn'), ' buzina · ', k('drive', 'camera'), ' câmara · ', k('drive', 'mute'), ' som · ', h('b', {}, 'Esc'), ' menu.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Mapa:'), ' ', k('drive', 'map'), ' abre o mapa de Braga inteiro, a conduzir, a voar, a pé, na corrida (a pista toda) e no tiroteio (a arena, só com a tua equipa): a roda do rato aproxima e afasta, arrastar mexe-o, e com o zoom aparecem os nomes das ruas. O jogo continua por baixo, com o teu kart parado. ', k('drive', 'map'), ' ou ', h('b', {}, 'Esc'), ' fecha-o.'),
+      h('li', { class: 'touch-only' }, h('b', {}, 'Mapa:'), ' toca no minimapa (ou em 🗺️ lá em cima, se o esconderes) para abrires o mapa de Braga inteiro (na corrida, a pista toda; no tiroteio, a arena, só com a tua equipa): dois dedos aproximam e afastam, arrastar mexe-o, e com o zoom aparecem os nomes das ruas. O jogo continua por baixo, com o teu kart parado. O ✕ fecha-o.'),
       h('li', {}, h('b', {}, '⚙️ Definições:'), ' os gráficos (a resolução, o campo de visão), o som de cada coisa, a sensibilidade do rato, a mira, e as teclas de tudo, para conduzir, voar, andar a pé e no tiroteio: muda as que quiseres.'),
       h('li', { class: 'touch-only' }, h('b', {}, '↺'), ' volta à rua (na corrida, ao último ponto de controlo). O menu, a buzina, a câmara e o som estão lá em cima.'),
       h(
@@ -916,6 +919,8 @@ function fightResults(r: Room, list: Entry[]): HTMLElement {
 function bar(): HTMLElement {
   const touchBtn = (label: string, title: string, onclick: () => void) => h('button', { class: 'small ghost touch-only', title, onclick }, label);
   const sound = touchBtn(isMuted() ? '🔇' : '🔊', 'Som', () => (sound.textContent = toggleMute() ? '🔇' : '🔊'));
+  // On a touch screen the full map opens with a tap on the minimap; with the minimap hidden, here.
+  const mapBtn = !prefs.minimap && touchBtn('🗺️', 'Mapa', openMap);
   if (race) {
     return h(
       'div',
@@ -925,6 +930,7 @@ function bar(): HTMLElement {
       race.rules.mode === 'time' && touchBtn('Recomeçar volta', 'Recomeçar a volta', () => pad.press('restart')),
       touchBtn('📢', 'Buzina', () => pad.press('horn')),
       touchBtn('🎥', 'Câmara', () => pad.press('camera')),
+      mapBtn,
       sound,
       wholeBtn(),
       room?.isHost ? h('button', { class: 'small ghost', onclick: () => (room as HostRoom).endNow() }, 'Acabar a corrida') : null,
@@ -941,6 +947,7 @@ function bar(): HTMLElement {
       h('span', { class: 'room-code' }, 'Sala ', h('b', {}, room?.lobby.code ?? '')),
       touchBtn('🛒 Armas', 'Comprar armas', () => fight && toggleBuy(fight)),
       touchBtn('Pontuação', 'Pontuação', () => fight && (fight.scores = !fight.scores)),
+      mapBtn,
       sound,
       wholeBtn(),
       room?.isHost ? h('button', { class: 'small ghost', onclick: () => (room as HostRoom).endNow() }, 'Acabar o tiroteio') : null,
@@ -960,6 +967,7 @@ function bar(): HTMLElement {
     fight?.free && touchBtn('🛒 Armas', 'Comprar armas', () => fight && toggleBuy(fight)),
     touchBtn('📢', 'Buzina', () => pad.press('horn')),
     !flying && !walking && touchBtn('🎥', 'Câmara', () => pad.press('camera')),
+    mapBtn,
     sound,
     wholeBtn(),
   );
@@ -967,7 +975,10 @@ function bar(): HTMLElement {
 
 function render(): void {
   const panel = race ? null : results && room ? 'results' : menu ? 'menu' : null;
-  const driving = (!!race || !!roam) && !panel;
+  // With the full map up the game goes on under it, but the keys, the mouse and the thumbs are the
+  // map's, and your kart waits (or you stand) as with the menu.
+  const mapping = fullMap.isOpen && !panel;
+  const driving = (!!race || !!roam) && !panel && !mapping;
   const flying = !race && !!roam?.fly;
   const walking = !race && !!roam?.walk;
   keys.enabled = driving;
@@ -987,8 +998,10 @@ function render(): void {
   document.body.classList.toggle('racing', !!race);
   document.body.classList.toggle('driving', driving);
   document.body.classList.toggle('paneled', !!panel);
+  document.body.classList.toggle('mapping', mapping);
   if (panel === 'results') ui.replaceChildren(resultsScreen(room!, results!));
   else if (panel === 'menu') ui.replaceChildren(menuScreen());
+  else if (mapping) ui.replaceChildren();
   else ui.replaceChildren(bar());
 }
 
@@ -1161,6 +1174,45 @@ function wire(r: Room): void {
 // The streets, the area's edge and the home track's route, for the minimap round you.
 const mapLines = { lines: world.drive.d.world.lines, edge: world.drive.d.world.open.pts, route: home.samples.filter((_, i) => i % 4 === 0).map((s) => s.p) };
 
+// The full map (braga-map's task 106): the minimap's, with the arenas, over the game while it's open;
+// what it was opened for (round the city, a race, a round), so it closes when that's over.
+const fullMap = new FullMap({ ...mapLines, arenas: world.drive.d.world.arenas });
+document.body.append(fullMap.el);
+let mapFor: 'roam' | 'race' | 'round' | null = null;
+const mapNow = () => (race ? 'race' : inRound() ? 'round' : roam ? 'roam' : null);
+// The menu or the results over the world: no map then.
+const paneled = () => !race && (menu || (!!results && !!room));
+
+function openMap(): void {
+  const ctx = mapNow();
+  if (!ctx || paneled() || fullMap.isOpen) return;
+  const w = world.drive.d.world;
+  const bound = keysOf(prefs.binds, inputMode(), 'map')[0];
+  const key = bound ? keyName(bound) : '';
+  if (race) {
+    const route = race.track.samples.filter((_, i) => i % 4 === 0).map((s) => s.p);
+    fullMap.open({ title: `🏁 ${race.course.name}`, at: race.me.car.p, fit: route, route, edge: w.open.pts, key });
+  } else if (roam) {
+    const at = roam.walk?.p ?? roam.fly?.p ?? roam.me.car.p;
+    // In a round, its arena whole; round the city, the city round you.
+    const a = ctx === 'round' ? (w.arenas.find((x) => x.id === room?.lobby.arena) ?? w.arenas[0]) : null;
+    if (a) fullMap.open({ title: `🎯 ${a.name}`, at, fit: a.pts.map(([x, z]) => ({ x, z })), route: [], edge: a.pts, arena: a.id, key });
+    else fullMap.open({ title: '🗺️ Braga', at, route: mapLines.route, edge: w.open.pts, key });
+  }
+  mapFor = ctx;
+  render();
+}
+
+function closeMap(): void {
+  if (!fullMap.isOpen) return;
+  fullMap.close();
+  mapFor = null;
+  render();
+  // On foot, the pointer taken back (a key can; Esc can't, and a click on the world does it then).
+  mouse.lock();
+}
+fullMap.onClose = closeMap;
+
 // Where free roam starts: where you last were, kept in this browser, if a car can still be there;
 // else on the granite plinth at the start, facing the Rua do Fujacal.
 function startCar(): Car {
@@ -1321,7 +1373,7 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
   me.id = room?.you || 'me';
   syncOthers(r.karts, r.cars, (id) => id === me.id, true, dt);
   besideTheHost(r);
-  const open = menu || !!results;
+  const open = menu || !!results || fullMap.isOpen;
   // On foot, the karts and the others on foot stop you (and in a round, a bullet); in a round you fire,
   // as the trigger says, at the others as they're drawn.
   const f = fight;
@@ -1434,13 +1486,16 @@ function stepRoam(r: RoamCtx, now: number, dt: number): void {
 
   streetName(r);
   r.hud.set({ speed: speedOf(c), boosting: c.boost > 0, slip: me.slip });
-  // Flying or on foot, round you, your kart a dot where it waits.
-  const others = [...r.cars.values()].map((o) => ({ x: o.x, z: o.z, color: colorOf(o.id) }));
+  // Flying or on foot, round you, your kart a dot where it waits. In a round, nobody but you and your
+  // team-mates who are up: neither map gives a foe away.
   const away = r.walk ? { x: r.walk.p.x, z: r.walk.p.z, yaw: r.walk.yaw } : r.fly ? { x: r.fly.p.x, z: r.fly.p.z, yaw: r.fly.yaw } : null;
-  // In a round, nobody but you and your team-mates: the minimap gives no foe away.
-  const crew = () => [...standing.entries()].filter(([id, a]) => a.fighting && !a.downAt && mates(id, room?.you ?? '')).map(([id, a]) => ({ x: a.x, z: a.z, color: shade(id) }));
-  if (away) r.hud.minimap(away, f ? crew() : [...others, { x: c.p.x, z: c.p.z, color: r.kart.model.driver.color }]);
-  else r.hud.minimap({ x: c.p.x, z: c.p.z, yaw: c.yaw }, others);
+  const others: Dot[] = [...r.cars.values()].map((o) => ({ x: o.x, z: o.z, color: colorOf(o.id) }));
+  if (away) others.push({ x: c.p.x, z: c.p.z, color: r.kart.model.driver.color });
+  const fighters = () => [...standing.entries()].map(([id, a]) => ({ id, x: a.x, z: a.z, color: shade(id), fighting: a.fighting, down: !!a.downAt }));
+  const dots = inRound() ? onTheMap(fighters(), { mate: (id) => mates(id, room?.you ?? '') }) : others;
+  const here = away ?? { x: c.p.x, z: c.p.z, yaw: c.yaw };
+  r.hud.minimap(here, dots);
+  fullMap.draw(here, dots);
 
   if (now - r.kept > 3000) {
     r.kept = now;
@@ -2851,7 +2906,7 @@ function startRace(goIn: number, endIn: number, grid: Record<string, number>): v
     cam: 0,
     karts,
     items: new ItemsView(track, arena, (x, z, y) => on.ground.floor(x, z, y + 1).y),
-    hud: new Hud(hudRoot, track, rules.mode === 'race'),
+    hud: new Hud(hudRoot, track, rules.mode === 'race', keysText(prefs.binds, 'drive', 'map')),
     use: false,
     back: false,
     steer: 0,
@@ -3309,7 +3364,7 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
       if (!r.use) r.back = false;
     }
     if (AUTODRIVE && me.item && me.roll <= 0) ctl = { ...ctl, use: true };
-    if (r.timeUp) ctl = { ...NO_CONTROLS, ...stopInput(me.car) };
+    if (r.timeUp || fullMap.isOpen) ctl = { ...NO_CONTROLS, ...stopInput(me.car) };
     r.steer = ctl.steer;
     r.throttle = ctl.throttle;
     me.step(a, ctl, DT);
@@ -3411,6 +3466,11 @@ function stepRace(r: RaceCtx, now: number, dt: number): void {
     }
   }
   r.hud.minimap([...a.cars.values()], colorOf, me.id);
+  if (fullMap.isOpen)
+    fullMap.draw(
+      { x: me.car.p.x, z: me.car.p.z, yaw: me.car.yaw },
+      [...a.cars.values()].filter((o) => o.id !== me.id).map((o) => ({ x: o.x, z: o.z, color: colorOf(o.id) })),
+    );
 }
 
 // ---- Cameras ----
@@ -3582,7 +3642,7 @@ let last = performance.now();
 // If the game runs slowly, step the graphics down a level (as far as Low), and say so.
 const slow = { frames: 0, time: 0 };
 function watchSpeed(dt: number): void {
-  if ((!race && !roam) || quality === 'low' || AUTODRIVE || !prefs.autoQuality) return;
+  if ((!race && !roam) || quality === 'low' || AUTODRIVE || !prefs.autoQuality || fullMap.isOpen) return;
   slow.frames++;
   slow.time += dt;
   if (slow.time < 6) return;
@@ -3604,6 +3664,8 @@ function frame(now: number): void {
   world.update(t);
   watchSpeed(dt);
   keys.mode = inputMode();
+  // The full map closes when what it was opened for is over: a race or a round starting or ending.
+  if (mapFor && mapFor !== mapNow()) closeMap();
 
   if (race) {
     stepRace(race, now, dt);
@@ -3615,7 +3677,7 @@ function frame(now: number): void {
     chase(race, dt);
     fitTags(race.karts.values());
     look.follow(race.me.car.p);
-    if (AUTODRIVE) (window as unknown as { __kart: object }).__kart = { mode: 'race', track: race.course.id, driver: race.kart.driver, x: race.me.car.p.x, y: race.me.car.p.y, z: race.me.car.p.z, idx: race.me.car.idx, lap: race.me.run.laps, fin: race.me.fin, item: race.me.item?.kind ?? null, place: race.arena.rankOf(race.me.id), cars: race.arena.cars.size, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, audio: { ...readMeter(), record: recordState(), played, city: cityHeard } };
+    if (AUTODRIVE) (window as unknown as { __kart: object }).__kart = { mode: 'race', map: fullMap.isOpen, track: race.course.id, driver: race.kart.driver, x: race.me.car.p.x, y: race.me.car.p.y, z: race.me.car.p.z, idx: race.me.car.idx, lap: race.me.run.laps, fin: race.me.fin, item: race.me.item?.kind ?? null, place: race.arena.rankOf(race.me.id), cars: race.arena.cars.size, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, audio: { ...readMeter(), record: recordState(), played, city: cityHeard } };
   } else if (roam) {
     const r = roam;
     stepRoam(r, now, dt);
@@ -3637,6 +3699,8 @@ function frame(now: number): void {
       const d = camera.getWorldDirection(new THREE.Vector3());
       (window as unknown as { __kart: object }).__kart = {
         mode: 'roam',
+        map: fullMap.isOpen,
+        muted: isMuted(),
         fly: !!r.fly,
         walk: r.walk ? { x: r.walk.p.x, y: r.walk.p.y, z: r.walk.p.z, yaw: r.walk.yaw, pitch: r.walk.pitch, grounded: r.walk.grounded, speed: r.walk.speed() } : null,
         cam: { x: camera.position.x, y: camera.position.y, z: camera.position.z, yaw: Math.atan2(d.z, d.x), pitch: Math.asin(clamp(d.y, -1, 1)) },
@@ -3662,7 +3726,8 @@ function frame(now: number): void {
   fx.update(dt);
   glow.update(dt);
   smoke.update(dt);
-  look.render(t);
+  // Under the full map nothing of the city shows: it's left undrawn while the map is up.
+  if (!fullMap.isOpen) look.render(t);
   if (prefs.fps) {
     fpsCount.frames++;
     if (now - fpsCount.since > 500) {
@@ -3739,6 +3804,15 @@ addEventListener('keydown', (e) => {
     toggleMute();
     if (page === 'settings' && menu) render();
   }
+  // The full map's key opens it and closes it; Esc closes it too, before it's the menu's.
+  if (fullMap.isOpen && (e.code === 'Escape' || (!e.repeat && keys.works(e.code, 'map')))) {
+    e.preventDefault();
+    return closeMap();
+  }
+  if (!e.repeat && keys.works(e.code, 'map') && !(e.target instanceof HTMLElement && e.target.closest('input, select, textarea'))) {
+    e.preventDefault();
+    return openMap();
+  }
   // Esc opens the menu over the world, and closes it (or the results, or goes back from the race's
   // settings).
   // On foot, the Esc that let the pointer go has opened the menu already (mouse.onLost).
@@ -3753,8 +3827,22 @@ addEventListener('keydown', (e) => {
 });
 // On foot, the browser letting the pointer go (Esc, or another window) opens the menu.
 mouse.onLost = () => {
-  if (roam?.walk && !race && !menu && !results) openMenu();
+  if (roam?.walk && !race && !menu && !results && !fullMap.isOpen) openMenu();
 };
+// On a touch screen a tap on the minimap opens the full map (with a mouse, a click on it), before the
+// steering half under it takes the finger.
+addEventListener(
+  'pointerdown',
+  (e) => {
+    if (mouse.locked || fullMap.isOpen || paneled() || !(race || roam)) return;
+    const b = hudRoot.querySelector('.minimap')?.getBoundingClientRect();
+    if (!b?.width || e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openMap();
+  },
+  true,
+);
 // A phone suspends the sound when the page goes to the background; the next touch brings it back.
 addEventListener('pointerdown', unlockAudio);
 addEventListener('touchend', unlockAudio);

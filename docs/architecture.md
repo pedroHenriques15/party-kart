@@ -35,6 +35,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/game/comp.ts` | sim | The competitive mode, after Counter-Strike 2's: its numbers (`COMP`: the freeze, the buy time, the round, the bomb, the money), each side's guns (`sells`, `startKit`), a buy's price (`priceOf`), a kill's money (`killReward`), an arena's spawns and bomb sites (`compMap`, `siteAt`, `inBuyZone`), the bomb's blast (`blastAt`), the match as the host runs it (`Match`: its rounds and phases, the score, everyone's money, who's up, the bomb, the guns on the ground, its state `CompState` and what a player tells it `CompAct`), and what a bot buys (`botBuy`) |
 | `src/game/matchbots.ts` | sim | `MatchBots`: the host's bots in a match: what each buys at a round's start, where each goes (the Terrorists to the round's site with the bomb, the Counter-Terrorists to the sites), and their planting, defusing and picking the bomb up |
 | `src/world/sight.ts` | sim | Line of sight: how far a ray goes before the world stops it (`sight`, `clear`), for a shot and a look |
+| `src/world/mapview.ts` | sim | The full map's sums (braga-map's task 106): its view (a centre and a scale), framing a place, zooming about a point and panning, kept over the map (`keep`); a point along a street, for its name; and who the maps show you (`onTheMap`: in a round, only your team-mates who are up) |
 | `src/world/paths.ts` | sim | `Paths`: where someone on foot can walk in an area, points 2 m apart joined where a walker gets from one to the next (several over each other in a tower, and ways joined by hand through doors and up flights); the way between two (A*), the points round one, whether a straight line is walkable. For the bots |
 | `src/world/interiors.ts` | sim | The arenas' buildings' insides (braga-map's task 079), made up: which buildings get a room (`furnish`), its doors and windows where its facade draws them, a tower's floors, stairwell, parapet and hut; what's underfoot in a room (`roomFloor`), what a look meets there (`roomSolid`), the walls it stands (`roomWalls`) |
 | `src/world/storeys.ts` | sim | How a building's walls are laid out: its storeys, its bays, which walls face a street; for the facades and the rooms' openings |
@@ -43,7 +44,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/prefs.ts` | sim | The settings (`Prefs`), kept in the browser (`pk-settings`): the graphics, the sound's levels, the mouse and the touch screen, the crosshair, what the screen shows, and the keys |
 | `src/settingsScreen.ts` | browser | ⚙️ Definições: its tabs (graphics, sound, mouse and crosshair, screen, controls), and binding a key by pressing it |
 | `src/main.ts` | browser | Free roam, the menu over it, the race and its screens, the loop, the cameras, and the glue between all of it |
-| `src/hud.ts` | browser | What's on the screen while you drive: in a race (`Hud`: place, lap, item slot, clock, minimap, order, feed), round the city (`RoamHud`: speed, the street's name, a minimap round you, feed; on foot, a dot for the speed), and in a round (`FightHud`, after Counter-Strike 2's: health and armour, the ammunition and the weapon slots, the clock and the teams' scores, the crosshair and hit marker, the kill feed, the red edge and the arcs to whoever shot you, the scope, a flash's white, the buy menu and the scoreboard) |
+| `src/hud.ts` | browser | What's on the screen while you drive: in a race (`Hud`: place, lap, item slot, clock, minimap, order, feed), round the city (`RoamHud`: speed, the street's name, a minimap round you, feed; on foot, a dot for the speed), and in a round (`FightHud`, after Counter-Strike 2's: health and armour, the ammunition and the weapon slots, the clock and the teams' scores, the crosshair and hit marker, the kill feed, the red edge and the arcs to whoever shot you, the scope, a flash's white, the buy menu and the scoreboard); and the full map (`FullMap`, M or a tap on the minimap: the whole city, north up, the streets and their names, the route, the arenas, you and the others) |
 | `src/stats.ts` | browser | `?stats`: what the game costs on this screen, in a corner, for measuring it on a phone |
 | `src/audio.ts` | browser | Every sound and the mix it goes through (buses, a limiter, places): synthesized with Web Audio, but the city's, recorded (`src/sounds/`) |
 | `src/ambience.ts` | sim | What's round any point of the city on a grid every 10 m (traffic, town, park, woods), each point worked out the first time it's needed, and where the churches, the rivers, the bus stops and the stadium are, from the map, for the city's sound |
@@ -68,7 +69,7 @@ start; and goes back to it after a race, where you were before it.
 2. **Key actions**: horn, camera, back on the street, flying (V, the bar's and the menu's
    buttons: `fly`) and on foot (F, and theirs: `walk`).
 3. **Fixed steps** of `DT`: your `Roamer` on the world's ground (`world.drive`), bumping into the
-   others where they're drawn. With a panel open (the menu, the results), while you fly, or while
+   others where they're drawn. With a panel open (the menu, the results) or the full map, while you fly, or while
    you're on foot, it pulls up and waits. On foot, your `Walker` is stepped with it, by your keys and
    thumbs (`steps`); where you look turns once a frame, by the mouse or a drag, before the steps.
 4. **Flying** (`r.fly`, braga-map's task 054): the `Flyer` stepped once a frame by your keys, mouse
@@ -83,7 +84,16 @@ start; and goes back to it after a race, where you were before it.
    from `locate`, while you're within 8 m of the route's edge), the street's name as you drive or
    walk onto it (the nearest named street whose carriageway you're on, braga-map's line names,
    `world/names.ts`; kept while you're on the one shown last), and the `RoamHud` with its minimap
-   (flying or on foot, round you, your kart a dot).
+   (flying or on foot, round you, your kart a dot; in a round only your team-mates who are up,
+   `onTheMap` in `world/mapview.ts`).
+8. **The full map** (braga-map's task 106, `FullMap` in `hud.ts`), when it's up: the same dots on the
+   whole city, north up. M opens it (`openMap`: round you, a race's whole track, or a round's arena)
+   and M or Esc closes it, and it closes by itself when what it was opened for is over (`mapFor`).
+   While it's up `render` counts you as not driving, so the keys, the mouse and the thumbs are the
+   map's, your kart is held with `stopInput` (in a race too) and you stand on foot; the network and
+   everything else go on, but the city isn't drawn under it. It paints the streets again only when
+   its view has changed, and while it's dragged or zoomed it moves its last painting instead, so a
+   drag costs no more than a frame without it.
 
 The chase camera follows, or with a panel open the camera turns slowly round your kart (`orbit`),
 which stands on the right of the screen, clear of the menu. Flying, the camera is the flyer's

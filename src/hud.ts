@@ -7,6 +7,7 @@ import { ARMOUR, FAMILIES, GUN_IDS, GUNS, isGun, isNade, KNIFE, NADE_IDS, NADES,
 import { COMP, priceOf, sells, type Side } from './game/comp.ts';
 import { ITEMS, type ItemKind } from './game/items.ts';
 import type { Track } from './track/track.ts';
+import { boundsOf, fit, keep, lengths, limits, pan, pointAt, toScreen, zoomAt, type Bounds, type View } from './world/mapview.ts';
 
 type Child = Node | string | null | false | undefined;
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', ...kids: Child[]): HTMLElementTagNameMap[K] {
@@ -44,7 +45,7 @@ export class Hud {
   private feedItems: { el: HTMLElement; until: number }[] = [];
   private race: boolean;
 
-  constructor(root: HTMLElement, track: Track, race: boolean) {
+  constructor(root: HTMLElement, track: Track, race: boolean, mapKey = 'M') {
     this.root = root;
     this.race = race;
     const e = this.el;
@@ -63,7 +64,7 @@ export class Hud {
     e.keys = h(
       'div',
       'keys',
-      race ? 'Setas conduzem · Espaço derrapa (mantém e larga para um turbo) · E/Shift usa o item (↓ atira para trás) · Enter ponto de controlo · H buzina · C câmara' : 'Setas conduzem · Espaço derrapa · Enter ponto de controlo · Backspace recomeça a volta · H buzina · C câmara',
+      `${race ? 'Setas conduzem · Espaço derrapa (mantém e larga para um turbo) · E/Shift usa o item (↓ atira para trás) · Enter ponto de controlo · H buzina · C câmara' : 'Setas conduzem · Espaço derrapa · Enter ponto de controlo · Backspace recomeça a volta · H buzina · C câmara'} · ${mapKey} mapa`,
     );
 
     // The minimap: the track drawn once, the cars on top each frame.
@@ -218,9 +219,9 @@ export class Hud {
 }
 
 // What the minimap round you draws: the streets (braga-map's lines, with their widths), the open
-// world's edge, and the race's route.
+// world's edge, and the race's route. The full map names the streets too.
 export interface MapLines {
-  lines: { kind: number; w: number; pts: [number, number][] }[];
+  lines: { kind: number; w: number; name?: string | null; pts: [number, number][] }[];
   edge: [number, number][];
   route: { x: number; z: number }[];
 }
@@ -246,11 +247,11 @@ interface MapLine {
 
 // The keys, at the bottom: driving round the city, and flying (body.flying hides the speed).
 const KEYS = {
-  drive: 'Setas conduzem · Espaço derrapa · Enter volta à rua · H buzina · C câmara · V voa · F a pé · Esc menu',
-  fly: 'WASD voa · ←→ vira · E sobe · Q desce · Shift mais depressa · arrasta o rato para olhar · V volta ao kart · Esc menu',
-  walk: 'WASD anda · o rato olha · Shift corre · Espaço salta · F volta ao kart · Esc menu',
+  drive: 'Setas conduzem · Espaço derrapa · Enter volta à rua · H buzina · C câmara · V voa · F a pé · M mapa · Esc menu',
+  fly: 'WASD voa · ←→ vira · E sobe · Q desce · Shift mais depressa · arrasta o rato para olhar · V volta ao kart · M mapa · Esc menu',
+  walk: 'WASD anda · o rato olha · Shift corre · Espaço salta · F volta ao kart · M mapa · Esc menu',
   // In a round, two lines (the stylesheet keeps the line break), faded away after its first 20 s.
-  fight: 'WASD anda · o rato aponta · clique dispara · botão direito: mira, facada, lançar · R recarrega · 1–4 armas (Q a anterior, roda do rato)\nB compra · Shift caminha · Ctrl ou C agacha · Espaço salta · F inspeciona · Tab pontuação · Esc menu',
+  fight: 'WASD anda · o rato aponta · clique dispara · botão direito: mira, facada, lançar · R recarrega · 1–4 armas (Q a anterior, roda do rato)\nB compra · Shift caminha · Ctrl ou C agacha · Espaço salta · F inspeciona · Tab pontuação · M mapa · Esc menu',
 };
 
 // The screen while driving round the city (braga-map's decision 019): the speed, the street's name
@@ -463,6 +464,417 @@ export class RoamHud {
     g.lineWidth = 3;
     g.strokeStyle = '#111111';
     g.stroke();
+  }
+}
+
+// The full map (braga-map's task 106): M, or a tap on the minimap, opens it over the game, which goes
+// on under it. The whole open world and the city round it, north up, from the minimap's lines: the
+// streets at their widths and their names as you zoom in, the race's route, the arenas and the area's
+// edge, and you and the others on it as on the minimap. The wheel or a pinch zooms, a drag pans.
+export interface FullMapData extends MapLines {
+  arenas: { id: string; name: string; pts: [number, number][] }[];
+}
+
+// What it opens on: its title; you; a place framed whole (a race's track, a round's arena), or else
+// the city round you; the race's route; the area's edge (the open world's, or the round's); the
+// round's arena; and the key that closes it as the settings bind it (none, '').
+export interface MapOpening {
+  title: string;
+  at: { x: number; z: number };
+  fit?: { x: number; z: number }[];
+  route: { x: number; z: number }[];
+  edge: [number, number][];
+  arena?: string;
+  key: string;
+}
+
+// Round you, it opens with this many metres across the screen's shorter side.
+const ACROSS = 1000;
+// The streets' names: the big streets' from this many pixels a metre, every street's from this.
+const NAMED_BIG = 0.5;
+const NAMED_ALL = 1.4;
+const NAME_FONT = '600 12px system-ui, sans-serif';
+const BIG_FONT = '700 13px system-ui, sans-serif';
+// A street's name is written along it about this many pixels apart.
+const NAME_EVERY = 450;
+// The scale's lengths, m.
+const SCALES = [10, 20, 50, 100, 200, 500, 1000, 2000];
+
+// A named street's line, its lengths along it (cum, len) for writing its name on it.
+interface Label {
+  name: string;
+  big: boolean;
+  pts: [number, number][];
+  cum: number[];
+  len: number;
+  box: Bounds;
+}
+
+interface Street {
+  w: number;
+  minor: boolean;
+  pts: [number, number][];
+  box: Bounds;
+}
+
+export class FullMap {
+  readonly el: HTMLElement;
+  // The ✕, for main.ts to close it as M and Esc do.
+  onClose = () => {};
+  private canvas: HTMLCanvasElement;
+  private base = document.createElement('canvas');
+  private title: HTMLElement;
+  private keyHint: HTMLElement;
+  private streets: Street[] = [];
+  private labels: Label[] = [];
+  private arenas: FullMapData['arenas'];
+  private bounds: Bounds;
+  private o: MapOpening | null = null;
+  private view: View = { x: 0, z: 0, k: 1 };
+  // The view the map was last painted at (none: to be painted), and when a drag, a pinch or the wheel
+  // last moved it.
+  private painted: View | null = null;
+  private movedAt = 0;
+  private me = { x: 0, z: 0 };
+  private fingers = new Map<number, { x: number; y: number }>();
+  private widths = new Map<string, number>();
+
+  constructor(m: FullMapData) {
+    this.arenas = m.arenas;
+    for (const l of m.lines) {
+      if (l.kind > 8 || l.pts.length < 2) continue;
+      const box = boundsOf(l.pts.map(([x, z]) => ({ x, z })));
+      this.streets.push({ w: l.w, minor: l.kind >= 6, pts: l.pts, box });
+      if (!l.name) continue;
+      const cum = lengths(l.pts);
+      this.labels.push({ name: l.name, big: l.kind <= 4, pts: l.pts, cum, len: cum[cum.length - 1], box });
+    }
+    // The big streets named first, the longest first, so the others' names make way for theirs.
+    this.labels.sort((a, b) => Number(b.big) - Number(a.big) || b.len - a.len);
+    const b = boundsOf(m.edge.map(([x, z]) => ({ x, z })));
+    for (const s of this.streets) {
+      b.x0 = Math.min(b.x0, s.box.x0);
+      b.x1 = Math.max(b.x1, s.box.x1);
+      b.z0 = Math.min(b.z0, s.box.z0);
+      b.z1 = Math.max(b.z1, s.box.z1);
+    }
+    this.bounds = b;
+
+    this.canvas = h('canvas', 'fm-map');
+    this.title = h('div', 'fm-title');
+    this.keyHint = h('span', 'keys-only');
+    const here = h('button', 'ghost small fm-here', '⌖ Onde estou');
+    here.title = 'Pôr o mapa à tua volta';
+    here.addEventListener('click', () => {
+      const [W, H] = this.size();
+      this.view = keep({ ...this.view, x: this.me.x, z: this.me.z }, limits(this.bounds, W, H));
+    });
+    const close = h('button', 'ghost small fm-close', '✕');
+    close.title = 'Fechar o mapa';
+    close.addEventListener('click', () => this.onClose());
+    this.el = h('div', 'fullmap', this.canvas, h('div', 'fm-head', this.title, h('div', 'fm-hint', this.keyHint, h('span', 'touch-only', 'Dois dedos aproximam e afastam · arrasta para mexer · ✕ fecha')), here, close));
+
+    // A drag pans; two fingers zoom about their middle and take it with them; the wheel zooms about
+    // the pointer, and a double click zooms in there.
+    const c = this.canvas;
+    c.addEventListener('pointerdown', (e) => {
+      try {
+        c.setPointerCapture(e.pointerId);
+      } catch {
+        /* a synthetic event */
+      }
+      this.fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      c.classList.add('dragging');
+    });
+    c.addEventListener('pointermove', (e) => {
+      const p = this.fingers.get(e.pointerId);
+      if (!p) return;
+      const [W, H] = this.size();
+      const l = limits(this.bounds, W, H);
+      const q = [...this.fingers].find(([id]) => id !== e.pointerId)?.[1];
+      if (q) {
+        const d0 = Math.hypot(p.x - q.x, p.y - q.y);
+        const d1 = Math.hypot(e.clientX - q.x, e.clientY - q.y);
+        const v = zoomAt(this.view, d0 > 0 ? d1 / d0 : 1, (p.x + q.x) / 2, (p.y + q.y) / 2, l);
+        this.move(pan(v, (e.clientX - p.x) / 2, (e.clientY - p.y) / 2, l));
+      } else this.move(pan(this.view, e.clientX - p.x, e.clientY - p.y, l));
+      p.x = e.clientX;
+      p.y = e.clientY;
+    });
+    for (const k of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
+      c.addEventListener(k, (e) => {
+        this.fingers.delete(e.pointerId);
+        if (!this.fingers.size) c.classList.remove('dragging');
+      });
+    }
+    c.addEventListener(
+      'wheel',
+      (e) => {
+        e.preventDefault();
+        const [W, H] = this.size();
+        const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? H : 1);
+        this.move(zoomAt(this.view, Math.exp(-dy * 0.0015), e.clientX, e.clientY, limits(this.bounds, W, H)));
+      },
+      { passive: false },
+    );
+    c.addEventListener('dblclick', (e) => {
+      const [W, H] = this.size();
+      this.view = zoomAt(this.view, 2, e.clientX, e.clientY, limits(this.bounds, W, H));
+    });
+    this.el.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  get isOpen(): boolean {
+    return !!this.o;
+  }
+
+  open(o: MapOpening): void {
+    this.o = o;
+    this.me = { x: o.at.x, z: o.at.z };
+    this.title.textContent = o.title;
+    this.keyHint.textContent = `Roda do rato aproxima e afasta · arrasta para mexer · ${o.key ? `${o.key} ou ` : ''}Esc fecha`;
+    // It isn't shown yet: the window's size is the map's.
+    const W = innerWidth;
+    const H = innerHeight;
+    const l = limits(this.bounds, W, H);
+    this.view = keep(o.fit?.length ? fit(boundsOf(o.fit), W, H, 0.8) : { x: o.at.x, z: o.at.z, k: Math.min(W, H) / ACROSS }, l);
+    this.painted = null;
+    this.fingers.clear();
+  }
+
+  close(): void {
+    this.o = null;
+    this.fingers.clear();
+    this.canvas.classList.remove('dragging');
+  }
+
+  private move(v: View): void {
+    this.view = v;
+    this.movedAt = performance.now();
+  }
+
+  private size(): [number, number] {
+    return [this.el.clientWidth || innerWidth, this.el.clientHeight || innerHeight];
+  }
+
+  // A frame while it's open: the map painted again only when the view has changed (while it's being
+  // dragged or zoomed, the last painting moved with it, and painted afresh once it's still: a painting
+  // takes several milliseconds), you and the others on it every frame, at its edge when they're off it.
+  draw(me: { x: number; z: number; yaw: number }, others: Dot[]): void {
+    if (!this.o) return;
+    this.me = { x: me.x, z: me.z };
+    const [W, H] = this.size();
+    const r = Math.min(2, devicePixelRatio || 1);
+    const c = this.canvas;
+    const cw = Math.round(W * r);
+    const ch = Math.round(H * r);
+    if (c.width !== cw || c.height !== ch) {
+      c.width = this.base.width = cw;
+      c.height = this.base.height = ch;
+      this.painted = null;
+    }
+    const v = this.view;
+    let q = this.painted;
+    if (!q || ((q.x !== v.x || q.z !== v.z || q.k !== v.k) && performance.now() - this.movedAt > 150)) {
+      this.paint(W, H, r);
+      q = this.painted = { ...v };
+    }
+    const g = c.getContext('2d')!;
+    const s = v.k / q.k;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = '#0b0e14';
+    g.fillRect(0, 0, cw, ch);
+    g.drawImage(this.base, r * (W / 2 - (W / 2) * s + (q.x - v.x) * v.k), r * (H / 2 - (H / 2) * s + (q.z - v.z) * v.k), cw * s, ch * s);
+    g.setTransform(r, 0, 0, r, 0, 0);
+    const onScreen = (x: number, z: number, m: number) => {
+      const [sx, sy] = toScreen(v, W, H, x, z);
+      const px = Math.min(W - m, Math.max(m, sx));
+      const py = Math.min(H - m, Math.max(m, sy));
+      return { x: px, y: py, off: px !== sx || py !== sy };
+    };
+    for (const o of others) {
+      const p = onScreen(o.x, o.z, 14);
+      g.beginPath();
+      g.arc(p.x, p.y, p.off ? 5 : 7, 0, Math.PI * 2);
+      g.fillStyle = o.color;
+      g.fill();
+      g.lineWidth = 2;
+      g.strokeStyle = p.off ? '#ffffff' : '#111111';
+      g.stroke();
+    }
+    // You, pointing the way you face, in a halo to find at a glance.
+    const p = onScreen(me.x, me.z, 18);
+    g.save();
+    g.translate(p.x, p.y);
+    g.beginPath();
+    g.arc(0, 0, 18, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,225,77,0.22)';
+    g.fill();
+    g.rotate(me.yaw + Math.PI / 2);
+    g.beginPath();
+    g.moveTo(0, -12);
+    g.lineTo(9, 10);
+    g.lineTo(0, 5);
+    g.lineTo(-9, 10);
+    g.closePath();
+    g.fillStyle = '#ffe14d';
+    g.fill();
+    g.lineWidth = 2.5;
+    g.strokeStyle = '#111111';
+    g.stroke();
+    g.restore();
+  }
+
+  // The map under you and the others: the area, the arenas, the streets, the route and the edge in
+  // the map's metres; the names, the scale and north in the screen's pixels.
+  private paint(W: number, H: number, r: number): void {
+    const o = this.o!;
+    const v = this.view;
+    const g = this.base.getContext('2d')!;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = '#0b0e14';
+    g.fillRect(0, 0, this.base.width, this.base.height);
+    g.setTransform(r * v.k, 0, 0, r * v.k, r * (W / 2 - v.x * v.k), r * (H / 2 - v.z * v.k));
+    const x0 = v.x - W / 2 / v.k;
+    const x1 = v.x + W / 2 / v.k;
+    const z0 = v.z - H / 2 / v.k;
+    const z1 = v.z + H / 2 / v.k;
+    const ring = (pts: [number, number][]) => {
+      g.beginPath();
+      pts.forEach(([x, z], i) => (i ? g.lineTo(x, z) : g.moveTo(x, z)));
+      g.closePath();
+    };
+    g.lineJoin = g.lineCap = 'round';
+    // The area, lighter than the city round it; the arenas in orange (a round's, its area already, only
+    // lightly).
+    ring(o.edge);
+    g.fillStyle = '#18202c';
+    g.fill();
+    for (const a of this.arenas) {
+      ring(a.pts);
+      g.fillStyle = a.id === o.arena ? 'rgba(255,140,60,0.1)' : 'rgba(255,140,60,0.16)';
+      g.fill();
+      g.lineWidth = (a.id === o.arena ? 2.5 : 1.5) / v.k;
+      g.strokeStyle = 'rgba(255,150,70,0.9)';
+      g.stroke();
+    }
+    // The streets at their widths, the paths and service roads fainter: those of a width in one
+    // stroke.
+    for (const minor of [true, false]) {
+      const byWidth = new Map<number, Street[]>();
+      for (const s of this.streets) {
+        if (s.minor !== minor || s.box.x1 < x0 || s.box.x0 > x1 || s.box.z1 < z0 || s.box.z0 > z1) continue;
+        const w = Math.max(1.2 / v.k, s.w + (minor ? 0 : 2));
+        const list = byWidth.get(w);
+        if (list) list.push(s);
+        else byWidth.set(w, [s]);
+      }
+      g.strokeStyle = minor ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.86)';
+      for (const [w, list] of byWidth) {
+        g.lineWidth = w;
+        g.beginPath();
+        for (const s of list) s.pts.forEach(([x, z], i) => (i ? g.lineTo(x, z) : g.moveTo(x, z)));
+        g.stroke();
+      }
+    }
+    // The race's route, in gold.
+    if (o.route.length) {
+      g.strokeStyle = 'rgba(255,211,77,0.85)';
+      g.lineWidth = Math.max(3 / v.k, 2.5);
+      g.beginPath();
+      o.route.forEach((p, i) => (i ? g.lineTo(p.x, p.z) : g.moveTo(p.x, p.z)));
+      g.stroke();
+    }
+    // The area's edge.
+    g.strokeStyle = 'rgba(255,90,79,0.95)';
+    g.lineWidth = 2.5 / v.k;
+    g.setLineDash([8 / v.k, 6 / v.k]);
+    ring(o.edge);
+    g.stroke();
+    g.setLineDash([]);
+
+    g.setTransform(r, 0, 0, r, 0, 0);
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineJoin = 'round';
+    // Each name where it fits along its street and clear of the names put down before it (and of its
+    // own name nearby): the arenas', then the streets'.
+    const put: [number, number, number, number][] = [];
+    const clear = (x: number, y: number, ax: number, ay: number) => !put.some(([px, py, qx, qy]) => Math.abs(px - x) < qx + ax && Math.abs(py - y) < qy + ay);
+    const say = (text: string, x: number, y: number, a: number, fill: string) => {
+      g.save();
+      g.translate(x, y);
+      g.rotate(a);
+      g.lineWidth = 3.5;
+      g.strokeStyle = 'rgba(8,10,16,0.9)';
+      g.strokeText(text, 0, 0);
+      g.fillStyle = fill;
+      g.fillText(text, 0, 0);
+      g.restore();
+    };
+    g.font = BIG_FONT;
+    for (const a of this.arenas) {
+      const c = boundsOf(a.pts.map(([x, z]) => ({ x, z })));
+      const [x, y] = toScreen(v, W, H, (c.x0 + c.x1) / 2, (c.z0 + c.z1) / 2);
+      const text = v.k < 0.4 ? '🎯' : `🎯 ${a.name}`;
+      const w = g.measureText(text).width;
+      say(text, x, y, 0, '#ffb27a');
+      put.push([x, y, w / 2 + 4, 9]);
+    }
+    if (v.k >= NAMED_BIG) {
+      const near = new Map<string, [number, number][]>();
+      for (const l of this.labels) {
+        if ((!l.big && v.k < NAMED_ALL) || l.box.x1 < x0 || l.box.x0 > x1 || l.box.z1 < z0 || l.box.z0 > z1) continue;
+        g.font = l.big ? BIG_FONT : NAME_FONT;
+        const id = `${l.big}|${l.name}`;
+        let w = this.widths.get(id);
+        if (w === undefined) this.widths.set(id, (w = g.measureText(l.name).width));
+        // Half the name's length, in metres along the street; written where the street runs nearly
+        // straight that far either side.
+        const half = (w / 2 + 6) / v.k;
+        if (l.len < 2 * half) continue;
+        const n = Math.max(1, Math.round((l.len * v.k) / NAME_EVERY));
+        for (let i = 0; i < n; i++) {
+          const s = Math.min(l.len - half, Math.max(half, (l.len * (i + 0.5)) / n));
+          const [ax, az] = pointAt(l.pts, l.cum, s - half);
+          const [bx, bz] = pointAt(l.pts, l.cum, s + half);
+          if (Math.hypot(bx - ax, bz - az) < 1.85 * half) continue;
+          const [x, y] = toScreen(v, W, H, ...pointAt(l.pts, l.cum, s));
+          if (x < 0 || x > W || y < 0 || y > H) continue;
+          let a = Math.atan2(bz - az, bx - ax);
+          if (a > Math.PI / 2) a -= Math.PI;
+          else if (a < -Math.PI / 2) a += Math.PI;
+          const c = Math.abs(Math.cos(a));
+          const sn = Math.abs(Math.sin(a));
+          const hx = c * (w / 2 + 3) + sn * 8;
+          const hy = sn * (w / 2 + 3) + c * 8;
+          const same = near.get(l.name) ?? [];
+          if (!clear(x, y, hx, hy) || same.some(([px, py]) => Math.hypot(px - x, py - y) < 380)) continue;
+          put.push([x, y, hx, hy]);
+          near.set(l.name, [...same, [x, y]]);
+          say(l.name, x, y, a, l.big ? '#ffffff' : 'rgba(255,255,255,0.86)');
+        }
+      }
+    }
+    // The scale, bottom left, and north, bottom right.
+    const m = SCALES.reduce((a, b) => (b * v.k <= 140 ? b : a), SCALES[0]);
+    const len = m * v.k;
+    const y = H - 22;
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(24, y - 5);
+    g.lineTo(24, y);
+    g.lineTo(24 + len, y);
+    g.lineTo(24 + len, y - 5);
+    g.stroke();
+    g.font = NAME_FONT;
+    g.textAlign = 'left';
+    say(m >= 1000 ? `${m / 1000} km` : `${m} m`, 24 + len + 8, y - 2, 0, '#ffffff');
+    g.textAlign = 'center';
+    g.font = BIG_FONT;
+    say('▲', W - 30, H - 40, 0, '#ffffff');
+    say('N', W - 30, H - 22, 0, '#ffffff');
   }
 }
 

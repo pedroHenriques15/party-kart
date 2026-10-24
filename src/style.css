@@ -746,6 +746,84 @@ body.flying #hud .speedlines {
   display: none;
 }
 
+/* The full map (braga-map's task 106), over everything while it's open: the city on its canvas, its
+   title, how to move it, and its buttons along the top. */
+.fullmap {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  background: #0b0e14;
+  color: #fff;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body.mapping .fullmap {
+  display: block;
+}
+
+/* A band of shade under the title and the buttons, for the streets drawn under them. */
+.fullmap::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: calc(64px + var(--st));
+  background: linear-gradient(rgba(11, 14, 20, 0.9), rgba(11, 14, 20, 0));
+  pointer-events: none;
+}
+
+.fm-map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.fm-map.dragging {
+  cursor: grabbing;
+}
+
+.fm-head {
+  position: absolute;
+  z-index: 1;
+  top: calc(12px + var(--st));
+  left: calc(16px + var(--sl));
+  right: calc(16px + var(--sr));
+  display: flex;
+  align-items: center;
+  gap: 10px 14px;
+  flex-wrap: wrap;
+  pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+
+.fm-title {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.fm-hint {
+  flex: 1;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.fullmap button {
+  pointer-events: auto;
+  color: #fff;
+  background: rgba(20, 24, 33, 0.78);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.fullmap .fm-close {
+  font-size: 18px;
+  padding: 4px 12px;
+}
+
 body.flying.driving #view {
   cursor: grab;
 }

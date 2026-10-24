@@ -45,7 +45,9 @@ const ARMS: Control[] = [
   press('prev', 'A arma anterior', 'WheelUp'),
   press('buy', 'Comprar armas', 'KeyB'),
 ];
-const MUTE = press('mute', 'Som ligado ou desligado', 'KeyM');
+// The full map (braga-map's task 106), and the sound, the same keys whichever way you play.
+const MAP = press('map', 'Mapa (abre e fecha)', 'KeyM');
+const MUTE = press('mute', 'Som ligado ou desligado', 'KeyN');
 
 export const CONTROLS: Record<Mode, Control[]> = {
   drive: [
@@ -61,6 +63,7 @@ export const CONTROLS: Record<Mode, Control[]> = {
     press('camera', 'Câmara', 'KeyC'),
     press('fly', 'Voar pela cidade', 'KeyV'),
     press('walk', 'Sair do kart e andar a pé', 'KeyF'),
+    MAP,
     MUTE,
   ],
   fly: [
@@ -74,9 +77,10 @@ export const CONTROLS: Record<Mode, Control[]> = {
     hold('sink', 'Descer', 'KeyQ'),
     hold('fast', 'Mais depressa', 'ShiftLeft', 'ShiftRight'),
     press('fly', 'Voltar ao kart', 'KeyV'),
+    MAP,
     MUTE,
   ],
-  foot: [...FEET, ...ARMS, press('inspect', 'Inspecionar a arma', 'KeyG'), press('respawn', 'Voltar à rua', 'Enter', 'NumpadEnter'), press('walk', 'Voltar ao kart', 'KeyF'), MUTE],
+  foot: [...FEET, ...ARMS, press('inspect', 'Inspecionar a arma', 'KeyG'), press('respawn', 'Voltar à rua', 'Enter', 'NumpadEnter'), press('walk', 'Voltar ao kart', 'KeyF'), MAP, MUTE],
   fight: [
     ...FEET,
     ...ARMS,
@@ -84,6 +88,7 @@ export const CONTROLS: Record<Mode, Control[]> = {
     hold('use', 'Plantar · desativar · apanhar (competitivo)', 'KeyE'),
     press('drop', 'Largar a arma (competitivo)', 'KeyG'),
     hold('scores', 'Pontuação', 'Tab'),
+    MAP,
     MUTE,
   ],
 };
@@ -93,9 +98,14 @@ export const MODE_NAMES: Record<Mode, string> = { drive: 'Conduzir', fly: 'Voar'
 // What's changed from the defaults: for a mode, a control's keys.
 export type Binds = Partial<Record<Mode, Record<string, string[]>>>;
 
-// The keys a control has, as changed or by default.
+// The keys a control has, as changed or by default. A default key the player has given another
+// control of the mode is that control's alone: a key kept from before the defaults changed (M, the
+// sound's until the full map took it) keeps doing what the player bound it to.
 export function keysOf(b: Binds, mode: Mode, id: string): string[] {
-  return b[mode]?.[id] ?? CONTROLS[mode].find((c) => c.id === id)?.keys ?? [];
+  const mine = b[mode]?.[id];
+  if (mine) return mine;
+  const theirs = new Set(Object.values(b[mode] ?? {}).flat());
+  return (CONTROLS[mode].find((c) => c.id === id)?.keys ?? []).filter((k) => !theirs.has(k));
 }
 
 // The keys the browser keeps (full screen, its tools) and the menu's: never a control's.

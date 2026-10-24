@@ -26,6 +26,24 @@ test("every way of playing's controls: a key each, none bound twice in a mode, n
   assert.deepEqual(keysOf({}, 'fight', 'use'), ['KeyE']);
 });
 
+test('M opens the full map and N turns the sound on and off, whichever way you play; a key the player bound keeps its control', () => {
+  for (const mode of Object.keys(CONTROLS) as Mode[]) {
+    assert.deepEqual(keysOf({}, mode, 'map'), ['KeyM'], mode);
+    assert.deepEqual(keysOf({}, mode, 'mute'), ['KeyN'], mode);
+  }
+  // Someone who bound the sound to M before it was the map's keeps it there, and the map has no key
+  // in that way of playing till they give it one; in the others it's M.
+  const kept = cleanBinds({ drive: { mute: ['KeyM'] } });
+  assert.deepEqual(keysOf(kept, 'drive', 'mute'), ['KeyM']);
+  assert.deepEqual(keysOf(kept, 'drive', 'map'), []);
+  assert.deepEqual(keysOf(kept, 'fly', 'map'), ['KeyM']);
+  // And someone who had given N to another control keeps it for that one.
+  const horn = cleanBinds({ drive: { horn: ['KeyN'] } });
+  assert.deepEqual(keysOf(horn, 'drive', 'horn'), ['KeyN']);
+  assert.deepEqual(keysOf(horn, 'drive', 'mute'), []);
+  assert.deepEqual(keysOf(horn, 'drive', 'map'), ['KeyM']);
+});
+
 test("the keys as changed: only modes and controls there are, a key once, the browser's never", () => {
   const b = cleanBinds({ fight: { fire: ['Mouse0', 'Mouse0', 'KeyK', 'Escape', 42], nope: ['KeyZ'] }, flying: { fwd: ['KeyI'] }, drive: { horn: 'KeyH' } });
   assert.deepEqual(b, { fight: { fire: ['Mouse0', 'KeyK'] } });

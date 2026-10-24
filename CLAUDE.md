@@ -55,7 +55,8 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
 - `?autodrive` lets the autopilot drive your car in a race and use its items. It also exposes
   `window.__kart` and `window.__scene`, for checking a change with Playwright: round the city
   `mode: 'roam'`, where you are, the room, its members and the others where you see them, whether
-  you're flying (`fly`) and the camera (`cam`: its x, y, z, yaw and pitch); in a race
+  you're flying (`fly`), the camera (`cam`: its x, y, z, yaw and pitch), whether the full map is up
+  (`map`, M: braga-map's task 106, `FullMap` in `hud.ts`; in a race too) and the sound off (`muted`); in a race
   `mode: 'race'`, where you are, lap, place, item, draw calls, triangles. Add `&at=<sample>` and your car starts
   the race there, to look at one part of the track without driving a lap to it.
 - To race alone, the menu's "🏁 Corrida": it opens a room of your own, and the empty places on the

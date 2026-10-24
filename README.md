@@ -20,6 +20,14 @@ corner a blue-and-white plate names each street that begins there, on the corner
 on a post where no building stands at the corner; and every bus stop stands on its pavement, a
 shelter where the map has one.
 
+**M** opens the full map over the game, which goes on under it while your kart waits (or you stand):
+the whole open world and the city round it, north up, the streets at their widths and their names
+as you zoom in, the race's route in gold, the three arenas in orange, the area's edge in red, and you
+and the others on it as on the minimap. The wheel zooms, a drag moves it, **⌖ Onde estou** brings
+it back round you, and M or Esc closes it. Flying or on foot it's the same; in a race it opens on the
+whole track; in a round, on its arena, with only you and your team-mates on it, never a foe. On a
+touch screen a tap on the minimap opens it, two fingers zoom, and **✕** closes it.
+
 **Esc**, or **☰ Menu** at the top, opens the menu over the world, which goes on behind it: your name
 and driver, the graphics, the help, and
 
@@ -100,10 +108,11 @@ the ghost of your best. Round the city there are no items.
 | E or Shift | Use your item, in a race (hold ↓ to throw backwards) |
 | Enter | Back on the street (in a race, back to your last checkpoint) |
 | Backspace | Restart the lap (time attack) |
-| H · C · M | Horn · camera · sound |
+| H · C · N | Horn · camera · sound |
 | V | Fly the camera round the city, and back to your kart |
 | F | Get out and walk, and back in your kart |
-| Esc | The menu |
+| M | The full map, and back (flying, on foot, in a race and in a round too) |
+| Esc | The menu (with the full map up, closes it) |
 
 | Flying | |
 |---|---|
@@ -181,6 +190,7 @@ the left half, and pulls up when you lift it; in a race it goes by itself.
 | Derrapar | Hold it through a corner, as with Space |
 | Travar | Slows you down, and reverses once you've stopped |
 | Item | In a race: tap to use what it shows; swipe it down to throw backwards |
+| The minimap | Opens the full map: drag it to move it, two fingers to zoom, ✕ to close it (with the minimap hidden in the settings, 🗺️ at the top opens it) |
 | ☰ · ↺ · Voar · 🚶 A pé · 📢 · 🎥 · 🔊 (at the top) | The menu · back on the street (in a race, to your last checkpoint) · fly the camera · get out and walk · horn · camera · sound |
 
 Flying, the left half of the screen is a stick where your thumb lands, forward, back and sideways; a
@@ -350,7 +360,7 @@ Tab shows each player's kills and deaths, your team-mates' money, and who's down
   shared with the games to come: the city in sections, and the tracks planned on its streets. The
   game installs it as a package.
 - `src/session.ts`: rooms. `src/hud.ts`: what's on the screen while you drive, in a race and round
-  the city. `src/main.ts`: the menu, the race's screens, and the loop. `src/binds.ts`: every
+  the city, and the full map (its sums in `src/world/mapview.ts`). `src/main.ts`: the menu, the race's screens, and the loop. `src/binds.ts`: every
   control and its default keys; `src/prefs.ts`: the settings, kept in the browser;
   `src/settingsScreen.ts`: ⚙️ Definições.
 - `src/audio.ts`: every sound, through one mix. The karts' engines are a race car's V8 through six

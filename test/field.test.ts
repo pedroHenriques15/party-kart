@@ -6,6 +6,7 @@ import { STAND, Walker, type WalkInput } from '../src/game/walker.ts';
 import { norm, v3 } from '../src/math.ts';
 import { loadParked, prop, seeded, type Prop } from '../src/world/cover.ts';
 import { onSolid, WorldGround, worldGround } from '../src/world/ground.ts';
+import { GRID } from '../src/world/paths.ts';
 import { clear, sight } from '../src/world/sight.ts';
 
 // A round's arenas as they're played (the owner's "100x better", 2026-10-21): their cover, the cars
@@ -195,12 +196,14 @@ test('a shot: stopped by a skip, saying it was metal, but not by a site fence', 
 
 test('the longest open look over each arena, before its cover and after (at 1.4 m, a crouching head)', () => {
   for (const { id, F, bare } of built) {
-    // The furthest apart two of the bots' points outdoors (every fourth) are that see each other, a
-    // crouching head's height over each: the pairs from the furthest, until one does.
+    // The furthest apart two of the bots' points outdoors (in one of the lattice's cells in four, the
+    // same places with the cover and without: every fourth point of each would be other places, and a
+    // look the cover leaves be one the bare ground's points miss) are that see each other, a crouching
+    // head's height over each: the pairs from the furthest, until one does.
     const longest = (f: Field) => {
       const P = f.paths;
       const pts: number[] = [];
-      for (let p = 0; p < P.n; p += 4) if (f.inside(P.x[p], P.z[p]) && !f.ground.roomAt(P.x[p], P.z[p])) pts.push(p);
+      for (let p = 0; p < P.n; p++) if (!(Math.floor(P.x[p] / GRID) & 1) && !(Math.floor(P.z[p] / GRID) & 1) && f.inside(P.x[p], P.z[p]) && !f.ground.roomAt(P.x[p], P.z[p])) pts.push(p);
       const pairs: [number, number, number][] = [];
       for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) pairs.push([Math.hypot(P.x[pts[i]] - P.x[pts[j]], P.z[pts[i]] - P.z[pts[j]]), pts[i], pts[j]]);
       pairs.sort((a, b) => b[0] - a[0]);

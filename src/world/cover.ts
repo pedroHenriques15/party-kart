@@ -774,38 +774,42 @@ export function cover(g: WorldGround, id: string, inside: (x: number, z: number)
   // Round each anchor, a thing or two making an angle of it, and a step up onto it where it's one to
   // climb: against it, square to it or along it.
   const helpers: PropKind[] = shuffle(['sandbags', 'drum', 'bags', 'jersey', 'crate', 'reel', 'sandbags', 'bricks', 'drum', 'fence', 'jersey', 'sandbags'], rand);
+  // First each one's step up, before the things round the first anchors take up the room kept for
+  // what goes round them all (they had, in two arenas of three, once braga-map's task 059 moved the
+  // cover): a box beside it (by the van's bonnet), and for the scaffold a crate between them; none
+  // down a kerb from it, nor one a walker comes to off a kerb, from its far side, which takes the
+  // run-up the jump onto it needs (braga-map's task 111, which moved the arenas' cover, stood a skip
+  // across a kerb).
+  const stepped = new Set<Prop[]>();
   for (const a of anchors) {
     const base = a[0];
-    const climb = base.kind === 'skip' || base.kind === 'scaffold' || base.kind === 'van' ? 'box' : null;
-    const want = climb ? 2 : 1 + Math.floor(rand() * 2);
-    let got = 0;
-    if (climb) {
-      // A box beside it (by the van's bonnet), and for the scaffold a crate between them: a step up onto
-      // it, so none down a kerb from it, nor one a walker comes to off a kerb, from its far side, which
-      // takes the run-up the jump onto it needs (braga-map's task 111, which moved the arenas' cover,
-      // stood a skip across a kerb).
-      const step = (p: Prop) => {
-        const [dx, dz] = [p.x - base.x, p.z - base.z];
-        const d = Math.hypot(dx, dz) || 1;
-        const [x, z] = [p.x + (dx / d) * 1.1, p.z + (dz / d) * 1.1];
-        return p.base >= base.base - 0.05 && Math.abs(g.floor(x, z, p.base + 0.5).y - p.base) < 0.05;
-      };
-      for (const p of beside(base, base.kind === 'scaffold' ? 'crate' : 'box', at, rand)) {
-        if (props.length - cars >= MOST) break;
-        if (!step(p) || !fits(p)) continue;
-        put(p);
-        got++;
-        if (base.kind === 'scaffold') {
-          for (const q of beside(p, 'box', at, rand)) {
-            if (fits(q)) {
-              put(q);
-              break;
-            }
+    if (base.kind !== 'skip' && base.kind !== 'scaffold' && base.kind !== 'van') continue;
+    const step = (p: Prop) => {
+      const [dx, dz] = [p.x - base.x, p.z - base.z];
+      const d = Math.hypot(dx, dz) || 1;
+      const [x, z] = [p.x + (dx / d) * 1.1, p.z + (dz / d) * 1.1];
+      return p.base >= base.base - 0.05 && Math.abs(g.floor(x, z, p.base + 0.5).y - p.base) < 0.05;
+    };
+    for (const p of beside(base, base.kind === 'scaffold' ? 'crate' : 'box', at, rand)) {
+      if (props.length - cars >= MOST) break;
+      if (!step(p) || !fits(p)) continue;
+      put(p);
+      stepped.add(a);
+      if (base.kind === 'scaffold') {
+        for (const q of beside(p, 'box', at, rand)) {
+          if (fits(q)) {
+            put(q);
+            break;
           }
         }
-        break;
       }
+      break;
     }
+  }
+  for (const a of anchors) {
+    const base = a[0];
+    const want = base.kind === 'skip' || base.kind === 'scaffold' || base.kind === 'van' ? 2 : 1 + Math.floor(rand() * 2);
+    let got = stepped.has(a) ? 1 : 0;
     for (let tries = 0; tries < 4 && got < want && props.length - cars < MOST; tries++) {
       const kind = helpers[(anchors.indexOf(a) * 3 + tries) % helpers.length];
       for (const p of beside(base, kind, at, rand)) {
@@ -927,26 +931,28 @@ function fitsOn(p: Prop, fits: (p: Prop) => boolean): boolean {
 }
 
 // The places a thing of a kind can stand against another: along each of its sides, at its ends and
-// its middle, square to it or along it, a centimetre or two off it; in a seeded order.
+// its middle, square to it or along it, a centimetre or two off it; in a seeded order. A fence only
+// runs on from it: its mesh flat against a side would be one in front of it.
 function beside(base: Prop, kind: PropKind, at: (kind: PropKind, x: number, z: number, yaw: number) => Prop | null, rand: () => number): Prop[] {
   const out: Prop[] = [];
   const { L, W } = SIZE[kind];
   const c = Math.cos(base.yaw);
   const s = Math.sin(base.yaw);
   const gap = 0.06;
+  const mesh = kind === 'fence';
   for (const turn of [0, Math.PI / 2]) {
     // Its half-sizes along the base's length and across it.
     const hu = turn ? W / 2 : L / 2;
     const hv = turn ? L / 2 : W / 2;
     for (const sv of [1, -1]) {
       // Along a long side, at its ends and middle.
-      for (const f of [-1, 0, 1]) {
+      for (const f of mesh && !turn ? [] : [-1, 0, 1]) {
         const u = f * Math.max(0, base.L / 2 - hu);
         const v = sv * (base.W / 2 + hv + gap);
         out.push(...placed(u, v, turn));
       }
       // Off an end, flush with a side or in the middle.
-      for (const f of [-1, 0, 1]) {
+      for (const f of mesh && turn ? [] : [-1, 0, 1]) {
         const u = sv * (base.L / 2 + hu + gap);
         const v = f * Math.max(0, base.W / 2 - hv);
         out.push(...placed(u, v, turn));
@@ -988,14 +994,23 @@ function segs(ax: number, az: number, bx: number, bz: number, cx: number, cz: nu
 }
 
 // Whether a thing leaves no gap narrower than LANE beside it: out from each side, every metre or so
-// along it, the first thing met is against it (within 35 cm) or LANE off or more.
+// along it, and round its corners (a building's corner off a pallet's: braga-map's task 059, whose
+// pavements moved the arenas' cover, stood one so at a passage's mouth, cutting off what's behind it),
+// the first thing met is against it (within 35 cm) or LANE off or more.
 function lanes(g: WorldGround, P: Plan, p: Prop, inside: (x: number, z: number) => boolean): boolean {
   for (const s of p.solids) {
     if (s.y0 > p.y + 0.3) continue;
     const c = Math.cos(s.yaw);
     const sn = Math.sin(s.yaw);
+    // How far a point is from the box (seen from above).
+    const off = (x: number, z: number) => {
+      const u = (x - s.x) * c + (z - s.z) * sn;
+      const v = (z - s.z) * c - (x - s.x) * sn;
+      return Math.hypot(Math.max(Math.abs(u) - s.L / 2, 0), Math.max(Math.abs(v) - s.W / 2, 0));
+    };
     for (const [nx, nz, len, half] of [[c, sn, s.W, s.L / 2], [-c, -sn, s.W, s.L / 2], [-sn, c, s.L, s.W / 2], [sn, -c, s.L, s.W / 2]] as const) {
-      // Along the side (the way across it), from end to end.
+      // Along the side (the way across it), from end to end; at its ends, turned half way to the next
+      // side's way out too.
       const ax = -nz;
       const az = nx;
       const n = Math.max(2, Math.ceil(len / 0.9));
@@ -1003,18 +1018,23 @@ function lanes(g: WorldGround, P: Plan, p: Prop, inside: (x: number, z: number) 
         const a = (k / n - 0.5) * (len - 0.1);
         const x0 = s.x + nx * half + ax * a;
         const z0 = s.z + nz * half + az * a;
-        let gap = Infinity;
-        for (let d = 0.1; d < LANE + 0.05; d += 0.1) {
-          const x = x0 + nx * d;
-          const z = z0 + nz * d;
-          const cell = P.cell(x, z);
-          // Where a walker stands there's no wall within 30 cm: only elsewhere is the ground asked.
-          if (cell < 0 || P.out[cell] || P.see[cell] || P.room[cell] || (!P.ok[cell] && (!inside(x, z) || g.circle(x, z, x, z, p.y, 0.05, 1.75, true))) || p.solids.some((o) => o !== s && onSolid(o, x, z))) {
-            gap = d;
-            break;
+        const end = k === 0 ? -1 : k === n ? 1 : 0;
+        for (const t of end ? [0, Math.PI / 8, Math.PI / 4] : [0]) {
+          const ux = nx * Math.cos(t) + ax * end * Math.sin(t);
+          const uz = nz * Math.cos(t) + az * end * Math.sin(t);
+          let gap = Infinity;
+          for (let d = 0.1; d < LANE + 0.05; d += 0.1) {
+            const x = x0 + ux * d;
+            const z = z0 + uz * d;
+            const cell = P.cell(x, z);
+            // Where a walker stands there's no wall within 30 cm: only elsewhere is the ground asked.
+            if (cell < 0 || P.out[cell] || P.see[cell] || P.room[cell] || (!P.ok[cell] && (!inside(x, z) || g.circle(x, z, x, z, p.y, 0.05, 1.75, true))) || p.solids.some((o) => o !== s && onSolid(o, x, z))) {
+              gap = off(x, z);
+              break;
+            }
           }
+          if (gap > 0.35 && gap < LANE) return false;
         }
-        if (gap > 0.35 && gap < LANE) return false;
       }
     }
   }

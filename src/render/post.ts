@@ -10,8 +10,12 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 
 const q = new URLSearchParams(globalThis.location?.search);
 // How strongly the occlusion darkens (?ao= for tuning, 0 for none), and how far it reaches, in metres.
-const AO = q.has('ao') ? Number(q.get('ao')) : 1;
+// Its deepest eased (AO_CURVE) and its noise smoothed only close by: worked out from the depth alone, it
+// finds a crease between two walls too dark, and the smoothing spread that over the whole of a narrow
+// face beside it, a speckled band down a wall (alvaro-carneiro's), where the eaves and steps wanted it.
+const AO = q.has('ao') ? Number(q.get('ao')) : 0.7;
 const AO_RADIUS = 1.5;
+const AO_CURVE = 0.6;
 // It's worked out on no more than this many lines, as the shots see it, and laid over a bigger screen
 // smoothed: it changes slowly across a frame, and at 2560 by 1440 it costs a quarter as much.
 const AO_LINES = 720;
@@ -99,7 +103,8 @@ export class UltraFrame {
     // once, three 0.186's pass never makes the buffer it then sizes and disposes of: so after.)
     this.gtao = new GTAOPass(scene, camera, ...aoSize(s.x, s.y));
     this.gtao.setGBuffer(this.drawn.depthTexture!);
-    this.gtao.updateGtaoMaterial({ radius: AO_RADIUS, distanceExponent: 1, thickness: 1, scale: 1, samples: 16 });
+    this.gtao.updateGtaoMaterial({ radius: AO_RADIUS, distanceExponent: 1, thickness: 1, scale: AO_CURVE, samples: 24 });
+    this.gtao.updatePdMaterial({ radius: 4 });
     this.gtao.blendIntensity = AO;
     if (!AO) this.gtao.output = GTAOPass.OUTPUT.Diffuse;
     this.smaa = new SMAAPass();

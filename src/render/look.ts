@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { braga, sunAt, sunDir } from '../sun.ts';
+import { UltraFrame } from './post.ts';
 
 // The three levels the city is built at, a phone's and a laptop's; and the graphics a player picks,
 // which has Ultra above them, for a PC only (braga-map's task 081): everything past what a phone holds
@@ -184,6 +185,8 @@ export class Look {
   // Drawn over the world once it's drawn, its depth cleared: your gun in first person (render/arms.ts,
   // braga-map's task 074), which never goes into a wall however close you stand to it.
   overlay: THREE.Scene | null = null;
+  // Ultra's frame, drawn through a buffer for what's laid over it (post.ts); made once Ultra is on.
+  private ultra: UltraFrame | null = null;
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     this.renderer = renderer;
@@ -232,6 +235,10 @@ export class Look {
       this.sun.shadow.map?.dispose();
       this.sun.shadow.map = null;
     }
+    if (q !== 'ultra') {
+      this.ultra?.dispose();
+      this.ultra = null;
+    }
     // Materials compile differently with and without shadows.
     this.scene.traverse((o) => {
       const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
@@ -245,6 +252,8 @@ export class Look {
     this.renderer.setSize(innerWidth, innerHeight, false);
     this.camera.aspect = innerWidth / innerHeight;
     this.camera.updateProjectionMatrix();
+    const s = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    this.ultra?.setSize(s.x, s.y);
   }
 
   // Keep the sun's shadows around what we're looking at.
@@ -266,7 +275,8 @@ export class Look {
     const r = this.renderer;
     r.info.autoReset = false;
     r.info.reset();
-    r.render(this.scene, this.camera);
+    if (this.quality === 'ultra') (this.ultra ??= new UltraFrame(r, this.scene, this.camera, this.sun)).render();
+    else r.render(this.scene, this.camera);
     if (this.overlay?.visible) {
       r.autoClear = false;
       r.clearDepth();

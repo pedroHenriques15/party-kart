@@ -129,8 +129,10 @@ function wallsOf(kind: string, n: number, high = 0) {
       const f = ground.floor(x, z, ground.groundAt(x, z) + 0.2);
       return !f.buried && Math.abs(f.y - foot) < 0.6 && !ground.circle(x, z, ...at(4), f.y, RADIUS, HEIGHT, true);
     });
-    // A retaining wall where the land drawn under it drops as it does.
-    if (clear && (kind !== 'retaining' || foot < m.y1 - w.h * 0.6)) out.push({ w, m, at, foot });
+    // A retaining wall where the land drawn under it drops as it does, and its top is its higher
+    // ground's (not a wall the map gives a height to standing on a step: braga-map's task 112).
+    const above = ground.groundAt(m.x - m.nx * (w.w / 2 + 1), m.z - m.nz * (w.w / 2 + 1));
+    if (clear && (kind !== 'retaining' || (foot < m.y1 - w.h * 0.6 && Math.abs(above - m.y1) < 0.5))) out.push({ w, m, at, foot });
   }
   return out;
 }

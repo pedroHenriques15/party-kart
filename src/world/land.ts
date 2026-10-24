@@ -173,10 +173,161 @@ function crosses(ax: number, az: number, bx: number, bz: number, cx: number, cz:
   return d1 * d2 < 0 && d3 * d4 < 0;
 }
 
+// ---- The land at a retaining wall (braga-map's task 111) ----
+
+// How far either side of a retaining wall of the map's the land is held to that side's own: braga-map's
+// ground is a 2 m grid, whose ramp across a wall reaches 2 m past the terrain's step, and the map's
+// line is about 0.75 m off the step either way (its decision 059).
+export const STEP_REACH = 3;
+// The least step a retaining wall holds the land either side of, and how far in from each of its ends
+// it comes to the whole of it.
+const STEP_MIN = 0.5;
+const STEP_END = 1.5;
+
+// A stretch of one of the map's retaining walls on the ground, one that stands STEP_MIN or more over its
+// lower side: its ends, half how thick it is, and how far along the wall it starts, of the wall's whole
+// length; and which wall it is. The higher ground is on the left of its line (braga-map's walls).
+export interface Stretch {
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
+  half: number;
+  s0: number;
+  len: number;
+  wall: number;
+}
+
+export function retainingStretches(map: Braga): Stretch[] {
+  const out: Stretch[] = [];
+  for (const [wall, w] of map.walls.entries()) {
+    if (w.kind !== 'retaining' || w.level !== 'ground' || w.h < STEP_MIN) continue;
+    let len = 0;
+    for (let k = 1; k < w.pts.length; k++) len += Math.hypot(w.pts[k][0] - w.pts[k - 1][0], w.pts[k][1] - w.pts[k - 1][1]);
+    let s0 = 0;
+    for (let k = 1; k < w.pts.length; k++) {
+      const [ax, az] = w.pts[k - 1];
+      const [bx, bz] = w.pts[k];
+      const L = Math.hypot(bx - ax, bz - az);
+      if (L > 0.05) out.push({ ax, az, bx, bz, half: Math.max(0.15, w.w / 2), s0, len, wall });
+      s0 += L;
+    }
+  }
+  return out;
+}
+
+// Each stretch's footprint, as thick as the wall and as long again past its ends, so two stretches
+// overlap at a bend: what the land's mesh is cut along, so it steps under the wall (lattice.ts).
+export function wallFootprints(stretches: Stretch[]): [number, number][][] {
+  return stretches.map((s) => {
+    const L = Math.hypot(s.bx - s.ax, s.bz - s.az);
+    const ux = ((s.bx - s.ax) / L) * s.half;
+    const uz = ((s.bz - s.az) / L) * s.half;
+    return [
+      [s.ax - ux - uz, s.az - uz + ux],
+      [s.bx + ux - uz, s.bz + uz + ux],
+      [s.bx + ux + uz, s.bz + uz - ux],
+      [s.ax - ux + uz, s.az - uz - ux],
+    ];
+  });
+}
+
+// The land held either side of the map's retaining walls. A 2 m grid can't step along a line that runs
+// across it at a slant: it ramps from the lower side's ground to the higher's, and stood up to a metre
+// or more in front of a wall's face, through a street at its foot, and curled the street up to it
+// (task 111's white shards in the Travessa Conselheiro Lobato), and sank a street on its top down to it.
+// Within STEP_REACH of a wall, the land on its lower side is held down to that side's ground STEP_REACH
+// out, past the grid's ramp, and on its higher side up to that side's: so the land steps under the
+// wall, whose face and top stand over the step. (Its own top, and its top less its height, braga-map
+// measured 1.75 m either side and as the step's upper quarter: held to them, a street at its foot was
+// held up to a metre over itself.) A side's ground is never taken past another wall, but half way to
+// it: so between two walls a few metres apart (a street between the one above it and the one below, a
+// terrace's two tiers as on the Monte da Forca), both hold the land to the same ground, not one to the
+// other's foot and the other to its top. Eased out over the last metre of STEP_REACH and the first and
+// last STEP_END metres of the wall, where its face tapers out; and none where the two sides' ground is
+// within STEP_MIN.
+export function heldAtWalls(stretches: Stretch[], nat: (x: number, z: number) => number): (x: number, z: number) => number {
+  const C = 10;
+  const cells = new Map<number, Stretch[]>();
+  for (const s of stretches) {
+    for (let i = Math.floor((Math.min(s.ax, s.bx) - STEP_REACH) / C); i <= Math.floor((Math.max(s.ax, s.bx) + STEP_REACH) / C); i++) {
+      for (let j = Math.floor((Math.min(s.az, s.bz) - STEP_REACH) / C); j <= Math.floor((Math.max(s.az, s.bz) + STEP_REACH) / C); j++) {
+        const k = j * 100003 + i;
+        const l = cells.get(k);
+        if (l) l.push(s);
+        else cells.set(k, [s]);
+      }
+    }
+  }
+  const at = (x: number, z: number) => cells.get(Math.floor(z / C) * 100003 + Math.floor(x / C)) ?? [];
+  // How far out from (px, pz) on a stretch, the way (ux, uz), its side's ground is taken: STEP_REACH, or
+  // half way to another wall alongside it that comes first (one within 37° of it, and across from it: not
+  // one it meets at a corner, nor one that goes on from its end), 1.5 m or more out: one nearer is the
+  // same step twice, each line up to 0.75 m off it (braga-map's decision 059).
+  const reach = (s: Stretch, px: number, pz: number, ux: number, uz: number): number => {
+    let t = STEP_REACH * 2;
+    const seen = new Set<Stretch>();
+    for (const k of [0, 0.5, 1]) {
+      for (const q of at(px + ux * STEP_REACH * k, pz + uz * STEP_REACH * k)) {
+        if (q.wall === s.wall || seen.has(q)) continue;
+        seen.add(q);
+        const qx = q.bx - q.ax;
+        const qz = q.bz - q.az;
+        const ql = Math.hypot(qx, qz);
+        // Alongside: the way out square to it, and (px, pz) across from it, not past either of its ends.
+        const den = ux * qz - uz * qx;
+        if (Math.abs(den) < 0.8 * ql) continue;
+        const f = ((px - q.ax) * qx + (pz - q.az) * qz) / (ql * ql);
+        if (f < 0 || f > 1) continue;
+        // Where the way out meets it.
+        const a = ((q.ax - px) * qz - (q.az - pz) * qx) / den;
+        if (a >= 1.5 && a < t) t = a;
+      }
+    }
+    return Math.min(STEP_REACH, t / 2);
+  };
+  return (x, z) => {
+    const h = nat(x, z);
+    const near = at(x, z);
+    // The stretch that holds it most (by how near, and how far from its wall's ends: where one wall ends
+    // beside another, the other), the nearer of two that hold it as much; and the nearest point of it.
+    let best: Stretch | null = null;
+    let d = STEP_REACH;
+    let t = 0;
+    let w = 0;
+    for (const s of near) {
+      const dx = s.bx - s.ax;
+      const dz = s.bz - s.az;
+      const f = Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / (dx * dx + dz * dz)));
+      const e = Math.hypot(s.ax + dx * f - x, s.az + dz * f - z);
+      if (e >= STEP_REACH) continue;
+      const along = s.s0 + f * Math.hypot(dx, dz);
+      const v = smooth(0, STEP_END, Math.min(along, s.len - along)) * (1 - smooth(STEP_REACH - 1, STEP_REACH, e));
+      if (v > w + 1e-9 || (v > w - 1e-9 && e < d)) [best, d, t, w] = [s, e, f, v];
+    }
+    if (!best || w <= 0) return h;
+    const s = best;
+    const L = Math.hypot(s.bx - s.ax, s.bz - s.az);
+    const px = s.ax + (s.bx - s.ax) * t;
+    const pz = s.az + (s.bz - s.az) * t;
+    // Its lower side's way out (on the right of its line), and each side's ground past the ramp.
+    const nx = -(s.bz - s.az) / L;
+    const nz = (s.bx - s.ax) / L;
+    const r0 = reach(s, px, pz, nx, nz);
+    const r1 = reach(s, px, pz, -nx, -nz);
+    const lo = nat(px + nx * r0, pz + nz * r0);
+    const hi = nat(px - nx * r1, pz - nz * r1);
+    if (hi - lo < STEP_MIN) return h;
+    const lower = (s.bx - s.ax) * (z - s.az) - (s.bz - s.az) * (x - s.ax) > 0;
+    return lower ? h - Math.max(0, h - lo) * w : h + Math.max(0, hi - h) * w;
+  };
+}
+
 // The land in the box (and 100 m round it, for the river). Given the race's track, the river is
 // kept well below the road where the road crosses it.
 export function makeLand(map: Braga, B: Box, track?: Track): Land {
-  const nat = map.height;
+  // Braga-map's ground, held either side of its retaining walls (task 111).
+  const nat = heldAtWalls(retainingStretches(map), map.height);
   const river: Reach[] = [];
   for (const r of map.rivers) {
     const pts = r.pts

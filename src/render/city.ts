@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { onGrid, type Bound } from '../game/flyer.ts';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
 import { Rings, trimmed, worldGround, type WorldGround } from '../world/ground.ts';
-import { smooth } from '../world/land.ts';
+import { retainingStretches, smooth, wallFootprints } from '../world/land.ts';
 import { raceGround } from '../world/race.ts';
 import { buildEggs, eggSpots, type Eggs } from './eggs.ts';
 import { buildSights, horizon, TOURIGALO_CLEAR } from './sights.ts';
@@ -285,6 +285,11 @@ export async function buildCity(track: Track, course: Course, graphics: Graphics
   const C = quality === 'low' ? 20 : 10;
   const F = quality === 'low' ? 4 : 2;
   const lat = new Lattice(B, C, F);
+  // The map's retaining walls' footprints, which the land's triangles are cut along so it steps under
+  // each wall (braga-map's task 111, land.ts's heldAtWalls). A cell one meets is split only as any is,
+  // where the land shows beside a street and its triangles would miss it: splitting them all, round
+  // the 80 km of the map's retaining walls, cost a fifth more triangles at every viewpoint.
+  const walls = new Holes(wallFootprints(retainingStretches(map)));
   {
     const r = lat.r;
     const tol = quality === 'high' ? 0.8 : quality === 'medium' ? 1 : 1.2;
@@ -349,7 +354,7 @@ export async function buildCity(track: Track, course: Course, graphics: Graphics
       }
     }
   }
-  const landMesh = new Surface(lat, land);
+  const landMesh = new Surface(lat, land, walls);
   const [cover, treeLooks] = await Promise.all([coverLoading, treesLoading]);
   if (masked && !cover) paint = paintGround(map, B, quality, inOpenTiles, outline, onGround);
   // The land isn't drawn inside a room (braga-map's task 079, world/interiors.ts): its floors stand
@@ -429,20 +434,51 @@ export async function buildCity(track: Track, course: Course, graphics: Graphics
             for (let q = 1; q + 1 < piece.pts.length; q++) [piece.pts[0], piece.pts[q], piece.pts[q + 1]].forEach(put);
           }
         };
+        // A point a wall's cut makes (braga-map's task 111), at the land's height there, made once; its
+        // normal the land's over 5 cm, which stays on its side of the wall.
+        const cuts = new Map<string, number>();
+        const extra = ([x, y, z]: [number, number, number]): number => {
+          const key = `${x},${z}`;
+          let v = cuts.get(key);
+          if (v !== undefined) return v;
+          v = pos.length / 3;
+          pos.push(x, y, z);
+          const e = 0.05;
+          const gx = (land(x + e, z) - land(x - e, z)) / (2 * e);
+          const gz = (land(x, z + e) - land(x, z - e)) / (2 * e);
+          const l = Math.hypot(gx, 1, gz);
+          nor.push(-gx / l, 1 / l, -gz / l);
+          uv.push((x - B.x0) / (B.x1 - B.x0), 1 - (z - B.z0) / (B.z1 - B.z0));
+          cuts.set(key, v);
+          return v;
+        };
+        // A triangle of the lattice, or where a retaining wall's footprint meets one of a small cell, the
+        // pieces it's cut into, each a fan; each cut where a room's outline may meet it.
+        const piece = (a: number, b: number, c: number, cut: boolean, small: boolean) => {
+          const corners = [a, b, c];
+          const ps = small ? landMesh.cut(corners.map((v): [number, number, number] => [pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]])) : null;
+          if (!ps) return cut ? tri(a, b, c) : void idx.push(a, b, c);
+          for (const p of ps) {
+            const ks = p.map((q) => corners.find((v) => pos[v * 3] === q[0] && pos[v * 3 + 2] === q[2]) ?? extra(q));
+            for (let k = 1; k + 1 < ks.length; k++) {
+              if (cut) tri(ks[0], ks[k], ks[k + 1]);
+              else idx.push(ks[0], ks[k], ks[k + 1]);
+            }
+          }
+        };
         // Corners (i, j), (i + 1, j), (i, j + 1), (i + 1, j + 1); cut where a room's outline may meet it.
-        const cell = (a: number, b: number, c: number, d: number, cut: boolean) => {
-          if (!cut) return void idx.push(a, c, b, b, c, d);
-          tri(a, c, b);
-          tri(b, c, d);
+        const cell = (a: number, b: number, c: number, d: number, cut: boolean, small: boolean) => {
+          piece(a, c, b, cut, small);
+          piece(b, c, d, cut, small);
         };
         for (let j = tj; j < Math.min(lat.nz, tj + T); j++) {
           for (let i = ti; i < Math.min(lat.nx, ti + T); i++) {
             const cut = holes.touches(B.x0 + i * C, B.z0 + j * C, B.x0 + (i + 1) * C, B.z0 + (j + 1) * C);
             if (!lat.isFine(i, j)) {
-              cell(vertex(i * r, j * r), vertex((i + 1) * r, j * r), vertex(i * r, (j + 1) * r), vertex((i + 1) * r, (j + 1) * r), cut);
+              cell(vertex(i * r, j * r), vertex((i + 1) * r, j * r), vertex(i * r, (j + 1) * r), vertex((i + 1) * r, (j + 1) * r), cut, false);
               continue;
             }
-            for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) cell(vertex(i * r + a, j * r + b), vertex(i * r + a + 1, j * r + b), vertex(i * r + a, j * r + b + 1), vertex(i * r + a + 1, j * r + b + 1), cut);
+            for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) cell(vertex(i * r + a, j * r + b), vertex(i * r + a + 1, j * r + b), vertex(i * r + a, j * r + b + 1), vertex(i * r + a + 1, j * r + b + 1), cut, true);
           }
         }
         const geo = new THREE.BufferGeometry();

@@ -780,10 +780,19 @@ export function cover(g: WorldGround, id: string, inside: (x: number, z: number)
     const want = climb ? 2 : 1 + Math.floor(rand() * 2);
     let got = 0;
     if (climb) {
-      // A box beside it (by the van's bonnet), and for the scaffold a crate between them.
+      // A box beside it (by the van's bonnet), and for the scaffold a crate between them: a step up onto
+      // it, so none down a kerb from it, nor one a walker comes to off a kerb, from its far side, which
+      // takes the run-up the jump onto it needs (braga-map's task 111, which moved the arenas' cover,
+      // stood a skip across a kerb).
+      const step = (p: Prop) => {
+        const [dx, dz] = [p.x - base.x, p.z - base.z];
+        const d = Math.hypot(dx, dz) || 1;
+        const [x, z] = [p.x + (dx / d) * 1.1, p.z + (dz / d) * 1.1];
+        return p.base >= base.base - 0.05 && Math.abs(g.floor(x, z, p.base + 0.5).y - p.base) < 0.05;
+      };
       for (const p of beside(base, base.kind === 'scaffold' ? 'crate' : 'box', at, rand)) {
         if (props.length - cars >= MOST) break;
-        if (!fits(p)) continue;
+        if (!step(p) || !fits(p)) continue;
         put(p);
         got++;
         if (base.kind === 'scaffold') {

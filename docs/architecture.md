@@ -14,7 +14,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/track/layout.ts` | sim | The `Point` type; and `LAYOUT`, the first track (the cartoon Braga Grand Prix), kept for reference and for the tests |
 | `src/track/track.ts` | sim | `buildTrack`: the road sampled every metre. `locate`: where a point is relative to the road |
 | `src/car/car.ts` | sim | `stepCar`: the handling (grip, drift, mini-turbo, boost pads, flying, landing, walls, falling off), on a `Ground`; `trackGround`, a track's own road as one (the first track's, and the tests') |
-| `src/world/land.ts` | sim | `makeLand`: the land as it's drawn and driven on (braga-map's ground, held down at the tunnels' mouths, the stadium's bowl, the river's bed); `mouths` |
+| `src/world/land.ts` | sim | `makeLand`: the land as it's drawn and driven on (braga-map's ground, held down at the tunnels' mouths, the stadium's bowl, the river's bed, and either side of a retaining wall to that side's own: `heldAtWalls`, braga-map's task 111); `mouths`; `retainingStretches` and `wallFootprints`, the walls the land steps under |
 | `src/world/ground.ts` | sim | `worldGround`: the world as a ground, for the open world: the land, every street and path at its level, each flight of steps a tread at a time, and the walls (buildings, parapets, tunnels, trees, handrails, risers too high to climb, the area's edge); what the game stands on it (the plinth); and `circle`, the walls and trunks a circle is in, a kart's two or a walker |
 | `src/world/race.ts` | sim | `raceGround`: the world's ground for a race, with the race's walls (its road's outline, braga-map's `road`), its ramp and the fences where its road drops away, less the world's walls it takes down (braga-map's `cleared`, `clearedWalls`, and `clearedPieces` for the city to draw them apart); `reachable`, for the tests: whether a race is closed |
 | `src/car/autopilot.ts` | sim | Drives the track by itself: for the bots, `?autodrive` and the tests |
@@ -219,8 +219,9 @@ in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: e
   59 of 3,091 between treads, and 234 of a tread's 420 edges over a street or a path beside it);
   every wall, fence, railing, hedge and gate braga-map has (its task 013; a gate shut, whatever it
   says, which is for someone on foot), from under the ground to its top, a hedge or anything half a
-  metre thick along both its sides, and a retaining wall 0.6 m over its top (`HOLD`: the land under
-  it is a 2 m grid's, which ramps up to it, and would launch a kart over it at speed);
+  metre thick along both its sides, and a retaining wall 0.6 m over its top (`HOLD`: braga-map's ground
+  under it is a 2 m grid's, which ramps up to it, and would launch a kart over it at speed; the land
+  is held either side of it since braga-map's task 111, but not where its face tapers out at its ends);
   and, given the area (`open`, braga-map's task 032), its edge at every level and a barrier across
   each street and path leaving it. A building is trimmed at a path's passage under it as at a
   carriageway (the owner's answer to braga-map's task 050), so it's open too; a cut's edge in a
@@ -712,11 +713,21 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   Tourigalo's bull turned to face the road.
   - The land is the ground as the karts have it (`land.ts`: braga-map's, from DGT's LiDAR, every
     2 m in the area), with the river's bed cut through it (but not past a wall, hedge or fence standing on its bank,
-    nor under one's foot: braga-map's task 077) and level under the stadium. Its mesh is
+    nor under one's foot: braga-map's task 077) and level under the stadium. Within 3 m of one of the
+    map's retaining walls that stands 0.5 m or more over its foot, it's held to each side's own ground
+    3 m out, or half way to another wall alongside, so a street or a terrace between two walls keeps
+    one ground (`heldAtWalls`, braga-map's task 111): the 2 m grid ramps across a wall at a slant to it,
+    and stood up to a metre in front of its face, through a street at its foot (the white shards in
+    the Travessa Conselheiro Lobato), and curled the street up to it. Its mesh is
     on a lattice (`lattice.ts`) of cells of 10 m (20 m on Low), each split into cells of 2 m (4 m on
     Low) where it needs them: near a tunnel's mouth or under a deck, and where the land shows beside
     a street (not under it, nor under a building) and its two triangles would miss the ground there
-    by more than 0.8 m (1 m on Medium, 1.2 on Low). It's drawn a square kilometre at a time. Under
+    by more than 0.8 m (1 m on Medium, 1.2 on Low). Each triangle of a small cell one of the map's
+    retaining walls' footprints crosses is cut along it (`Surface`'s walls, `Holes` again), so the land
+    steps under the wall (a big cell's are too coarse for it to show); a point the cut makes on a
+    triangle's side lies on the line the triangles either side of it agree on (through the side's ends
+    and where a footprint crosses it, `Holes.crossings`), so the land doesn't crack. It's drawn a square kilometre at
+    a time. Under
     the streets it isn't drawn at all: the painting is left clear there, 0.6 pixels in from their
     outline, and the land's material skips what's clear, whatever the land's height, so it never
     shows through a street. Further off, the whole map's hills every 50 m, coloured by the map's

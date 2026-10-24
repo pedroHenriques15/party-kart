@@ -2,9 +2,10 @@ import { loadWorld, type World } from 'braga-map';
 import amigos from 'braga-map/tracks/amigos.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Lattice, Surface } from '../src/render/lattice.ts';
+import { Holes, Lattice, Surface } from '../src/render/lattice.ts';
 import { edgePoints, surface, type Grain } from '../src/render/tin.ts';
 import { worldGround } from '../src/world/ground.ts';
+import { retainingStretches, wallFootprints } from '../src/world/land.ts';
 
 // The streets as they're drawn (src/render/streets.ts) are laid on the ground the karts drive on by
 // tin.ts, and the land under them is made on lattice.ts's: the geometry, without three.js's scene.
@@ -117,4 +118,137 @@ test("the land's lattice: a big cell and its split neighbour meet without a crac
   }
   // A split cell's corners are the land's own.
   assert.ok(Math.abs(S.y(B.x0 + 20, B.z0 + 20) - land(B.x0 + 20, B.z0 + 20)) < 1e-4);
+});
+
+test("the land cut along the retaining walls has no crack where a split cell meets a big one, on High's lattice and on Low's (braga-map's task 111)", () => {
+  // Round capela-santo-adriao's walls, a cell in two split: along every side between two cells, from
+  // either side's triangles, the same height, where a wall's cut meets the side too.
+  const B = { x0: 840, x1: 1000, z0: 1180, z1: 1340 };
+  const walls = new Holes(wallFootprints(retainingStretches(world)));
+  for (const [C, F] of [[10, 2], [20, 4]]) {
+    const L = new Lattice(B, C, F);
+    for (let j = 0; j < L.nz; j++) for (let i = 0; i < L.nx; i++) L.fine[j * L.nx + i] = (i + j) % 2;
+    const S = new Surface(L, land, walls);
+    let worst = 0;
+    let at = '';
+    for (let j = 0; j < L.nz; j++) {
+      for (let i = 0; i < L.nx; i++) {
+        for (let f = 0.025; f < 1; f += 0.05) {
+          const [x, z] = [B.x0 + i * C, B.z0 + (j + f) * C];
+          const [u, v] = [B.x0 + (i + f) * C, B.z0 + j * C];
+          const sides: [number, number, number][] = [];
+          if (i) sides.push([Math.abs(S.y(x - 1e-7, z) - S.y(x + 1e-7, z)), x, z]);
+          if (j) sides.push([Math.abs(S.y(u, v - 1e-7) - S.y(u, v + 1e-7)), u, v]);
+          for (const [d, p, q] of sides) if (d > worst) [worst, at] = [d, `(${p.toFixed(1)}, ${q.toFixed(1)})`];
+        }
+      }
+    }
+    assert.ok(worst < 1e-3, `a crack ${worst.toFixed(2)} m deep at ${at} on a lattice of ${C} m`);
+  }
+  // And with every cell split, across every small triangle's sides, its diagonal too: the cut splits
+  // the land outside a footprint along its sides' lines, which only one of two triangles may have
+  // (sameiro's bank, and between capela-santo-adriao's walls, cracked so on Low).
+  for (const [x0, z0] of [[580, 1085], [890, 1250]]) {
+    for (const F of [2, 4]) {
+      const L = new Lattice({ x0: x0 - 40, x1: x0 + 80, z0: z0 - 40, z1: z0 + 80 }, F * 5, F);
+      L.fine.fill(1);
+      const S = new Surface(L, land, walls);
+      let worst = 0;
+      let at = '';
+      const e = 1e-6;
+      for (let x = x0; x < x0 + 40; x += F) {
+        for (let z = z0; z < z0 + 40; z += F) {
+          for (let f = 0.01; f < 1; f += 0.02) {
+            const [dx, dz] = [x + F * (1 - f), z + F * f];
+            const sides: [number, string][] = [
+              [Math.abs(S.y(x - e, z + f * F) - S.y(x + e, z + f * F)), `(${x}, ${(z + f * F).toFixed(2)})`],
+              [Math.abs(S.y(x + f * F, z - e) - S.y(x + f * F, z + e)), `(${(x + f * F).toFixed(2)}, ${z})`],
+              [Math.abs(S.y(dx - e, dz - e) - S.y(dx + e, dz + e)), `(${dx.toFixed(2)}, ${dz.toFixed(2)})`],
+            ];
+            for (const [d, p] of sides) if (d > worst) [worst, at] = [d, p];
+          }
+        }
+      }
+      assert.ok(worst < 1e-3, `a crack ${worst.toFixed(2)} m deep at ${at}, small cells of ${F} m`);
+    }
+  }
+});
+
+test("the land steps under a retaining wall, not in front of it: none stands over a street at its foot, and the street isn't curled up to it (braga-map's task 111)", () => {
+  // The land as city.ts draws it on High beside a street at a wall: the lattice's small cells (a cell
+  // there is split where its triangles would miss the land, as they do across a wall's step), each
+  // triangle a wall's footprint meets cut along it.
+  const stretches = retainingStretches(world);
+  const S = new Surface(new Lattice(world.box, 10, 2), land, new Holes(wallFootprints(stretches)));
+  S.L.fine.fill(1);
+  const near = (q: (typeof stretches)[number], x: number, z: number) => {
+    const [dx, dz] = [q.bx - q.ax, q.bz - q.az];
+    const f = Math.max(0, Math.min(1, ((x - q.ax) * dx + (z - q.az) * dz) / (dx * dx + dz * dz)));
+    return { d: Math.hypot(q.ax + dx * f - x, q.az + dz * f - z), f, upper: dx * (z - q.az) - dz * (x - q.ax) < 0 };
+  };
+  // The stretches within 3 m of each 10 m cell.
+  const cells = new Map<string, typeof stretches>();
+  for (const q of stretches) {
+    for (let i = Math.floor((Math.min(q.ax, q.bx) - 3) / 10); i <= Math.floor((Math.max(q.ax, q.bx) + 3) / 10); i++) {
+      for (let j = Math.floor((Math.min(q.az, q.bz) - 3) / 10); j <= Math.floor((Math.max(q.az, q.bz) + 3) / 10); j++) {
+        const k = `${i},${j}`;
+        cells.set(k, [...(cells.get(k) ?? []), q]);
+      }
+    }
+  }
+  const around = (x: number, z: number) => cells.get(`${Math.floor(x / 10)},${Math.floor(z / 10)}`) ?? [];
+  // Under a wall, where its block stands over the land; behind another, where its face does.
+  const under = (x: number, z: number) => around(x, z).some((q) => near(q, x, z).d < q.half);
+  const behind = (x: number, z: number, me: (typeof stretches)[number]) =>
+    around(x, z).some((q) => {
+      if (q === me) return false;
+      const n = near(q, x, z);
+      return n.d < 3 && n.upper && n.f > 0 && n.f < 1;
+    });
+  const kind = (x: number, z: number) => (ground.d.roads.has(x, z) ? 1 : ground.d.paves.has(x, z) ? 2 : 0);
+  const street = (x: number, z: number) => [null, firm(x, z), pave(x, z)][kind(x, z)];
+  // Every half metre along each wall (but its last 2 m, where it eases out), on either side, where a
+  // street comes within 1.5 m of its face: on its lower side, the land from 0.3 m short of the street's
+  // edge to 0.6 m into it (paintGround leaves it drawn that far into a street, so it meets the street),
+  // against the street there; and either side, the street at the wall against itself 2 m further out.
+  let len = 0;
+  let over = 0;
+  let worst = { by: 0, at: '' };
+  const curl: Record<string, number[]> = { lower: [], higher: [] };
+  for (const s of stretches) {
+    const Ls = Math.hypot(s.bx - s.ax, s.bz - s.az);
+    const [ux, uz] = [(s.bx - s.ax) / Ls, (s.bz - s.az) / Ls];
+    for (let t = 0.25; t < Ls; t += 0.5) {
+      if (s.s0 + t < 2 || s.s0 + t > s.len - 2) continue;
+      const [x, z] = [s.ax + ux * t, s.az + uz * t];
+      for (const side of ['lower', 'higher']) {
+        const [nx, nz] = side === 'lower' ? [-uz, ux] : [uz, -ux];
+        const out = (o: number): [number, number] => [x + nx * (s.half + o), z + nz * (s.half + o)];
+        let edge = -1;
+        for (let o = 0.05; o <= 1.5 && edge < 0; o += 0.05) if (kind(...out(o))) edge = o;
+        if (edge < 0) continue;
+        const y = street(...out(edge))!;
+        if (kind(...out(edge + 2)) === kind(...out(edge))) curl[side].push(y - street(...out(edge + 2))!);
+        if (side === 'higher') continue;
+        len += 0.5;
+        let from = 0;
+        for (let o = 0.02; o <= edge; o += 0.05) if (under(...out(o))) from = o;
+        let by = 0;
+        for (let o = Math.max(from + 0.02, edge - 0.3); o <= edge + 0.6; o += 0.1) if (!under(...out(o)) && !behind(...out(o), s)) by = Math.max(by, S.y(...out(o)) - y);
+        if (by > 0.15) over += 0.5;
+        if (by > worst.by) worst = { by, at: `(${x.toFixed(0)}, ${z.toFixed(0)})` };
+      }
+    }
+  }
+  const tail = (v: number[], f: number) => v.sort((a, b) => a - b)[Math.floor(v.length * f)];
+  const [up, up97, down, down3] = [tail(curl.lower, 0.5), tail(curl.lower, 0.97), tail(curl.higher, 0.5), tail(curl.higher, 0.03)];
+  console.log(
+    `retaining walls with a street at their foot: ${len} m; the land drawn more than 15 cm over the street on ${over} m (the most ${worst.by.toFixed(2)} m, at ${worst.at}); ` +
+      `the street at a wall's foot over itself 2 m out ${Math.round(up * 100) || 0} cm at the median, ${(up97 * 100).toFixed(0)} at the 97th percentile; on its top, under itself 2 m in ${Math.round(-down * 100) || 0} and ${(-down3 * 100).toFixed(0)}`,
+  );
+  assert.ok(len > 3000, `${len} m of wall with a street at its foot`);
+  assert.ok(over < len / 100, `the land stands over the street at ${over} m of ${len} m`);
+  assert.ok(worst.by < 0.6, `the land stands ${worst.by.toFixed(2)} m over the street at ${worst.at}`);
+  assert.ok(Math.abs(up) < 0.05 && up97 < 0.2, `the street at a wall's foot climbs to it: ${up.toFixed(2)} m at the median, ${up97.toFixed(2)} at the 97th percentile`);
+  assert.ok(Math.abs(down) < 0.05 && down3 > -0.2, `the street on a wall's top sinks to it: ${(-down).toFixed(2)} m at the median, ${(-down3).toFixed(2)} at the 97th percentile`);
 });

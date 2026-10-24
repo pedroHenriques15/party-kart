@@ -46,18 +46,92 @@ export class Lattice {
 }
 
 // Heights over a lattice, from h: each point of the small cells at h, but those on the side of a big
-// cell that isn't split, on the line between its corners, so the mesh made of it has no cracks.
+// cell that isn't split, on the line between its corners, so the mesh made of it has no cracks. And
+// where `walls` are given, the retaining walls' footprints (braga-map's task 111), each triangle of a
+// small cell they meet cut along them, so the land steps under a wall as h does, not across the cell.
+// A big cell isn't cut: its triangles are 10 m across (20 on Low), too coarse for a step to show.
 export class Surface {
   readonly L: Lattice;
   readonly h: Height;
+  readonly walls: Holes | null;
   private W: number;
   private ys: Float32Array;
+  private pieces = new Map<string, XYZ[][] | null>();
 
-  constructor(L: Lattice, h: Height) {
+  constructor(L: Lattice, h: Height, walls: Holes | null = null) {
     this.L = L;
     this.h = h;
+    this.walls = walls;
     this.W = L.nx * L.r + 1;
     this.ys = new Float32Array(this.W * (L.nz * L.r + 1)).fill(NaN);
+  }
+
+  // A triangle of the land (its corners [x, y, z]) cut along the walls' footprints: its pieces, each a
+  // convex ring wound as the triangle is, its corners at their heights and the points the cut made at
+  // h's, which steps under the wall: the pieces either side of it and under it, so the land has no
+  // holes and no cracks. But a point on a side the triangle shares with a big cell that isn't split,
+  // and so isn't cut, is on that side's line, as the big cell's own triangle is there. Null where no
+  // wall meets it.
+  cut(t: XYZ[]): XYZ[][] | null {
+    if (!this.walls) return null;
+    const xs = t.map((p) => p[0]);
+    const zs = t.map((p) => p[2]);
+    if (!this.walls.touches(Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs))) return null;
+    const key = t.map((p) => `${p[0]},${p[2]}`).join(';');
+    if (this.pieces.has(key)) return this.pieces.get(key)!;
+    const flat = t.map(([x, , z]): XZ => [x, z]);
+    const c = this.walls.cut(flat);
+    let out: XYZ[][] | null = null;
+    if (c) {
+      const wind = Math.sign(area(flat));
+      const L = this.L;
+      // Whether the side p–q lies along a big cell's side next to one that isn't split.
+      const byCoarse = (p: XYZ, q: XYZ): boolean => {
+        if (Math.abs(p[0] - q[0]) < 1e-6) {
+          const i = Math.round((p[0] - L.x0) / L.C);
+          if (Math.abs(L.x0 + i * L.C - p[0]) > 1e-6) return false;
+          const j = Math.floor(((p[2] + q[2]) / 2 - L.z0) / L.C);
+          return L.coarse(i - 1, j) || L.coarse(i, j);
+        }
+        if (Math.abs(p[2] - q[2]) < 1e-6) {
+          const j = Math.round((p[2] - L.z0) / L.C);
+          if (Math.abs(L.z0 + j * L.C - p[2]) > 1e-6) return false;
+          const i = Math.floor(((p[0] + q[0]) / 2 - L.x0) / L.C);
+          return L.coarse(i, j - 1) || L.coarse(i, j);
+        }
+        return false;
+      };
+      // A point on one of its sides is on the line both triangles that share the side agree on: the
+      // side's own, where the cell across it is big and isn't cut; else through its ends and where the
+      // walls' footprints cross it, at h's heights there (the cut also splits the land outside a
+      // footprint along its sides' lines, which only one of the two triangles has).
+      const W = this.walls;
+      const along = (p: XYZ, q: XYZ, f: number): number => {
+        if (byCoarse(p, q)) return p[1] + (q[1] - p[1]) * f;
+        const s = [0, ...W.crossings([p[0], p[2]], [q[0], q[2]]), 1];
+        const y = (g: number) => (g === 0 ? p[1] : g === 1 ? q[1] : this.h(p[0] + (q[0] - p[0]) * g, p[2] + (q[2] - p[2]) * g));
+        for (let k = 1; k < s.length; k++) {
+          if (Math.abs(f - s[k]) < 1e-9) return y(s[k]);
+          if (f < s[k]) return y(s[k - 1]) + ((y(s[k]) - y(s[k - 1])) * (f - s[k - 1])) / (s[k] - s[k - 1]);
+        }
+        return q[1];
+      };
+      const at = ([x, z]: XZ): XYZ => {
+        const corner = t.find((p) => Math.abs(p[0] - x) < 1e-6 && Math.abs(p[2] - z) < 1e-6);
+        if (corner) return corner;
+        for (let k = 0; k < 3; k++) {
+          const p = t[k];
+          const q = t[(k + 1) % 3];
+          const [dx, dz] = [q[0] - p[0], q[2] - p[2]];
+          const f = ((x - p[0]) * dx + (z - p[2]) * dz) / (dx * dx + dz * dz);
+          if (f > 0 && f < 1 && Math.abs((x - p[0]) * dz - (z - p[2]) * dx) < 1e-6 * Math.hypot(dx, dz)) return [x, along(p, q, f), z];
+        }
+        return [x, this.h(x, z), z];
+      };
+      out = [...c.out, ...c.in.map((p) => p.pts)].map((r) => (Math.sign(area(r)) === wind ? r : r.slice().reverse()).map(at));
+    }
+    this.pieces.set(key, out);
+    return out;
   }
 
   // The height of the lattice's point (ix, iz), in small cells from the box's corner.
@@ -98,6 +172,14 @@ export class Surface {
     const y10 = this.at(a + n, b);
     const y01 = this.at(a, b + n);
     const y11 = this.at(a + n, b + n);
+    if (this.walls && n === 1) {
+      // On the piece of the triangle a wall's cut leaves (x, z) in, where one meets it.
+      const [x0, z0, x1, z1] = [L.x0 + a * L.F, L.z0 + b * L.F, L.x0 + (a + n) * L.F, L.z0 + (b + n) * L.F];
+      const t: XYZ[] = u + v <= 1 ? [[x0, y00, z0], [x1, y10, z0], [x0, y01, z1]] : [[x1, y11, z1], [x0, y01, z1], [x1, y10, z0]];
+      const pieces = this.cut(t);
+      const y = pieces && onPieces(pieces, x, z);
+      if (y != null) return y;
+    }
     return u + v <= 1 ? y00 + (y10 - y00) * u + (y01 - y00) * v : y11 + (y01 - y11) * (1 - u) + (y10 - y11) * (1 - v);
   }
 
@@ -124,6 +206,24 @@ export class Surface {
 }
 
 type XZ = [number, number];
+type XYZ = [number, number, number];
+
+// The height at (x, z) on whichever of some convex pieces (corners [x, y, z]) it's in, each a fan of
+// triangles from its first corner; null in none.
+function onPieces(pieces: XYZ[][], x: number, z: number): number | null {
+  for (const p of pieces) {
+    for (let k = 1; k + 1 < p.length; k++) {
+      const [a, b, c] = [p[0], p[k], p[k + 1]];
+      const den = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2]);
+      if (Math.abs(den) < 1e-12) continue;
+      const wa = ((b[2] - c[2]) * (x - c[0]) + (c[0] - b[0]) * (z - c[2])) / den;
+      const wb = ((c[2] - a[2]) * (x - c[0]) + (a[0] - c[0]) * (z - c[2])) / den;
+      const wc = 1 - wa - wb;
+      if (wa >= -1e-7 && wb >= -1e-7 && wc >= -1e-7) return wa * a[1] + wb * b[1] + wc * c[1];
+    }
+  }
+  return null;
+}
 
 // The land's holes (braga-map's task 079): the outlines it isn't drawn inside, the rooms'. A room's
 // floors are drawn in its place, and the land under a building stands up through its ground floor
@@ -158,6 +258,25 @@ export class Holes {
       const p = this.parts[n];
       return p.x1 > x0 && p.x0 < x1 && p.z1 > z0 && p.z0 < z1;
     });
+  }
+
+  // Where the segment a–b crosses the holes' sides: how far along it each crossing is, 0 to 1, in order.
+  crossings(a: XZ, b: XZ): number[] {
+    const out: number[] = [];
+    const [dx, dz] = [b[0] - a[0], b[1] - a[1]];
+    for (const n of this.near(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1]))) {
+      const pts = this.parts[n].pts;
+      for (let k = 0; k < pts.length; k++) {
+        const [c, d] = [pts[k], pts[(k + 1) % pts.length]];
+        const [ex, ez] = [d[0] - c[0], d[1] - c[1]];
+        const den = dx * ez - dz * ex;
+        if (Math.abs(den) < 1e-12) continue;
+        const s = ((c[0] - a[0]) * ez - (c[1] - a[1]) * ex) / den;
+        const r = ((c[0] - a[0]) * dz - (c[1] - a[1]) * dx) / den;
+        if (s > 1e-9 && s < 1 - 1e-9 && r >= -1e-9 && r <= 1 + 1e-9) out.push(s);
+      }
+    }
+    return out.sort((p, q) => p - q);
   }
 
   // Whether a hole may meet the box.

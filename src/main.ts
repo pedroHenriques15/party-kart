@@ -47,6 +47,7 @@ import { buildTrack, locate, type Track } from './track/track.ts';
 import { courseById, HOME, km, TRACKS } from './tracks.ts';
 import { onTheMap } from './world/mapview.ts';
 import { nextStep, onRoute, Router, type Route, type Travel } from './world/route.ts';
+import { kartTo, mayGo } from './world/goto.ts';
 import { streetNames } from './world/names.ts';
 import { clear, sight, type Blocker } from './world/sight.ts';
 
@@ -681,8 +682,8 @@ function howTo(): HTMLElement {
       h('li', { class: 'touch-only' }, h('b', {}, 'Itens, na corrida:'), ' passa pelas caixas ? e toca no botão do item (arrasta-o para baixo para atirar para trás). Quanto mais atrás fores, melhor o que te sai.'),
       h('li', {}, h('b', {}, 'Cone de aspiração:'), ' cola-te atrás de um carro e ele puxa-te, com mais força quanto mais perto; sai para ultrapassar e a velocidade a mais vai-se em poucos segundos.'),
       h('li', { class: 'keys-only' }, k('drive', 'respawn'), ' volta à rua (na corrida, ao último ponto de controlo). ', k('drive', 'horn'), ' buzina · ', k('drive', 'camera'), ' câmara · ', k('drive', 'mute'), ' som · ', h('b', {}, 'Esc'), ' menu.'),
-      h('li', { class: 'keys-only' }, h('b', {}, 'Mapa:'), ' ', k('drive', 'map'), ' abre o mapa de Braga inteiro, a conduzir, a voar, a pé, na corrida (a pista toda) e no tiroteio (a arena, só com a tua equipa): a roda do rato aproxima e afasta, arrastar mexe-o, e com o zoom aparecem os nomes das ruas. O jogo continua por baixo, com o teu kart parado. ', k('drive', 'map'), ' ou ', h('b', {}, 'Esc'), ' fecha-o. Pela cidade, um clique no mapa põe lá um destino, e outro em cima dele tira-o: o GPS leva-te pelas ruas, pelas regras do código, com o caminho a azul nos mapas, setas na estrada e a próxima viragem lá em cima.'),
-      h('li', { class: 'touch-only' }, h('b', {}, 'Mapa:'), ' toca no minimapa (ou em 🗺️ lá em cima, se o esconderes) para abrires o mapa de Braga inteiro (na corrida, a pista toda; no tiroteio, a arena, só com a tua equipa): dois dedos aproximam e afastam, arrastar mexe-o, e com o zoom aparecem os nomes das ruas. O jogo continua por baixo, com o teu kart parado. O ✕ fecha-o. Pela cidade, toca no mapa para pores lá um destino, e em cima dele para o tirares: o GPS leva-te pelas ruas, pelas regras do código, com o caminho a azul nos mapas, setas na estrada e a próxima viragem lá em cima.'),
+      h('li', { class: 'keys-only' }, h('b', {}, 'Mapa:'), ' ', k('drive', 'map'), ' abre o mapa de Braga inteiro, a conduzir, a voar, a pé, na corrida (a pista toda) e no tiroteio (a arena, só com a tua equipa): a roda do rato aproxima e afasta, arrastar mexe-o, e com o zoom aparecem os nomes das ruas. O jogo continua por baixo, com o teu kart parado. ', k('drive', 'map'), ' ou ', h('b', {}, 'Esc'), ' fecha-o. Pela cidade, um clique no mapa põe lá um destino, e outro em cima dele tira-o: o GPS leva-te pelas ruas, pelas regras do código, com o caminho a azul nos mapas, setas na estrada e a próxima viragem lá em cima. O botão direito no mapa abre «Ir para aqui»: o teu kart vai para a rua mais perto desse sítio.'),
+      h('li', { class: 'touch-only' }, h('b', {}, 'Mapa:'), ' toca no minimapa (ou em 🗺️ lá em cima, se o esconderes) para abrires o mapa de Braga inteiro (na corrida, a pista toda; no tiroteio, a arena, só com a tua equipa): dois dedos aproximam e afastam, arrastar mexe-o, e com o zoom aparecem os nomes das ruas. O jogo continua por baixo, com o teu kart parado. O ✕ fecha-o. Pela cidade, toca no mapa para pores lá um destino, e em cima dele para o tirares: o GPS leva-te pelas ruas, pelas regras do código, com o caminho a azul nos mapas, setas na estrada e a próxima viragem lá em cima. Mantém o dedo no mapa para «Ir para aqui»: o teu kart vai para a rua mais perto desse sítio.'),
       h('li', {}, h('b', {}, '⚙️ Definições:'), ' os gráficos (a resolução, o campo de visão), o som de cada coisa, a sensibilidade do rato, a mira, e as teclas de tudo, para conduzir, voar, andar a pé e no tiroteio: muda as que quiseres.'),
       h('li', { class: 'touch-only' }, h('b', {}, '↺'), ' volta à rua (na corrida, ao último ponto de controlo). O menu, a buzina, a câmara e o som estão lá em cima.'),
       h(
@@ -1200,7 +1201,7 @@ function openMap(): void {
     // In a round, its arena whole; round the city, the city round you.
     const a = ctx === 'round' ? (w.arenas.find((x) => x.id === room?.lobby.arena) ?? w.arenas[0]) : null;
     if (a) fullMap.open({ title: `🎯 ${a.name}`, at, fit: a.pts.map(([x, z]) => ({ x, z })), route: [], edge: a.pts, arena: a.id, key });
-    else fullMap.open({ title: '🗺️ Braga', at, route: mapLines.route, edge: w.open.pts, key, pick: true });
+    else fullMap.open({ title: '🗺️ Braga', at, route: mapLines.route, edge: w.open.pts, key, pick: true, go: mayGo(ctx, starting()) });
   }
   mapFor = ctx;
   render();
@@ -1215,6 +1216,45 @@ function closeMap(): void {
   mouse.lock();
 }
 fullMap.onClose = closeMap;
+
+// ---- "Ir para aqui" (braga-map's task 108) ----
+
+// The room's lobby says a race or a round is on before this browser's has begun.
+const starting = () => !!room?.lobby.racing && !race && !fight;
+fullMap.goable = (x, z) => world.drive.d.inside.has(x, z);
+// From the full map, round the city: your kart on the nearest street a kart can drive to there, at
+// the ground's level, facing along it; on foot, you there, your kart left where it was; flying, the
+// camera over it, as high over the ground as it was. The others see you go from one place to the
+// other (syncOthers draws a jump of more than 30 m as one), and the GPS works its route out again.
+fullMap.onGo = (at) => {
+  const r = roam;
+  if (!r || !mayGo(mapNow(), starting())) return;
+  const yaw = r.walk?.yaw ?? r.fly?.yaw ?? r.me.car.yaw;
+  if (r.fly) {
+    if (!world.drive.d.inside.has(at.x, at.z)) return;
+    const f = r.fly;
+    const high = Math.max(10, f.height());
+    f.p = v3(at.x, f.ground(at.x, at.z) + high, at.z);
+    f.v = v3();
+  } else {
+    const c = kartTo(world.drive, at.x, at.z, yaw);
+    if (!c) return;
+    if (r.walk) {
+      r.walk.p = v3(c.p.x, c.p.y, c.p.z);
+      r.walk.v = v3();
+      r.eye = r.walk.p.y + EYE;
+    } else {
+      r.me.car = c;
+      r.me.slip = 0;
+      keepWhere(c);
+    }
+  }
+  gps.route = null;
+  gps.triedAt = -Infinity;
+  closeMap();
+  const p = r.walk?.p ?? r.fly?.p ?? r.me.car.p;
+  feed(`🚀 ${namesAt(p.x, p.z)[0] ?? 'Aqui'}`);
+};
 
 // ---- The GPS (braga-map's task 107) ----
 

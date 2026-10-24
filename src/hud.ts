@@ -547,8 +547,10 @@ export interface MapOpening {
   edge: [number, number][];
   arena?: string;
   key: string;
-  // Whether a click puts the GPS's waypoint (task 107): round the city, not in a race or a round.
+  // Whether a click puts the GPS's waypoint (task 107), and a right click (a long press) offers "Ir
+  // para aqui" (task 108): round the city, not in a race or a round.
   pick?: boolean;
+  go?: boolean;
 }
 
 // The GPS on a map (task 107): the route from you to the waypoint, and the waypoint.
@@ -633,6 +635,10 @@ export class FullMap {
   // A click (a tap) that didn't drag it, where pick allows: the waypoint put there, or null where it's
   // on the waypoint, to take it away.
   onPick = (_at: { x: number; z: number } | null) => {};
+  // "Ir para aqui" chosen at a place (task 108), and whether a place is one it can go to (inside the
+  // open world's area).
+  onGo = (_at: { x: number; z: number }) => {};
+  goable = (_x: number, _z: number) => true;
   private canvas: HTMLCanvasElement;
   private base = document.createElement('canvas');
   private title: HTMLElement;
@@ -653,6 +659,9 @@ export class FullMap {
   private widths = new Map<string, number>();
   // A finger or the mouse down alone, till it moves: a click, if it lifts first.
   private press: { id: number; x: number; y: number } | null = null;
+  // A finger held still, till it's a long press; and the menu a right click or a long press opens.
+  private holding = 0;
+  private pop: HTMLElement;
   private mark: { x: number; z: number } | null = null;
 
   constructor(m: FullMapData) {
@@ -689,10 +698,12 @@ export class FullMap {
     const close = h('button', 'ghost small fm-close', '✕');
     close.title = 'Fechar o mapa';
     close.addEventListener('click', () => this.onClose());
-    this.el = h('div', 'fullmap', this.canvas, h('div', 'fm-head', this.title, h('div', 'fm-hint', this.keyHint, this.touchHint), here, close));
+    this.pop = h('div', 'fm-pop');
+    this.el = h('div', 'fullmap', this.canvas, h('div', 'fm-head', this.title, h('div', 'fm-hint', this.keyHint, this.touchHint), here, close), this.pop);
 
     // A drag pans; two fingers zoom about their middle and take it with them; the wheel zooms about
-    // the pointer. A click that doesn't drag it puts the waypoint, or takes it away.
+    // the pointer. A click that doesn't drag it puts the waypoint, or takes it away; a right click, or a
+    // finger held still, opens the menu with "Ir para aqui".
     const c = this.canvas;
     c.addEventListener('pointerdown', (e) => {
       try {
@@ -700,14 +711,28 @@ export class FullMap {
       } catch {
         /* a synthetic event */
       }
+      this.hidePop();
+      clearTimeout(this.holding);
       this.press = this.fingers.size ? null : { id: e.pointerId, x: e.clientX, y: e.clientY };
       this.fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       c.classList.add('dragging');
+      if (this.press && e.pointerType !== 'mouse' && this.o?.go) {
+        this.holding = window.setTimeout(() => {
+          const p = this.press;
+          this.press = null;
+          if (p) this.popAt(p.x, p.y);
+        }, 550);
+      }
+    });
+    c.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (this.o?.go) this.popAt(e.clientX, e.clientY);
     });
     c.addEventListener('pointerup', (e) => {
+      clearTimeout(this.holding);
       const p = this.press;
       this.press = null;
-      if (!p || p.id !== e.pointerId || !this.o?.pick) return;
+      if (!p || p.id !== e.pointerId || !this.o?.pick || (e.pointerType === 'mouse' && e.button !== 0)) return;
       const [W, H] = this.size();
       const m = this.mark;
       if (m) {
@@ -720,7 +745,10 @@ export class FullMap {
     c.addEventListener('pointermove', (e) => {
       const p = this.fingers.get(e.pointerId);
       if (!p) return;
-      if (this.press && Math.hypot(e.clientX - this.press.x, e.clientY - this.press.y) > 6) this.press = null;
+      if (this.press && Math.hypot(e.clientX - this.press.x, e.clientY - this.press.y) > 6) {
+        this.press = null;
+        clearTimeout(this.holding);
+      }
       const [W, H] = this.size();
       const l = limits(this.bounds, W, H);
       const q = [...this.fingers].find(([id]) => id !== e.pointerId)?.[1];
@@ -760,8 +788,9 @@ export class FullMap {
     this.o = o;
     this.me = { x: o.at.x, z: o.at.z };
     this.title.textContent = o.title;
-    this.keyHint.textContent = `Roda do rato aproxima e afasta · arrasta para mexer${o.pick ? ' · clica para pôr um destino' : ''} · ${o.key ? `${o.key} ou ` : ''}Esc fecha`;
-    this.touchHint.textContent = `Dois dedos aproximam e afastam · arrasta para mexer${o.pick ? ' · toca para pôr um destino' : ''} · ✕ fecha`;
+    this.keyHint.textContent = `Roda do rato aproxima e afasta · arrasta para mexer${o.pick ? ' · clica para pôr um destino' : ''}${o.go ? ' · botão direito: ir para aqui' : ''} · ${o.key ? `${o.key} ou ` : ''}Esc fecha`;
+    this.touchHint.textContent = `Dois dedos aproximam e afastam · arrasta para mexer${o.pick ? ' · toca para pôr um destino' : ''}${o.go ? ' · mantém o dedo para ir para lá' : ''} · ✕ fecha`;
+    this.hidePop();
     // It isn't shown yet: the window's size is the map's.
     const W = innerWidth;
     const H = innerHeight;
@@ -775,7 +804,35 @@ export class FullMap {
     this.o = null;
     this.fingers.clear();
     this.press = null;
+    clearTimeout(this.holding);
+    this.hidePop();
     this.canvas.classList.remove('dragging');
+  }
+
+  // The menu at a place on the screen (sx, sy): "Ir para aqui", or "Fora da zona" out of the area;
+  // and the GPS's waypoint put there, where it can be.
+  private popAt(sx: number, sy: number): void {
+    const [W, H] = this.size();
+    const [x, z] = toMap(this.view, W, H, sx, sy);
+    const button = (text: string, act: () => void) => {
+      const b = h('button', 'ghost small', text);
+      b.addEventListener('click', () => {
+        this.hidePop();
+        act();
+      });
+      return b;
+    };
+    this.pop.replaceChildren(
+      this.goable(x, z) ? button('🚀 Ir para aqui', () => this.onGo({ x, z })) : h('span', 'out', 'Fora da zona'),
+      ...(this.o?.pick ? [button('📍 Pôr o destino aqui', () => this.onPick({ x, z }))] : []),
+    );
+    this.pop.style.left = `${Math.min(W - 210, Math.max(8, sx))}px`;
+    this.pop.style.top = `${Math.min(H - 110, Math.max(64, sy))}px`;
+    this.pop.classList.add('on');
+  }
+
+  private hidePop(): void {
+    this.pop.classList.remove('on');
   }
 
   private move(v: View): void {

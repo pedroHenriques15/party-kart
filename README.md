@@ -39,6 +39,13 @@ and how far there is to go. Leave the route and it's worked out again from where
 it's a walker's, any way along the streets and the paths, up and down the steps. Once you're there it
 says so and clears. It's yours alone, and not in a race or a round, whose own routes rule.
 
+**Ir para aqui**: round the city, a right click on the full map (a long press on a touch screen)
+opens a menu with **🚀 Ir para aqui**, which puts your kart on the street nearest that place, on the
+ground (not a bridge over it), facing along it, and closes the map; on foot it puts you there, your
+kart left where it was; flying, the camera, as high over the ground as it was. Outside the area the
+menu says **Fora da zona**. The others see you go from one place to the other, with no trail across
+the city. Never in a race or a round.
+
 **Esc**, or **☰ Menu** at the top, opens the menu over the world, which goes on behind it: your name
 and driver, the graphics, the help, and
 
@@ -201,7 +208,7 @@ the left half, and pulls up when you lift it; in a race it goes by itself.
 | Derrapar | Hold it through a corner, as with Space |
 | Travar | Slows you down, and reverses once you've stopped |
 | Item | In a race: tap to use what it shows; swipe it down to throw backwards |
-| The minimap | Opens the full map: drag it to move it, two fingers to zoom, a tap to put the GPS's waypoint (on it, to take it away), ✕ to close it (with the minimap hidden in the settings, 🗺️ at the top opens it) |
+| The minimap | Opens the full map: drag it to move it, two fingers to zoom, a tap to put the GPS's waypoint (on it, to take it away), a long press for **Ir para aqui**, ✕ to close it (with the minimap hidden in the settings, 🗺️ at the top opens it) |
 | ☰ · ↺ · Voar · 🚶 A pé · 📢 · 🎥 · 🔊 (at the top) | The menu · back on the street (in a race, to your last checkpoint) · fly the camera · get out and walk · horn · camera · sound |
 
 Flying, the left half of the screen is a stick where your thumb lands, forward, back and sideways; a

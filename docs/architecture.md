@@ -35,6 +35,7 @@ change things, read [making-changes.md](making-changes.md).
 | `src/game/comp.ts` | sim | The competitive mode, after Counter-Strike 2's: its numbers (`COMP`: the freeze, the buy time, the round, the bomb, the money), each side's guns (`sells`, `startKit`), a buy's price (`priceOf`), a kill's money (`killReward`), an arena's spawns and bomb sites (`compMap`, `siteAt`, `inBuyZone`), the bomb's blast (`blastAt`), the match as the host runs it (`Match`: its rounds and phases, the score, everyone's money, who's up, the bomb, the guns on the ground, its state `CompState` and what a player tells it `CompAct`), and what a bot buys (`botBuy`) |
 | `src/game/matchbots.ts` | sim | `MatchBots`: the host's bots in a match: what each buys at a round's start, where each goes (the Terrorists to the round's site with the bomb, the Counter-Terrorists to the sites), and their planting, defusing and picking the bomb up |
 | `src/world/sight.ts` | sim | Line of sight: how far a ray goes before the world stops it (`sight`, `clear`), for a shot and a look |
+| `src/world/goto.ts` | sim | "Ir para aqui" (braga-map's task 108): when the full map offers it (round the city only, `mayGo`), and where a place puts your kart (`kartTo`: on the nearest carriageway inside the area, at the ground's level, facing along it) |
 | `src/world/route.ts` | sim | The GPS's routes (braga-map's task 107): the `Router` over the map's road graph, by car the right way down the one-way streets with no banned turn and no turning back but at a dead end, the quickest by each kind of street's speed, off the streets only where none reaches; on foot any way along the streets and the paths; each route's turns (`steps`: a roundabout as its exit), and where a point is along it (`onRoute`) |
 | `src/world/mapview.ts` | sim | The full map's sums (braga-map's task 106): its view (a centre and a scale), framing a place, zooming about a point and panning, kept over the map (`keep`); a point along a street, for its name; and who the maps show you (`onTheMap`: in a round, only your team-mates who are up) |
 | `src/world/paths.ts` | sim | `Paths`: where someone on foot can walk in an area, points 2 m apart joined where a walker gets from one to the next (several over each other in a tower, and ways joined by hand through doors and up flights); the way between two (A*), the points round one, whether a straight line is walkable. For the bots |
@@ -102,6 +103,11 @@ start; and goes back to it after a race, where you were before it.
    streets and the paths. Where you are along it (`onRoute`), and off it for 1.5 s it's worked out
    again; its next turn on the `RoamHud` (`guide`), the route on both maps, and the arrows on the
    street ahead (`GpsArrows`, `render/gps.ts`, one draw call). Not in a race or a round.
+10. **Ir para aqui** (braga-map's task 108, `fullMap.onGo`): a right click or a long press on the
+   full map, round the city only (`mayGo` in `world/goto.ts`), puts your kart on the street nearest
+   the place at the ground's level (`kartTo`: `WorldGround.spawn` from `groundAt`), you on foot there,
+   or the flying camera over it. The others draw the jump as one (`syncOthers` takes 30 m between two
+   snapshots for one), the chase camera snaps past 150 m, and the GPS works its route out again.
 
 The chase camera follows, or with a panel open the camera turns slowly round your kart (`orbit`),
 which stands on the right of the screen, clear of the menu. Flying, the camera is the flyer's

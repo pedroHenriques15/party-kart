@@ -235,6 +235,8 @@ export class Mouse {
       this.locked = now;
       this.letting = false;
       document.body.classList.toggle('aiming', now);
+      // A lock asked for before a menu or the map came up, and given after: let go at once.
+      if (now && !this.aim) this.unlock();
     });
     document.addEventListener('mousemove', (e) => {
       if (!this.locked || !this.aim) return;
@@ -306,7 +308,8 @@ export class Mouse {
   // The pointer let go, and the buttons with it: a trigger held as a menu opens isn't held after.
   unlock(): void {
     for (let b = 0; b < 5; b++) this.keys.release(`Mouse${b}`);
-    if (!this.locked) return;
+    // The browser's say, not ours: it can have given the lock before telling us.
+    if (!this.locked && document.pointerLockElement !== this.on) return;
     this.letting = true;
     document.exitPointerLock();
   }

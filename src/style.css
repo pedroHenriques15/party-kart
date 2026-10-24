@@ -893,6 +893,29 @@ body.mapping .fullmap {
   padding: 4px 12px;
 }
 
+/* The menu a right click or a long press opens on the map (braga-map's task 108). */
+.fm-pop {
+  position: absolute;
+  z-index: 2;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(20, 24, 33, 0.96);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.fm-pop.on {
+  display: flex;
+}
+
+.fm-pop .out {
+  padding: 4px 8px;
+  font-size: 13px;
+  color: #ffb3a8;
+}
+
 body.flying.driving #view {
   cursor: grab;
 }

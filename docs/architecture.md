@@ -1021,8 +1021,10 @@ card, 720 pixels high: Ultra's frame, `render/post.ts`; High, Medium and Low dra
 
 At 2560 by 1440 a frame is at most 9.8 ms (`falperra`; 7.1 at `alameda-fujacal`): the cascades' shadow
 maps about 4.8 ms of it, the occlusion about 1.5 (on no more than 720 lines: 5 at the screen's), SMAA 0.5.
-The frame that takes a new gather of the near trees up is 15.0–16.4 ms on average at 700 m, 17–18 with the
-gather itself (11.9 before): over 16 ms about once a second as you drive; the worst single steps, 42 and
+The frame that takes a new gather of the near trees up, every 20 m, measured as task 081 did (drawn alone, the
+card waited on before and after), is 15.0–16.4 ms at 700 m, where a frame alone with no gather is 12.3 (a frame
+alone runs slower than frames one after another, as the card and the browser don't overlap): a gather adds
+3–4 ms, so about 13–14 ms as you drive (worked out so, not measured driving). The worst single steps, 42 and
 108 ms in two runs (27–56 before, and at High). The near trees go into each of the four
 cascades whole (they're drawn without culling), the most of the cascades' cost; braga-map's task 089
 remakes the trees to the horizon, and their cost with them. The buffers it draws through take about 120 MB more

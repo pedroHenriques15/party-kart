@@ -660,9 +660,29 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   (braga-map's task 081): offered where the device isn't played by touch first and its graphics card takes
   textures 16,384 pixels wide or is a discrete one by its name (`ultraOffered`); `?quality=` sets any level
   whatever the device. Ultra builds the city at High's level (`levelOf`: High's files from braga-map, until
-  its own come) but where a task gives it its own: so far the screen's every pixel (no cap at 2), the sun's
-  shadows at 4096 px, and the near trees to 700 m. Everything past what a phone holds goes to Ultra. The game
-  steps itself down a level when it runs slowly, Ultra to High, never up to it.
+  its own come) but where a task gives it its own: so far the screen's every pixel (no cap at 2), the near
+  trees to 700 m, and its frame (below). Everything past what a phone holds goes to Ultra. The game steps
+  itself down a level when it runs slowly, Ultra to High, never up to it.
+- **Ultra's frame** (`UltraFrame`, `render/post.ts`, braga-map's task 090; made the first time Ultra draws,
+  given up when it's left): the scene drawn into a buffer as the screen would show it (three tone maps and
+  encodes only for the screen or an XR device's buffer, and this one says it's the latter, so the haze is
+  still mixed in after the tone mapping), then the occlusion laid over it, then SMAA to the screen; what's
+  drawn over the world (your gun) after that, as on the other levels.
+  - **The sun's shadows in four cascades** (three's `CSM`) of 4096 px, ending 60, 200, 650 and 2,000 m off,
+    in the one sun's place (hidden while they're on): the first as sharp as Ultra's one 140 m box was,
+    faded into each other, turned with the sun each frame and fitted again when the camera's field of
+    view eases. three 0.186's CSM puts its own copy of the lights' chunk in three's place, older than
+    three's (a standard material's light scattered more than once never worked out: everything darker and
+    duller), so `UltraFrame` puts three's back and gives each lit material three's chunk with only CSM's
+    loop over the suns in it (`cascadedLights`; `test/post.test.ts` checks it at each three upgrade). Every
+    lit material in the scene takes the cascades before it's first drawn (the scene swept each frame). With
+    them, the land's material samples 16 textures, all a card gives WebGL on the owner's PC: one more map on
+    it doesn't compile on Ultra.
+  - **Occlusion** (three's `GTAOPass`), from the frame's own depth, its normals worked out from that depth (a
+    pass of its own for them would draw the trees' leaf cards whole), 1.5 m round, on no more than 720
+    lines; `?ao=` sets how strongly it darkens (0 for none).
+  - **SMAA** for the edges; not TAA, as three's `TAARenderPass` doesn't reproject (it adds up frames only
+    while the camera is still).
 - **`Look`** (`render/look.ts`, braga-map's task 022): Braga's light at a moment of the day, by default the clear
   March afternoon of the photos of the Rua do Fujacal (`DEFAULT_TIME`), or `?time=`'s; the sun where `sun.ts` puts
   it, its colour what's left of it through the air (Preetham's extinction, as the sky's shader has it). Matched to
@@ -984,6 +1004,25 @@ high; Ultra is for a PC only and takes nothing from the phones' budget, decision
 At 2560 by 1440 a frame at Ultra is at most 4.2 ms at the tree-heaviest viewpoints (`falperra`, 3.6 ms at
 High's 260 m); the frame that takes a new gather of the near trees up, every 20 m the camera goes, is 12 ms
 on average at 700 m (8 at 260 m, 18 at 1,000, which is why it stops at 700).
+
+**Ultra's light** (braga-map's task 090, the round `shots/2026-10-24-after090/`, the same 33 viewpoints and
+card, 720 pixels high: Ultra's frame, `render/post.ts`; High, Medium and Low draw as before, to the pixel):
+
+| | Ultra with its light | Ultra before it (081) |
+|---|---|---|
+| The sun's shadows | four cascades of 4096 px, to 2 km | one 140 m box of 4096 px |
+| The city alone: draw calls (median), the cascades' passes counted | 233–618 (483) | 103–271 (174) |
+| The city alone: triangles (median) | 6.35–11.60 M (8.68) | 2.68–5.36 M (4.14) |
+| Textures (the cascades' four maps, the sun's one hidden) | 373 MB | 181 MB |
+| A frame (median) | 3.22–7.12 ms (4.60) | 1.36–3.44 ms (2.02) |
+
+At 2560 by 1440 a frame is at most 9.6 ms (`falperra`; 6.8 at `alameda-fujacal`): the cascades' shadow
+maps about 4.8 ms of it, the occlusion 1.3 (on no more than 720 lines: 5.1 at the screen's), SMAA 0.5. The
+frame that takes a new gather of the near trees up is 15.0 ms on average at 700 m, 17.3 with the gather
+itself (11.9 before): over 16 ms about once a second as you drive. The near trees go into each of the four
+cascades whole (they're drawn without culling), the most of the cascades' cost; braga-map's task 089
+remakes the trees to the horizon, and their cost with them. The buffers it draws through take about 120 MB more
+on the card at 2560 by 1440 (worked out from their sizes, not measured).
 
 **What every street in the area cost** (task 035, against `shots/2026-10-14-task012/`, the same 29
 viewpoints): before it, the city was 58–184 draw calls on High and Medium and 40–165 on Low,

@@ -70,7 +70,9 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   in March, as the photos of the Rua do Fujacal have it. `?time=2026-10-13T17:30` (Braga's clock) puts the sun where it
   was then (`src/sun.ts`); `?weather=grey` makes it a grey Minho day (an overcast sky, faint shadows, wet streets), and
   `?weather=rain` the same in the rain. `?clouds=` sets a clear day's cover (0 to 1), and `?exp= ?sun= ?hemi= ?env=
-  ?fog=` override the lighting, for tuning. Night isn't made yet: past sunset the street lamps light, but the city is dark.
+  ?fog=` override the lighting, for tuning; `?ao=` Ultra's occlusion (`src/render/post.ts`, its shadows in cascades,
+  occlusion and SMAA: braga-map's task 090), 0 for none. Night isn't made yet: past sunset the street lamps light, but
+  the city is dark.
 - V, or the menu's "🎥 Voar pela cidade", flies the camera round the city from wherever it is, your
   kart waiting (braga-map's task 054, `src/game/flyer.ts`): WASD, E and Q, Shift faster, the mouse
   dragged to look; on a touch screen a stick on the left half, a drag on the right, ▲ Subir and

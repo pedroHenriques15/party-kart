@@ -741,11 +741,12 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     (`groundMaterial`, with `cover.ts`): each 50 cm cell's kind (asphalt, paving, setts, grass, bare
     soil, gravel, water, a roof) in its own seamless texture (made by braga-map, its task 082), tiled at its real
     size, its own mean colour divided out and the place's put in: that kind's colour over the tile,
-    the orthophoto's without its cars and shadows. The six kinds' textures are one array texture, a
-    layer each (`stack` in `cover.ts`: a fragment shader has 16 in WebGL). On Ultra each is braga-map's
-    finest (2048 px), with its relief, a normal map a layer of a second array, weighed as its colour is
-    and laid along the world's x and z square to the land's normal, and each kind's roughness the map's
-    number (its task 085), so the sun's grazing light shows the setts' joints. A cell's kind blends into its neighbours' over
+    the orthophoto's without its cars and shadows. On Ultra (its task 085) each is braga-map's finest
+    (2048 px) and the six are one array texture, a layer each (`stack` in `cover.ts`: a fragment shader
+    has 16 in WebGL, and the sun's cascades take four), with their relief, a normal map a layer of a
+    second array, weighed as the colour is and laid along the world's x and z square to the land's
+    normal, and each kind's roughness the map's number, so the sun's grazing light shows the setts'
+    joints. Below Ultra they're six textures, as they were. A cell's kind blends into its neighbours' over
     half its width; under a tree's crown the ground is 15% darker, and from 40 m off to 160 m a
     crown's cells turn the green of the game's trees (the orthophoto's canopy reads slate-blue under
     the game's light). The orthophoto's blue haze is taken out, and its brightness eased (`TONE`: as
@@ -1050,9 +1051,9 @@ on the card at 2560 by 1440 (worked out from their sizes, not measured).
 
 **Ultra's textures** (braga-map's task 085, 2026-10-24: party-kart on braga-map's branch for it, the same card,
 `shots/2026-10-24-after085b/` against main's `before085b`, shot back to back at `lobato-pavement`,
-`travessa-fujacal` and `capela-sao-joao`, 720 pixels high; High, Medium and Low draw as before, but that the
-canvases' noise is another draw of it: `?scenery` seeds `Math.random`, three takes four of its numbers for each
-object it makes, and the land's array texture is one more):
+`travessa-fujacal` and `capela-sao-joao`, 720 pixels high; High, Medium and Low draw as before, to the pixel:
+`?scenery` seeds `Math.random`, and three takes four of its numbers for every object it makes, so below Ultra
+085 makes no object more):
 
 | | Ultra with its textures | Ultra before them (090) |
 |---|---|---|
@@ -1067,7 +1068,7 @@ object it makes, and the land's array texture is one more):
 
 So Ultra takes about 170 MB more on the card (some 550 MB in all with the streets' layers) and downloads
 about 40 MB more than High, the ground's normal maps 28 MB of it; its frame is as it was. The land's shader
-samples 12 of WebGL's 16 textures on Ultra (8 on High, 7 on Low). Ultra's colours in UASTC as well (some 20
+samples 12 of WebGL's 16 textures on Ultra (13 on High, as before). Ultra's colours in UASTC as well (some 20
 MB more) looked the same at these three viewpoints, so they're ETC1S as the other levels' are.
 
 **What every street in the area cost** (task 035, against `shots/2026-10-14-task012/`, the same 29

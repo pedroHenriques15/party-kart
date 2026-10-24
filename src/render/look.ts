@@ -15,6 +15,17 @@ export type Graphics = 'ultra' | Quality;
 export const GRAPHICS: Graphics[] = ['ultra', 'high', 'medium', 'low'];
 export const levelOf = (g: Graphics): Quality => (g === 'ultra' ? 'high' : g);
 
+// How sharp a texture seen at a slant is (its anisotropic filtering): what each texture asks for, 8 for
+// most, three's 1 where it asks for none; on Ultra, the most this graphics card does, every texture
+// (braga-map's task 085). Set once, before the city is built (main.ts), as Ultra's other textures are
+// the city's from its build.
+let mostAnisotropy = 0;
+export function useMostAnisotropy(renderer: THREE.WebGLRenderer): void {
+  mostAnisotropy = renderer.capabilities.getMaxAnisotropy();
+  THREE.Texture.DEFAULT_ANISOTROPY = mostAnisotropy;
+}
+export const anisotropy = (asked = 8): number => mostAnisotropy || asked;
+
 // Whether a device is offered Ultra: not one played by touch first (a phone, a tablet), and with a
 // graphics card to hold it: one that takes textures 16,384 pixels wide, or a discrete one by its name.
 export function ultraOffered(renderer: THREE.WebGLRenderer, touchFirst: boolean): boolean {

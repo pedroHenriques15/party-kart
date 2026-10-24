@@ -17,7 +17,7 @@ import { alongSpan, wallSpan, type Piece, type WorldGround } from '../world/grou
 import { clearedPieces } from '../world/race.ts';
 import { bake, box, mat } from './kit.ts';
 import type { Surface } from './lattice.ts';
-import { LIT, WET, type Quality } from './look.ts';
+import { levelOf, LIT, WET, type Graphics, type Quality } from './look.ts';
 import { halos } from './road.ts';
 import * as tex from './textures.ts';
 import { edgePoints, surface, type Grain, type Height } from './tin.ts';
@@ -152,8 +152,10 @@ export function groundPaths(S: Streets): Path[] {
   return S.paths.filter((p) => p.level === 'ground' || p.level === 'under');
 }
 
-function layers(): THREE.DataArrayTexture {
-  const S = 256;
+// Each a layer 256 pixels a side; on Ultra (braga-map's task 085) 1024, each drawing made that much
+// finer (textures.ts's `finer`).
+function layers(fine: number): THREE.DataArrayTexture {
+  const S = 256 * fine;
   const art: Partial<Record<Layer, () => THREE.CanvasTexture>> = { asphalt: tex.asphalt, setts: tex.setts, calcada: tex.calcada, verge: tex.ground, dirt: tex.rock, granite: tex.granite, paving: tex.paving, cycle: tex.cycleway, gravel: tex.gravel, blocks: tex.wallBlocks, render: tex.plaster, hedge: tex.hedge, cement: tex.plaster, planks: tex.planks };
   const tint: Partial<Record<Layer, string>> = { dirt: '#c9b79c', skirt: '#77736b', concrete: '#bcb7ae', cement: '#8a867f' };
   const images = LAYERS.map((name) => {
@@ -162,7 +164,7 @@ function layers(): THREE.DataArrayTexture {
     const g = c.getContext('2d')!;
     g.fillStyle = '#ffffff';
     g.fillRect(0, 0, S, S);
-    const t = art[name]?.();
+    const t = tex.finer(fine, () => art[name]?.());
     if (t) {
       // The granite's 128 pixels are a metre, twice over in 256.
       const n = (t.image as HTMLCanvasElement).width < S ? 2 : 1;
@@ -181,9 +183,9 @@ function layers(): THREE.DataArrayTexture {
 
 // The streets' material: each vertex's texture is a layer of the array, its uv and layer in `tuv`. Wet
 // (look.ts's grey day), a street is darker and gives back the sky.
-function surfaceMaterial(): THREE.MeshStandardMaterial {
+function surfaceMaterial(graphics: Graphics): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ color: WET ? '#a6a6a6' : '#ffffff', roughness: WET ? 0.32 : 0.86, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
-  const array = layers();
+  const array = layers(graphics === 'ultra' ? 4 : 1);
   m.onBeforeCompile = (sh) => {
     sh.uniforms.layers = { value: array };
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 tuv;\nvarying vec3 vTuv;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvTuv = tuv;');
@@ -305,7 +307,8 @@ export interface Built {
 // the land's own material, what the ground is as the map classes it (city.ts's coverMaterial), for a
 // roundabout's island (braga-map's task 014): null where the map's cover didn't load, and the island is
 // grass.
-export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, housed: (x: number, z: number) => boolean, quality: Quality, course: Course, ground: THREE.Material | null = null): Built {
+export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, housed: (x: number, z: number) => boolean, graphics: Graphics, course: Course, ground: THREE.Material | null = null): Built {
+  const quality = levelOf(graphics);
   const S = world.streets;
   const grain = GRAIN[quality];
   // How far the land has to stand over a street's edge for a retaining wall: less is just the land
@@ -345,7 +348,7 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   };
 
   // ---- The materials, and the batches per tile: the surfaces and faces, and the paint. ----
-  const surfaces = surfaceMaterial();
+  const surfaces = surfaceMaterial(graphics);
   const paintMat = new THREE.MeshStandardMaterial({ color: WET ? '#c9c9c3' : '#efefe8', roughness: WET ? 0.3 : 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 });
   // Metres a tile of each texture: along the street's rows for the setts and the calçada.
   const SCALE: Partial<Record<Layer, number>> = { asphalt: 8, setts: 2, calcada: 2.5, verge: 2, dirt: 6, granite: 1, paving: 2, cycle: 8, gravel: 4, blocks: 2, render: 2, hedge: 2, cement: 2, planks: 0.6 };

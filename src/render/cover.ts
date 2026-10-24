@@ -4,10 +4,11 @@
 // orthophoto; and each kind's own colour there, the orthophoto's without its cars and shadows. The
 // land's shader (city.ts) draws each kind with its own texture (a seamless one, made, not photographed:
 // braga-map's task 082, tiled at its real size), its colour divided out and the place's put in: the
-// texture gives the detail up close, the place the colour.
+// texture gives the detail up close, the place the colour. On Ultra (braga-map's task 085) each kind's
+// texture is its finest, with its relief, for the sun's grazing light, and how rough it is.
 import type { World as Braga } from 'braga-map';
 import * as THREE from 'three';
-import type { Quality } from './look.ts';
+import { anisotropy, levelOf, type Graphics } from './look.ts';
 import { ktx2Loader } from './ktx2.ts';
 
 // The kinds there are (the map's groundKinds), and those with a texture: asphalt, paving, setts, grass,
@@ -31,10 +32,14 @@ export interface Cover {
   // Each kind's colour over each tile, between its squares' middles: layer tile × 9 + kind; and the
   // trees' crowns', seen from above, tile × 9 + 8.
   colour: THREE.DataArrayTexture;
-  // Each kind's texture, its mean colour in linear light, and how many times it repeats a metre.
-  surfaces: THREE.Texture[];
+  // Each kind's texture, a layer each in the kinds' order (one array, as the land's shader has room for
+  // few textures: WebGL gives it 16, the sun's shadows on Ultra take four), its mean colour in linear
+  // light, and how many times it repeats a metre.
+  surfaces: THREE.CompressedArrayTexture;
   mean: THREE.Vector3[];
   scale: number[];
+  // On Ultra, each kind's relief, a normal map a layer, and how rough each kind is; null below it.
+  relief: { normals: THREE.CompressedArrayTexture; roughness: number[] } | null;
   dispose(): void;
 }
 
@@ -52,20 +57,51 @@ async function readPixels(url: string): Promise<{ w: number; h: number; data: Ui
 
 const linear = (v: number) => ((v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
 
+// Textures of one size, format and number of mipmaps, as the KTX2 loader gives them, as one array, a
+// layer each in their order, tiled.
+function stack(ts: THREE.CompressedTexture[]): THREE.CompressedArrayTexture {
+  const [a] = ts;
+  for (const t of ts) if (t.format !== a.format || t.image.width !== a.image.width || t.image.height !== a.image.height || t.mipmaps.length !== a.mipmaps.length) throw new Error("The ground's textures aren't all of one size and format");
+  const mipmaps = a.mipmaps.map((m, i) => {
+    const n = m.data.byteLength, data = new Uint8Array(n * ts.length);
+    ts.forEach((t, k) => {
+      const d = t.mipmaps[i].data;
+      data.set(new Uint8Array(d.buffer, d.byteOffset, n), k * n);
+    });
+    return { data, width: m.width, height: m.height };
+  });
+  const out = new THREE.CompressedArrayTexture(mipmaps, a.image.width, a.image.height, ts.length, a.format, a.type);
+  out.colorSpace = a.colorSpace;
+  out.wrapS = out.wrapT = THREE.RepeatWrapping;
+  out.minFilter = a.minFilter;
+  out.magFilter = a.magFilter;
+  out.generateMipmaps = false;
+  out.anisotropy = anisotropy();
+  out.needsUpdate = true;
+  for (const t of ts) t.dispose();
+  return out;
+}
+
 // Loads what the ground is on every tile loaded that the map has classed, at the graphics level asked
 // for, and the kinds' textures; null if it has classed none of them. A tile the open world's area doesn't
 // touch is never nearer the player than its edge, so its kinds come at Low (2 m a cell) and are drawn
 // at the level's cells all the same: on High that's 23 of the 48 tiles at a seventh of the download.
-export async function loadCover(map: Braga, renderer: THREE.WebGLRenderer, quality: Quality): Promise<Cover | null> {
+// Ultra has High's cells and colours, and the kinds' Ultra files: their finest and their relief.
+export async function loadCover(map: Braga, renderer: THREE.WebGLRenderer, graphics: Graphics): Promise<Cover | null> {
   const covers = map.groundCover;
   if (!covers.length) return null;
-  const kinds = map.groundKinds.slice(0, PHOTOGRAPHED);
-  if (kinds.some((k) => !k.texture)) throw new Error('The map has no texture for some kind of ground');
+  const quality = levelOf(graphics), ultra = graphics === 'ultra';
+  const kinds = map.groundKinds.slice(0, PHOTOGRAPHED).map((k) => {
+    if (!k.texture) throw new Error('The map has no texture for some kind of ground');
+    return k.texture;
+  });
   const open = new Set(map.open.tiles);
   const loader = ktx2Loader(renderer);
-  const [tiles, surfaces] = await Promise.all([
+  const load = (urls: string[]) => Promise.all(urls.map((u) => loader.loadAsync(u) as Promise<THREE.CompressedTexture>));
+  const [tiles, surfaces, normals] = await Promise.all([
     Promise.all(covers.map((c) => Promise.all([readPixels(c.classes[open.has(c.tile) ? quality : 'low'].url), readPixels(c.colour[quality].url)]))),
-    Promise.all(kinds.map((k) => loader.loadAsync(k.texture!.files[quality].url))),
+    load(kinds.map((k) => (ultra ? k.ultra.colour : k.files[quality]).url)),
+    ultra ? load(kinds.map((k) => k.ultra.normal.url)) : null,
   ]);
   loader.dispose();
 
@@ -109,10 +145,8 @@ export async function loadCover(map: Braga, renderer: THREE.WebGLRenderer, quali
   slots.generateMipmaps = false;
   slots.needsUpdate = true;
 
-  for (const s of surfaces) {
-    s.wrapS = s.wrapT = THREE.RepeatWrapping;
-    s.anisotropy = 8;
-  }
+  const textures = stack(surfaces);
+  const relief = normals ? { normals: stack(normals), roughness: kinds.map((k) => k.roughness) } : null;
   return {
     tile: map.tile,
     i0,
@@ -121,11 +155,12 @@ export async function loadCover(map: Braga, renderer: THREE.WebGLRenderer, quali
     cells: n,
     classes,
     colour,
-    surfaces,
-    mean: kinds.map((k) => new THREE.Vector3(...k.texture!.mean.map(linear))),
-    scale: kinds.map((k) => 1 / k.texture!.metres),
+    surfaces: textures,
+    mean: kinds.map((k) => new THREE.Vector3(...k.mean.map(linear))),
+    scale: kinds.map((k) => 1 / k.metres),
+    relief,
     dispose() {
-      for (const t of [slots, classes, colour, ...surfaces]) t.dispose();
+      for (const t of [slots, classes, colour, textures, ...(relief ? [relief.normals] : [])]) t.dispose();
     },
   };
 }

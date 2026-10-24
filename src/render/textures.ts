@@ -1,15 +1,33 @@
 // Every texture is drawn here on a canvas: nothing to download.
 import * as THREE from 'three';
+import { anisotropy } from './look.ts';
+
+// How many times finer than it's laid out a drawing is made: each shape drawn at that many times the
+// pixels, so its edges are that much sharper, not the drawing scaled up. 1 but inside `finer`.
+let fine = 1;
+
+// Drawings made `k` times finer (the streets' on Ultra, braga-map's task 085): a drawing laid out 256
+// pixels a side is made at 256 × k.
+export function finer<T>(k: number, draw: () => T): T {
+  fine = k;
+  try {
+    return draw();
+  } finally {
+    fine = 1;
+  }
+}
 
 function canvas(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, repeat = true): THREE.CanvasTexture {
   const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  draw(c.getContext('2d')!);
+  c.width = w * fine;
+  c.height = h * fine;
+  const g = c.getContext('2d')!;
+  g.scale(fine, fine);
+  draw(g);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = 8;
+  t.anisotropy = anisotropy();
   return t;
 }
 
@@ -842,7 +860,7 @@ export function layered(images: HTMLCanvasElement[], w: number, h: number): THRE
   t.minFilter = THREE.LinearMipmapLinearFilter;
   t.magFilter = THREE.LinearFilter;
   t.generateMipmaps = true;
-  t.anisotropy = 8;
+  t.anisotropy = anisotropy();
   t.needsUpdate = true;
   return t;
 }

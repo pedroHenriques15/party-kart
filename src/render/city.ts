@@ -18,7 +18,7 @@ import { buildSights, horizon, TOURIGALO_CLEAR } from './sights.ts';
 import { bake, box, mat } from './kit.ts';
 import { Holes, Lattice, Surface } from './lattice.ts';
 import { buildLevels, isDeck, nearLevels } from './levels.ts';
-import { levelOf, type Graphics, type Quality } from './look.ts';
+import { anisotropy, levelOf, type Graphics, type Quality } from './look.ts';
 import { GRIDS, KINDS, loadCover, type Cover } from './cover.ts';
 import { raceMarks } from './road.ts';
 import { clipConvex, convexPieces, faces, shapeOf, wallTop } from './roofs.ts';
@@ -91,7 +91,7 @@ function groundMaterial(map: THREE.Texture, cover: Cover | null, mask: boolean):
   const m = new THREE.MeshStandardMaterial({ map, roughness: 0.96, alphaTest: 0.5 });
   // The cover's textures on the material as well as in its shader, so the textures' memory counts them
   // (stats.ts).
-  if (cover) Object.assign(m, { coverSlots: cover.slots, coverClasses: cover.classes, coverColour: cover.colour }, Object.fromEntries(cover.surfaces.map((t, k) => [`surf${k}`, t])));
+  if (cover) Object.assign(m, { coverSlots: cover.slots, coverClasses: cover.classes, coverColour: cover.colour, coverSurfaces: cover.surfaces, coverNormals: cover.relief?.normals ?? null });
   const grain = tex.grain();
   const cs = cover ? coverShader(cover) : null;
   m.onBeforeCompile = (sh) => {
@@ -110,6 +110,7 @@ function groundMaterial(map: THREE.Texture, cover: Cover | null, mask: boolean):
           (cs ? `${cs.body}\ndiffuseColor.rgb = mix(diffuseColor.rgb, coverRgb, coverIn);` : ''),
       )
       .replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\ndiffuseColor.a = 1.0;');
+    if (cs) sh.fragmentShader = cs.light(sh.fragmentShader);
   };
   return m;
 }
@@ -133,6 +134,7 @@ function coverMaterial(cover: Cover): THREE.MeshStandardMaterial {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec2 vWorldXZ;' + cs.head)
       .replace('#include <map_fragment>', `#include <map_fragment>\n${cs.body}\ndiffuseColor.rgb = mix(diffuseColor.rgb, coverRgb, coverIn);`);
+    sh.fragmentShader = cs.light(sh.fragmentShader);
   };
   return m;
 }
@@ -152,8 +154,12 @@ const CANOPY = new THREE.Color().setHSL(0.27, 0.5, 0.235);
 // kind's edge isn't a staircase); each kind present, its texture tiled at its size (sampled with the
 // fragment's own gradients, taken where every fragment runs, as a texture's are only right there),
 // divided by its mean and times that kind's colour there.
+// On Ultra (braga-map's task 085), each kind's relief and roughness too, weighed as its colour is, and
+// `light` puts them in the land's light: the normal map's tangents the world's x and z (the textures' u
+// and v), square to the land's own normal.
 // `lawn`, where it's given, is the colour of every grass there in place of the texture's.
-function coverShader(c: Cover, lawn?: THREE.Color): { uniforms: Record<string, THREE.IUniform>; head: string; body: string } {
+function coverShader(c: Cover, lawn?: THREE.Color): { uniforms: Record<string, THREE.IUniform>; head: string; body: string; light: (fragment: string) => string } {
+  const textured = c.mean.length, relief = c.relief;
   const uniforms: Record<string, THREE.IUniform> = {
     coverLawn: { value: lawn ?? new THREE.Color() },
     coverSlots: { value: c.slots },
@@ -161,22 +167,31 @@ function coverShader(c: Cover, lawn?: THREE.Color): { uniforms: Record<string, T
     coverColour: { value: c.colour },
     coverGrid: { value: new THREE.Vector3(c.tile, c.i0, c.j0) },
     coverCells: { value: c.cells },
+    coverSurfaces: { value: c.surfaces },
     surfMean: { value: c.mean },
     surfScale: { value: c.scale },
+    ...(relief ? { coverNormals: { value: relief.normals }, surfRough: { value: relief.roughness } } : {}),
   };
-  c.surfaces.forEach((t, k) => (uniforms[`surf${k}`] = { value: t }));
   const head = `
 precision highp sampler2DArray;
 uniform sampler2D coverSlots;
 uniform sampler2DArray coverClasses;
 uniform sampler2DArray coverColour;
+uniform sampler2DArray coverSurfaces;
 uniform vec3 coverGrid;
 uniform vec3 coverLawn;
 uniform float coverCells;
-uniform vec3 surfMean[${c.surfaces.length}];
-uniform float surfScale[${c.surfaces.length}];
-${c.surfaces.map((_, k) => `uniform sampler2D surf${k};`).join('\n')}`;
+uniform vec3 surfMean[${textured}];
+uniform float surfScale[${textured}];${relief ? `\nuniform sampler2DArray coverNormals;\nuniform float surfRough[${textured}];` : ''}`;
   const kinds = Array.from({ length: KINDS }, (_, k) => k);
+  // Each kind's part where it's there: its colour times its texture's detail; on Ultra its relief (flat
+  // for water and a roof) and its roughness (theirs the material's).
+  const at = (k: number) => `vec3(vWorldXZ * surfScale[${k}], ${k}.0), gx * surfScale[${k}], gy * surfScale[${k}]`;
+  const kind = (k: number) => {
+    const rgb = `coverRgb += w[${k}] * ${lawn && k === GRASS ? 'coverLawn' : `texture(coverColour, vec3(cq, float(slot * ${GRIDS} + ${k}))).rgb`}${k < textured ? ` * textureGrad(coverSurfaces, ${at(k)}).rgb / surfMean[${k}]` : ''};`;
+    const lit = !relief ? '' : k < textured ? ` coverN += w[${k}] * (textureGrad(coverNormals, ${at(k)}).xyz * 2.0 - 1.0); coverRough += w[${k}] * surfRough[${k}];` : ` coverN.z += w[${k}]; coverRough += w[${k}] * roughness;`;
+    return `  if (w[${k}] > 0.0) { ${rgb}${lit} }`;
+  };
   const body = `
 const vec3 HAZE = vec3(0.0130, 0.0284, 0.0513);
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -186,7 +201,7 @@ vec2 tq = floor(vWorldXZ / coverGrid.x);
 ivec2 ts = ivec2(tq - coverGrid.yz), tn = textureSize(coverSlots, 0);
 int slot = all(greaterThanEqual(ts, ivec2(0))) && all(lessThan(ts, tn)) ? int(texelFetch(coverSlots, ts, 0).r * 255.0 + 0.5) - 1 : -1;
 float coverIn = slot >= 0 ? 1.0 : 0.0;
-vec3 coverRgb = vec3(0.0);
+vec3 coverRgb = vec3(0.0);${relief ? '\nvec3 coverN = vec3(0.0);\nfloat coverRough = 0.0;' : ''}
 if (slot >= 0) {
   vec2 cq = vWorldXZ / coverGrid.x - tq;
   vec2 p = cq * coverCells - 0.5;
@@ -205,7 +220,7 @@ if (slot >= 0) {
     w[v & 7] += wt;
     crown += wt * float(v >> 3);
   }
-${kinds.map((k) => `  if (w[${k}] > 0.0) coverRgb += w[${k}] * ${lawn && k === GRASS ? 'coverLawn' : `texture(coverColour, vec3(cq, float(slot * ${GRIDS} + ${k}))).rgb`}${k < c.surfaces.length ? ` * textureGrad(surf${k}, vWorldXZ * surfScale[${k}], gx * surfScale[${k}], gy * surfScale[${k}]).rgb / surfMean[${k}]` : ''};`).join('\n')}
+${kinds.map(kind).join('\n')}
   // Under a crown the sky is hidden: its shadow is the sun's (look.ts), this is the rest.
   coverRgb *= 1.0 - 0.15 * crown;
   // The photo's colour as the ground's: the haze over the city taken out (DGT's photo is never darker
@@ -219,7 +234,19 @@ ${kinds.map((k) => `  if (w[${k}] > 0.0) coverRgb += w[${k}] * ${lawn && k === G
   float leaves = dot(texture(coverColour, vec3(cq, float(slot * ${GRIDS} + ${KINDS}))).rgb, LUMA) / 0.08;
   coverRgb = mix(coverRgb, CANOPY * clamp(leaves, 0.6, 1.4), crown * away);
 }`;
-  return { uniforms, head, body };
+  const light = (fragment: string) =>
+    !relief
+      ? fragment
+      : fragment.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif (slot >= 0) roughnessFactor = coverRough;').replace(
+          '#include <normal_fragment_maps>',
+          `#include <normal_fragment_maps>
+if (slot >= 0) {
+  vec3 coverT = mat3(viewMatrix) * vec3(1.0, 0.0, 0.0);
+  coverT = normalize(coverT - normal * dot(normal, coverT));
+  normal = normalize(mat3(coverT, cross(coverT, normal), normal) * coverN);
+}`,
+        );
+  return { uniforms, head, body, light };
 }
 
 // ---- The world ----
@@ -234,9 +261,9 @@ export async function buildCity(track: Track, course: Course, graphics: Graphics
   const map = await loadWorld(course.box);
   // Fetched, and turned for the graphics card in workers, while the land is worked out. If they can't be
   // had, the city goes without them: the ground painted from the map, as it was before task 016.
-  const coverLoading = loadCover(map, renderer, quality).catch((e: unknown) => (console.warn('What the ground is failed to load:', e), null));
+  const coverLoading = loadCover(map, renderer, graphics).catch((e: unknown) => (console.warn('What the ground is failed to load:', e), null));
   // The trees' bark and leaves (braga-map's task 019); without them, each kind in a colour.
-  const treesLoading = loadTreeLooks(map.treeKinds, renderer, quality).catch((e: unknown) => (console.warn("The trees' textures failed to load:", e), {}));
+  const treesLoading = loadTreeLooks(map.treeKinds, renderer, graphics).catch((e: unknown) => (console.warn("The trees' textures failed to load:", e), {}));
   const B = course.box;
   const group = new THREE.Group();
   const updates: ((t: number) => void)[] = [];
@@ -576,7 +603,7 @@ export async function buildCity(track: Track, course: Course, graphics: Graphics
   // ---- Every street in the area (streets.ts), and what stands along them. ----
   // The buildings' footprints, where nothing meeting the land shows.
   const houses = new Rings(map.buildings.filter((b) => near(b.pts[0][0], b.pts[0][1]) < 100).map((b) => b.pts));
-  const streets = buildStreets(map, wg, landMesh, (x, z) => houses.has(x, z), quality, course, cover ? coverMaterial(cover) : null);
+  const streets = buildStreets(map, wg, landMesh, (x, z) => houses.has(x, z), graphics, course, cover ? coverMaterial(cover) : null);
   streets.group.name = 'streets';
   group.add(streets.group);
   // The world's walls a race takes down while it runs (braga-map's `cleared`): up round the city,
@@ -836,7 +863,7 @@ function paintGround(map: Braga, B: Box, quality: Quality, inOpenTiles: (x: numb
     t.minFilter = THREE.LinearMipmapLinearFilter;
     t.magFilter = THREE.LinearFilter;
     t.generateMipmaps = true;
-    t.anisotropy = 8;
+    t.anisotropy = anisotropy();
     t.needsUpdate = true;
     return t;
   }
@@ -845,7 +872,7 @@ function paintGround(map: Braga, B: Box, quality: Quality, inOpenTiles: (x: numb
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.premultiplyAlpha = true;
-  t.anisotropy = 8;
+  t.anisotropy = anisotropy();
   return t;
 }
 

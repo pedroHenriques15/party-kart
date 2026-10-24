@@ -7,7 +7,7 @@
 // colours (the walls', the ground floor's, the shutters').
 import type { Facade, FacadeMaterial, FacadeProportions, FacadeType } from 'braga-map';
 import * as THREE from 'three';
-import type { Quality } from './look.ts';
+import { anisotropy, type Quality } from './look.ts';
 
 // How a building's walls are laid out, shared with the simulation (the rooms' openings).
 export { baysOf, storeys } from '../world/storeys.ts';
@@ -467,7 +467,7 @@ export function facadeKit(types: Record<FacadeType, FacadeProportions>, quality:
     t.minFilter = THREE.LinearMipmapLinearFilter;
     t.magFilter = THREE.LinearFilter;
     t.generateMipmaps = true;
-    t.anisotropy = 8;
+    t.anisotropy = anisotropy();
     t.needsUpdate = true;
   }
   const material = new THREE.MeshStandardMaterial({ roughness: 0.88 });

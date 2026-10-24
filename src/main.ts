@@ -36,7 +36,7 @@ import { buildFighter, type Fighter } from './render/soldier.ts';
 import { buildKart, buildWalker, driverById, DRIVERS, type KartModel, type WalkerModel } from './render/drivers.ts';
 import { Particles } from './render/fx.ts';
 import { ItemsView } from './render/items3d.ts';
-import { GRAPHICS, Look, SUN_DIR, ultraOffered, type Graphics } from './render/look.ts';
+import { GRAPHICS, Look, SUN_DIR, ultraOffered, useMostAnisotropy, type Graphics } from './render/look.ts';
 import { Skids } from './render/skids.ts';
 import { nameTag } from './render/textures.ts';
 import { buildCity, type RaceWorld } from './render/city.ts';
@@ -110,6 +110,7 @@ const LOWER: Record<Graphics, Graphics> = { ultra: 'high', high: 'medium', mediu
 // under the HUD. Say so, and open a step lower the next time.
 canvas.addEventListener('webglcontextlost', lostGraphics, { once: true });
 const building = performance.now();
+if (quality === 'ultra') useMostAnisotropy(renderer);
 const world = await buildCity(home, HOME, quality, renderer);
 // What's round every part of the city, for its sound: from the map the karts drive on, once the city
 // is up and the game is running, so it never holds the page.

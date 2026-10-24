@@ -6,6 +6,7 @@
 // two meshes, and their posts a third.
 import type { Plate } from 'braga-map';
 import * as THREE from 'three';
+import { anisotropy } from './look.ts';
 
 const CELL = 64; // a letter's cell, in pixels, square
 const FONT = '700 46px Georgia, "Times New Roman", serif';
@@ -33,7 +34,7 @@ function emptyPlate(): THREE.CanvasTexture {
   g.strokeRect(10, 10, 492, 108);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 8;
+  t.anisotropy = anisotropy();
   return t;
 }
 
@@ -66,7 +67,7 @@ export function buildPlates(plates: Plate[], size: [number, number], foot: (x: n
   });
   const space = k.measureText(' ').width;
   const atlas = new THREE.CanvasTexture(c);
-  atlas.anisotropy = 8;
+  atlas.anisotropy = anisotropy();
 
   const back: number[] = [];
   const backUv: number[] = [];

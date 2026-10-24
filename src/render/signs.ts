@@ -3,6 +3,7 @@
 // cut from one canvas of every letter the signs use, so all the signs are two meshes.
 import type { Sign } from 'braga-map';
 import * as THREE from 'three';
+import { anisotropy } from './look.ts';
 import { linearOf } from './facades.ts';
 
 const CELL = 64; // a letter's cell, in pixels, square
@@ -35,7 +36,7 @@ export function buildSigns(signs: Sign[], colours: Record<string, [number, numbe
   const space = k.measureText(' ').width;
   const atlas = new THREE.CanvasTexture(c);
   atlas.colorSpace = THREE.SRGBColorSpace;
-  atlas.anisotropy = 8;
+  atlas.anisotropy = anisotropy();
 
   const box: number[] = [];
   const boxN: number[] = [];

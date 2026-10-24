@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RIVER_HALF_W } from '../track/layout.ts';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
-import { levelOf, type Graphics, type Quality } from './look.ts';
+import { anisotropy, levelOf, type Graphics } from './look.ts';
 import { ktx2Loader } from './ktx2.ts';
 import { LAKE, riverDistance } from './world.ts';
 
@@ -339,22 +339,32 @@ function nearFragment(sh: Shader, near: THREE.IUniform): void {
 export interface TreeLooks {
   bark: THREE.Texture | null;
   leaves: THREE.Texture | null;
+  // On Ultra, the bark's relief (a normal map) and its roughness (braga-map's task 085).
+  barkRelief?: { normal: THREE.Texture; roughness: THREE.Texture };
 }
 
 // Loads each kind's bark and leaves at the graphics level, as the graphics card takes them; a kind the
-// map has no texture for is drawn in a colour alone.
-export async function loadTreeLooks(kinds: TreeKindOf[], renderer: THREE.WebGLRenderer, quality: Quality): Promise<Record<string, TreeLooks>> {
+// map has no texture for is drawn in a colour alone. On Ultra, their finest, and the bark's relief and
+// roughness.
+export async function loadTreeLooks(kinds: TreeKindOf[], renderer: THREE.WebGLRenderer, graphics: Graphics): Promise<Record<string, TreeLooks>> {
   const loader = ktx2Loader(renderer);
+  const quality = levelOf(graphics), ultra = graphics === 'ultra';
+  const load = (f: { url: string } | null | undefined) => (f ? loader.loadAsync(f.url) : Promise.resolve(null));
   const out: Record<string, TreeLooks> = {};
   await Promise.all(
     kinds.map(async (k) => {
-      const [bark, leaves] = await Promise.all([k.bark, k.leaves].map((t) => (t ? loader.loadAsync(t.files[quality].url) : Promise.resolve(null))));
-      if (bark) {
-        bark.wrapS = bark.wrapT = THREE.RepeatWrapping;
-        bark.repeat.set(1, 3);
+      const [bark, leaves, normal, roughness] = await Promise.all([
+        ...[k.bark, k.leaves].map((t) => load(t && (ultra ? t.ultra.colour : t.files[quality]))),
+        ...(ultra ? [load(k.bark?.ultra.normal), load(k.bark?.ultra.roughness)] : []),
+      ]);
+      // The bark wrapped round a trunk three times up it, its relief with it.
+      for (const t of [bark, normal, roughness]) {
+        if (!t) continue;
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.repeat.set(1, 3);
       }
-      if (leaves) leaves.anisotropy = 4;
-      out[k.kind] = { bark, leaves };
+      if (leaves) leaves.anisotropy = anisotropy(4);
+      out[k.kind] = { bark, leaves, ...(normal && roughness ? { barkRelief: { normal, roughness } } : {}) };
     }),
   );
   loader.dispose();
@@ -428,7 +438,7 @@ export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, g
     const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: look.leaves, alphaTest: 0.5, side: THREE.DoubleSide });
     depth.onBeforeCompile = (sh) => crownVertex(sh, s.card, fixed);
     depth.customProgramCacheKey = () => `crown-depth-${kind}`;
-    const trunkMat = new THREE.MeshStandardMaterial({ color: look.bark ? '#ffffff' : '#5e4630', map: look.bark, roughness: 1 });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: look.bark ? '#ffffff' : '#5e4630', map: look.bark, roughness: 1, normalMap: look.barkRelief?.normal ?? null, roughnessMap: look.barkRelief?.roughness ?? null });
     trunkMat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vTreeAt;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvTreeAt = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;');
       nearFragment(sh, near);

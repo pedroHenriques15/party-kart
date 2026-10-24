@@ -7,7 +7,8 @@ import { ARMOUR, FAMILIES, GUN_IDS, GUNS, isGun, isNade, KNIFE, NADE_IDS, NADES,
 import { COMP, priceOf, sells, type Side } from './game/comp.ts';
 import { ITEMS, type ItemKind } from './game/items.ts';
 import type { Track } from './track/track.ts';
-import { boundsOf, fit, keep, lengths, limits, pan, pointAt, toScreen, zoomAt, type Bounds, type View } from './world/mapview.ts';
+import { boundsOf, fit, keep, lengths, limits, pan, pointAt, toMap, toScreen, zoomAt, type Bounds, type View } from './world/mapview.ts';
+import type { Step } from './world/route.ts';
 
 type Child = Node | string | null | false | undefined;
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', ...kids: Child[]): HTMLElementTagNameMap[K] {
@@ -254,6 +255,48 @@ const KEYS = {
   fight: 'WASD anda · o rato aponta · clique dispara · botão direito: mira, facada, lançar · R recarrega · 1–4 armas (Q a anterior, roda do rato)\nB compra · Shift caminha · Ctrl ou C agacha · Espaço salta · F inspeciona · Tab pontuação · M mapa · Esc menu',
 };
 
+// What the GPS says (task 107): the next turn's arrow, how far to it, what to do there, and how far
+// there is to go.
+export interface Guide {
+  icon: string;
+  dist: string;
+  what: string;
+  left: string;
+}
+
+// A distance as a GPS says it: to 10 m under a kilometre, to 100 m over.
+export const howFar = (m: number) => (m < 950 ? `${Math.max(10, Math.round(m / 10) * 10)} m` : `${(Math.round(m / 100) / 10).toLocaleString('pt-PT')} km`);
+
+const TURNS: Record<Step['turn'], [string, string]> = {
+  left: ['⬅', 'Vira à esquerda'],
+  right: ['➡', 'Vira à direita'],
+  'slight-left': ['⬉', 'Ligeiramente à esquerda'],
+  'slight-right': ['⬈', 'Ligeiramente à direita'],
+  'sharp-left': ['↰', 'Curva apertada à esquerda'],
+  'sharp-right': ['↱', 'Curva apertada à direita'],
+  back: ['↶', 'Dá a volta'],
+  roundabout: ['⟳', 'Na rotunda'],
+  path: ['⤴', 'Sai da estrada: segue pelo caminho'],
+};
+// "na Rua …", "no Largo …": the street's article, by the word its name starts with.
+const MASCULINE = /^(Largo|Campo|Caminho|Beco|Bairro|Parque|Terreiro|Passeio|Jardim|Adro|Monte|Lugar|Cais|Viaduto|Túnel|Acesso|Ramal)\b/;
+export const onto = (name: string) => `${MASCULINE.test(name) ? 'no' : 'na'} ${name}`;
+
+// The GPS's words for the next turn `dist` metres ahead (or none: straight on to the waypoint), with
+// `left` metres to go.
+export function guideOf(step: Step | null, dist: number, left: number): Guide {
+  const togo = `Faltam ${howFar(left)}`;
+  if (!step) return { icon: '⬆', dist: howFar(left), what: 'Segue até ao destino', left: togo };
+  const [icon, words] = TURNS[step.turn];
+  const what =
+    step.turn === 'roundabout'
+      ? `${words}, sai na ${step.exit}.ª saída${step.onto ? `, para ${onto(step.onto).replace(/^n/, '')}` : ''}`
+      : step.turn === 'path'
+        ? `${words}${step.onto ? ` (${step.onto})` : ''}`
+        : `${words}${step.onto ? ` ${onto(step.onto)}` : ''}`;
+  return { icon, dist: howFar(dist), what, left: togo };
+}
+
 // The screen while driving round the city (braga-map's decision 019): the speed, the street's name
 // as you turn into it, a minimap of the area round you with the others on it, what just happened,
 // and speed lines when boosting or in a slipstream. Flying, the minimap is round the camera.
@@ -277,6 +320,7 @@ export class RoamHud {
     e.lines = h('div', 'speedlines');
     e.keys = h('div', 'keys', KEYS.drive);
     e.dot = h('div', 'dot');
+    e.gps = h('div', 'gps');
     this.map = h('canvas', 'minimap round');
     this.map.width = this.map.height = SIZE * 2;
     this.edge = m.edge;
@@ -298,7 +342,7 @@ export class RoamHud {
       if (list) list.push(run);
       else this.routeCells.set(k, [run]);
     }
-    root.replaceChildren(h('div', 'tc', e.plate, e.feed), e.speed, this.map, e.keys, e.lines, e.dot);
+    root.replaceChildren(h('div', 'tc', e.plate, e.feed), e.speed, this.map, e.gps, e.keys, e.lines, e.dot);
   }
 
   set(o: { speed: number; boosting: boolean; slip: number }): void {
@@ -330,6 +374,17 @@ export class RoamHud {
     this.edge = edge;
   }
 
+  // The GPS (task 107): the next turn's arrow, how far it is, what to do and onto which street, and
+  // how far there is to go; or nothing.
+  guide(g: Guide | null): void {
+    const el = this.el.gps;
+    const k = g ? `${g.icon}|${g.dist}|${g.what}|${g.left}` : '';
+    if (el.dataset.k === k) return;
+    el.dataset.k = k;
+    el.classList.toggle('on', !!g);
+    el.replaceChildren(...(g ? [h('div', 'gi', g.icon), h('div', 'gt', h('b', '', g.dist), h('span', '', g.what), h('small', '', g.left))] : []));
+  }
+
   // The street's name, on a blue-and-white plate as Braga's are, for a few seconds.
   street(name: string): void {
     this.el.plate.textContent = name;
@@ -346,7 +401,7 @@ export class RoamHud {
 
   // The streets round you, turned so the way you face is up; the others as dots, at the rim when
   // they're further off than it shows.
-  minimap(me: { x: number; z: number; yaw: number }, others: Dot[]): void {
+  minimap(me: { x: number; z: number; yaw: number }, others: Dot[], gps: Gps | null = null): void {
     const g = this.map.getContext('2d')!;
     const R = SIZE;
     const k = R / RANGE; // pixels a metre
@@ -413,6 +468,8 @@ export class RoamHud {
     g.beginPath();
     for (const run of runs) run.forEach((p, i) => (i ? g.lineTo(p.x, p.z) : g.moveTo(p.x, p.z)));
     g.stroke();
+    // The GPS's route (task 107), over it.
+    if (gps?.route && gps.route.length > 1) trace(g, gps.route, (x, z) => [x, z], 4 / k);
     // The area's edge.
     g.strokeStyle = 'rgba(255,90,79,0.9)';
     g.lineWidth = 2.5 / k;
@@ -445,6 +502,10 @@ export class RoamHud {
       g.lineWidth = 3;
       g.strokeStyle = p.far ? '#ffffff' : '#111111';
       g.stroke();
+    }
+    if (gps?.mark) {
+      const m = onScreen(gps.mark.x, gps.mark.z, R - 26);
+      pin(g, m.x, m.y + 9, 0.9);
     }
     const north = onScreen(me.x, me.z - 1e5, R - 18);
     g.font = '800 22px system-ui, sans-serif';
@@ -486,6 +547,54 @@ export interface MapOpening {
   edge: [number, number][];
   arena?: string;
   key: string;
+  // Whether a click puts the GPS's waypoint (task 107): round the city, not in a race or a round.
+  pick?: boolean;
+}
+
+// The GPS on a map (task 107): the route from you to the waypoint, and the waypoint.
+export interface Gps {
+  route: [number, number][] | null;
+  mark: { x: number; z: number } | null;
+}
+
+// The waypoint: a pin, its point at (x, y).
+function pin(g: CanvasRenderingContext2D, x: number, y: number, s = 1): void {
+  g.save();
+  g.translate(x, y);
+  g.scale(s, s);
+  g.beginPath();
+  g.moveTo(0, 0);
+  g.bezierCurveTo(-3, -8, -9, -11, -9, -18);
+  g.arc(0, -18, 9, Math.PI, 0);
+  g.bezierCurveTo(9, -11, 3, -8, 0, 0);
+  g.closePath();
+  g.fillStyle = '#ff3d7f';
+  g.fill();
+  g.lineWidth = 2.5;
+  g.strokeStyle = '#ffffff';
+  g.stroke();
+  g.beginPath();
+  g.arc(0, -18, 3.5, 0, Math.PI * 2);
+  g.fillStyle = '#ffffff';
+  g.fill();
+  g.restore();
+}
+
+// The route on a map: blue, on a dark edge.
+function trace(g: CanvasRenderingContext2D, pts: [number, number][], to: (x: number, z: number) => [number, number], w: number): void {
+  g.lineJoin = g.lineCap = 'round';
+  g.beginPath();
+  pts.forEach(([x, z], i) => {
+    const [sx, sy] = to(x, z);
+    if (i) g.lineTo(sx, sy);
+    else g.moveTo(sx, sy);
+  });
+  g.lineWidth = w * 1.7;
+  g.strokeStyle = 'rgba(8,10,16,0.8)';
+  g.stroke();
+  g.lineWidth = w;
+  g.strokeStyle = '#3da5ff';
+  g.stroke();
 }
 
 // Round you, it opens with this many metres across the screen's shorter side.
@@ -521,10 +630,14 @@ export class FullMap {
   readonly el: HTMLElement;
   // The ✕, for main.ts to close it as M and Esc do.
   onClose = () => {};
+  // A click (a tap) that didn't drag it, where pick allows: the waypoint put there, or null where it's
+  // on the waypoint, to take it away.
+  onPick = (_at: { x: number; z: number } | null) => {};
   private canvas: HTMLCanvasElement;
   private base = document.createElement('canvas');
   private title: HTMLElement;
   private keyHint: HTMLElement;
+  private touchHint: HTMLElement;
   private streets: Street[] = [];
   private labels: Label[] = [];
   private arenas: FullMapData['arenas'];
@@ -538,6 +651,9 @@ export class FullMap {
   private me = { x: 0, z: 0 };
   private fingers = new Map<number, { x: number; y: number }>();
   private widths = new Map<string, number>();
+  // A finger or the mouse down alone, till it moves: a click, if it lifts first.
+  private press: { id: number; x: number; y: number } | null = null;
+  private mark: { x: number; z: number } | null = null;
 
   constructor(m: FullMapData) {
     this.arenas = m.arenas;
@@ -563,6 +679,7 @@ export class FullMap {
     this.canvas = h('canvas', 'fm-map');
     this.title = h('div', 'fm-title');
     this.keyHint = h('span', 'keys-only');
+    this.touchHint = h('span', 'touch-only');
     const here = h('button', 'ghost small fm-here', '⌖ Onde estou');
     here.title = 'Pôr o mapa à tua volta';
     here.addEventListener('click', () => {
@@ -572,10 +689,10 @@ export class FullMap {
     const close = h('button', 'ghost small fm-close', '✕');
     close.title = 'Fechar o mapa';
     close.addEventListener('click', () => this.onClose());
-    this.el = h('div', 'fullmap', this.canvas, h('div', 'fm-head', this.title, h('div', 'fm-hint', this.keyHint, h('span', 'touch-only', 'Dois dedos aproximam e afastam · arrasta para mexer · ✕ fecha')), here, close));
+    this.el = h('div', 'fullmap', this.canvas, h('div', 'fm-head', this.title, h('div', 'fm-hint', this.keyHint, this.touchHint), here, close));
 
     // A drag pans; two fingers zoom about their middle and take it with them; the wheel zooms about
-    // the pointer, and a double click zooms in there.
+    // the pointer. A click that doesn't drag it puts the waypoint, or takes it away.
     const c = this.canvas;
     c.addEventListener('pointerdown', (e) => {
       try {
@@ -583,12 +700,27 @@ export class FullMap {
       } catch {
         /* a synthetic event */
       }
+      this.press = this.fingers.size ? null : { id: e.pointerId, x: e.clientX, y: e.clientY };
       this.fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       c.classList.add('dragging');
+    });
+    c.addEventListener('pointerup', (e) => {
+      const p = this.press;
+      this.press = null;
+      if (!p || p.id !== e.pointerId || !this.o?.pick) return;
+      const [W, H] = this.size();
+      const m = this.mark;
+      if (m) {
+        const [mx, my] = toScreen(this.view, W, H, m.x, m.z);
+        if (Math.hypot(e.clientX - mx, e.clientY - (my - 12)) < 18) return this.onPick(null);
+      }
+      const [x, z] = toMap(this.view, W, H, e.clientX, e.clientY);
+      this.onPick({ x, z });
     });
     c.addEventListener('pointermove', (e) => {
       const p = this.fingers.get(e.pointerId);
       if (!p) return;
+      if (this.press && Math.hypot(e.clientX - this.press.x, e.clientY - this.press.y) > 6) this.press = null;
       const [W, H] = this.size();
       const l = limits(this.bounds, W, H);
       const q = [...this.fingers].find(([id]) => id !== e.pointerId)?.[1];
@@ -617,10 +749,6 @@ export class FullMap {
       },
       { passive: false },
     );
-    c.addEventListener('dblclick', (e) => {
-      const [W, H] = this.size();
-      this.view = zoomAt(this.view, 2, e.clientX, e.clientY, limits(this.bounds, W, H));
-    });
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
@@ -632,7 +760,8 @@ export class FullMap {
     this.o = o;
     this.me = { x: o.at.x, z: o.at.z };
     this.title.textContent = o.title;
-    this.keyHint.textContent = `Roda do rato aproxima e afasta · arrasta para mexer · ${o.key ? `${o.key} ou ` : ''}Esc fecha`;
+    this.keyHint.textContent = `Roda do rato aproxima e afasta · arrasta para mexer${o.pick ? ' · clica para pôr um destino' : ''} · ${o.key ? `${o.key} ou ` : ''}Esc fecha`;
+    this.touchHint.textContent = `Dois dedos aproximam e afastam · arrasta para mexer${o.pick ? ' · toca para pôr um destino' : ''} · ✕ fecha`;
     // It isn't shown yet: the window's size is the map's.
     const W = innerWidth;
     const H = innerHeight;
@@ -645,6 +774,7 @@ export class FullMap {
   close(): void {
     this.o = null;
     this.fingers.clear();
+    this.press = null;
     this.canvas.classList.remove('dragging');
   }
 
@@ -659,10 +789,12 @@ export class FullMap {
 
   // A frame while it's open: the map painted again only when the view has changed (while it's being
   // dragged or zoomed, the last painting moved with it, and painted afresh once it's still: a painting
-  // takes several milliseconds), you and the others on it every frame, at its edge when they're off it.
-  draw(me: { x: number; z: number; yaw: number }, others: Dot[]): void {
+  // takes several milliseconds), the GPS's route and waypoint, and you and the others on it every frame,
+  // at its edge when they're off it.
+  draw(me: { x: number; z: number; yaw: number }, others: Dot[], gps: Gps | null = null): void {
     if (!this.o) return;
     this.me = { x: me.x, z: me.z };
+    this.mark = gps?.mark ?? null;
     const [W, H] = this.size();
     const r = Math.min(2, devicePixelRatio || 1);
     const c = this.canvas;
@@ -692,6 +824,11 @@ export class FullMap {
       const py = Math.min(H - m, Math.max(m, sy));
       return { x: px, y: py, off: px !== sx || py !== sy };
     };
+    if (gps?.route && gps.route.length > 1) trace(g, gps.route, (x, z) => toScreen(v, W, H, x, z), 5);
+    if (gps?.mark) {
+      const m = onScreen(gps.mark.x, gps.mark.z, 22);
+      pin(g, m.x, m.y + (m.off ? 12 : 0));
+    }
     for (const o of others) {
       const p = onScreen(o.x, o.z, 14);
       g.beginPath();

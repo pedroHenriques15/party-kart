@@ -732,6 +732,75 @@ button.small {
   border-radius: 50%;
 }
 
+/* The GPS's next turn (braga-map's task 107): top left; on a touch screen and on foot on the right,
+   under the bar. */
+#hud .gps {
+  position: absolute;
+  top: calc(14px + var(--st));
+  left: calc(16px + var(--sl));
+  display: none;
+  align-items: center;
+  gap: 10px;
+  max-width: min(380px, 60vw);
+  padding: 8px 14px 8px 10px;
+  border-radius: 12px;
+  background: rgba(16, 64, 118, 0.9);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  text-shadow: none;
+}
+
+#hud .gps.on {
+  display: flex;
+}
+
+#hud .gps .gi {
+  min-width: 38px;
+  font-size: 34px;
+  line-height: 1;
+  text-align: center;
+}
+
+#hud .gps .gt {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+#hud .gps .gt b {
+  font-size: 20px;
+}
+
+#hud .gps .gt span {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+#hud .gps .gt small {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+/* On foot the minimap is top left, so it's on the right there too (in a round there's none). */
+body.touch #hud .gps,
+body.fighting #hud .gps {
+  left: auto;
+  right: calc(12px + var(--sr));
+  top: calc(56px + var(--st));
+}
+
+body.paneled #hud .gps {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  #hud .gps .gi {
+    font-size: 26px;
+  }
+  #hud .gps .gt b {
+    font-size: 16px;
+  }
+}
+
 /* With the menu or the results over the world, only the feed is left of what's on the screen. */
 body.paneled #hud .minimap,
 body.paneled #hud .keys,

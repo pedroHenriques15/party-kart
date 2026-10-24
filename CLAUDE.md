@@ -56,7 +56,9 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   `window.__kart` and `window.__scene`, for checking a change with Playwright: round the city
   `mode: 'roam'`, where you are, the room, its members and the others where you see them, whether
   you're flying (`fly`), the camera (`cam`: its x, y, z, yaw and pitch), whether the full map is up
-  (`map`, M: braga-map's task 106, `FullMap` in `hud.ts`; in a race too) and the sound off (`muted`); in a race
+  (`map`, M: braga-map's task 106, `FullMap` in `hud.ts`; in a race too), the sound off (`muted`), and
+  the GPS (`gps`, braga-map's task 107: its waypoint, its route's length, how far along it you are, its
+  next turn), whose waypoint `__mark(x, z)` puts (`__mark()` takes it away); in a race
   `mode: 'race'`, where you are, lap, place, item, draw calls, triangles. Add `&at=<sample>` and your car starts
   the race there, to look at one part of the track without driving a lap to it.
 - To race alone, the menu's "🏁 Corrida": it opens a room of your own, and the empty places on the

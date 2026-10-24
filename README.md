@@ -28,6 +28,17 @@ it back round you, and M or Esc closes it. Flying or on foot it's the same; in a
 whole track; in a round, on its arena, with only you and your team-mates on it, never a foe. On a
 touch screen a tap on the minimap opens it, two fingers zoom, and **✕** closes it.
 
+**The GPS**: round the city, a click on the full map (a tap) puts a waypoint there, and a click on
+it takes it away. The route to it from where you are goes along the real streets by the rules of the
+road: the one-way streets the right way, no turn the map bans, no turning back but at a dead end, the
+avenues before the side streets; and only where no street reaches the waypoint inside the area (the
+Picoto's top, whose streets come in from outside it), up the paths and the steps, as a kart can. It's
+in blue on the minimap and the full map, as arrows on the street for the next 100 m, and at the top of
+the screen: the next turn, how far it is and the street it turns onto ("Vira à direita na Rua …"),
+and how far there is to go. Leave the route and it's worked out again from where you are; on foot
+it's a walker's, any way along the streets and the paths, up and down the steps. Once you're there it
+says so and clears. It's yours alone, and not in a race or a round, whose own routes rule.
+
 **Esc**, or **☰ Menu** at the top, opens the menu over the world, which goes on behind it: your name
 and driver, the graphics, the help, and
 
@@ -190,7 +201,7 @@ the left half, and pulls up when you lift it; in a race it goes by itself.
 | Derrapar | Hold it through a corner, as with Space |
 | Travar | Slows you down, and reverses once you've stopped |
 | Item | In a race: tap to use what it shows; swipe it down to throw backwards |
-| The minimap | Opens the full map: drag it to move it, two fingers to zoom, ✕ to close it (with the minimap hidden in the settings, 🗺️ at the top opens it) |
+| The minimap | Opens the full map: drag it to move it, two fingers to zoom, a tap to put the GPS's waypoint (on it, to take it away), ✕ to close it (with the minimap hidden in the settings, 🗺️ at the top opens it) |
 | ☰ · ↺ · Voar · 🚶 A pé · 📢 · 🎥 · 🔊 (at the top) | The menu · back on the street (in a race, to your last checkpoint) · fly the camera · get out and walk · horn · camera · sound |
 
 Flying, the left half of the screen is a stick where your thumb lands, forward, back and sideways; a

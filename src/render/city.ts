@@ -91,7 +91,7 @@ function groundMaterial(map: THREE.Texture, cover: Cover | null, mask: boolean):
   const m = new THREE.MeshStandardMaterial({ map, roughness: 0.96, alphaTest: 0.5 });
   // The cover's textures on the material as well as in its shader, so the textures' memory counts them
   // (stats.ts).
-  if (cover) Object.assign(m, { coverSlots: cover.slots, coverClasses: cover.classes, coverColour: cover.colour, coverSurfaces: cover.surfaces, coverNormals: cover.relief?.normals ?? null });
+  if (cover) Object.assign(m, { coverSlots: cover.slots, coverClasses: cover.classes, coverColour: cover.colour, coverSurfaces: cover.ultra?.surfaces ?? null, coverNormals: cover.ultra?.normals ?? null }, Object.fromEntries(cover.surfaces.map((t, k) => [`surf${k}`, t])));
   const grain = tex.grain();
   const cs = cover ? coverShader(cover) : null;
   m.onBeforeCompile = (sh) => {
@@ -154,12 +154,12 @@ const CANOPY = new THREE.Color().setHSL(0.27, 0.5, 0.235);
 // kind's edge isn't a staircase); each kind present, its texture tiled at its size (sampled with the
 // fragment's own gradients, taken where every fragment runs, as a texture's are only right there),
 // divided by its mean and times that kind's colour there.
-// On Ultra (braga-map's task 085), each kind's relief and roughness too, weighed as its colour is, and
-// `light` puts them in the land's light: the normal map's tangents the world's x and z (the textures' u
-// and v), square to the land's own normal.
+// On Ultra (braga-map's task 085), each kind's finest texture from one array, and its relief and roughness
+// too, weighed as its colour is; `light` puts them in the land's light: the normal map's tangents the
+// world's x and z (the textures' u and v), square to the land's own normal. Below Ultra it's as it was.
 // `lawn`, where it's given, is the colour of every grass there in place of the texture's.
 function coverShader(c: Cover, lawn?: THREE.Color): { uniforms: Record<string, THREE.IUniform>; head: string; body: string; light: (fragment: string) => string } {
-  const textured = c.mean.length, relief = c.relief;
+  const textured = c.mean.length, relief = c.ultra;
   const uniforms: Record<string, THREE.IUniform> = {
     coverLawn: { value: lawn ?? new THREE.Color() },
     coverSlots: { value: c.slots },
@@ -167,29 +167,31 @@ function coverShader(c: Cover, lawn?: THREE.Color): { uniforms: Record<string, T
     coverColour: { value: c.colour },
     coverGrid: { value: new THREE.Vector3(c.tile, c.i0, c.j0) },
     coverCells: { value: c.cells },
-    coverSurfaces: { value: c.surfaces },
     surfMean: { value: c.mean },
     surfScale: { value: c.scale },
-    ...(relief ? { coverNormals: { value: relief.normals }, surfRough: { value: relief.roughness } } : {}),
+    ...(relief ? { coverSurfaces: { value: relief.surfaces }, coverNormals: { value: relief.normals }, surfRough: { value: relief.roughness } } : {}),
   };
+  c.surfaces.forEach((t, k) => (uniforms[`surf${k}`] = { value: t }));
   const head = `
 precision highp sampler2DArray;
 uniform sampler2D coverSlots;
 uniform sampler2DArray coverClasses;
 uniform sampler2DArray coverColour;
-uniform sampler2DArray coverSurfaces;
 uniform vec3 coverGrid;
 uniform vec3 coverLawn;
 uniform float coverCells;
 uniform vec3 surfMean[${textured}];
-uniform float surfScale[${textured}];${relief ? `\nuniform sampler2DArray coverNormals;\nuniform float surfRough[${textured}];` : ''}`;
+uniform float surfScale[${textured}];
+${relief ? 'uniform sampler2DArray coverSurfaces;\nuniform sampler2DArray coverNormals;\nuniform float surfRough[' + textured + '];' : c.surfaces.map((_, k) => `uniform sampler2D surf${k};`).join('\n')}`;
   const kinds = Array.from({ length: KINDS }, (_, k) => k);
   // Each kind's part where it's there: its colour times its texture's detail; on Ultra its relief (flat
   // for water and a roof) and its roughness (theirs the material's).
   const at = (k: number) => `vec3(vWorldXZ * surfScale[${k}], ${k}.0), gx * surfScale[${k}], gy * surfScale[${k}]`;
+  const detail = (k: number) => (relief ? `textureGrad(coverSurfaces, ${at(k)})` : `textureGrad(surf${k}, vWorldXZ * surfScale[${k}], gx * surfScale[${k}], gy * surfScale[${k}])`);
   const kind = (k: number) => {
-    const rgb = `coverRgb += w[${k}] * ${lawn && k === GRASS ? 'coverLawn' : `texture(coverColour, vec3(cq, float(slot * ${GRIDS} + ${k}))).rgb`}${k < textured ? ` * textureGrad(coverSurfaces, ${at(k)}).rgb / surfMean[${k}]` : ''};`;
-    const lit = !relief ? '' : k < textured ? ` coverN += w[${k}] * (textureGrad(coverNormals, ${at(k)}).xyz * 2.0 - 1.0); coverRough += w[${k}] * surfRough[${k}];` : ` coverN.z += w[${k}]; coverRough += w[${k}] * roughness;`;
+    const rgb = `coverRgb += w[${k}] * ${lawn && k === GRASS ? 'coverLawn' : `texture(coverColour, vec3(cq, float(slot * ${GRIDS} + ${k}))).rgb`}${k < textured ? ` * ${detail(k)}.rgb / surfMean[${k}]` : ''};`;
+    if (!relief) return `  if (w[${k}] > 0.0) ${rgb}`;
+    const lit = k < textured ? ` coverN += w[${k}] * (textureGrad(coverNormals, ${at(k)}).xyz * 2.0 - 1.0); coverRough += w[${k}] * surfRough[${k}];` : ` coverN.z += w[${k}]; coverRough += w[${k}] * roughness;`;
     return `  if (w[${k}] > 0.0) { ${rgb}${lit} }`;
   };
   const body = `

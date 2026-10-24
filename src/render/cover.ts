@@ -32,14 +32,16 @@ export interface Cover {
   // Each kind's colour over each tile, between its squares' middles: layer tile × 9 + kind; and the
   // trees' crowns', seen from above, tile × 9 + 8.
   colour: THREE.DataArrayTexture;
-  // Each kind's texture, a layer each in the kinds' order (one array, as the land's shader has room for
-  // few textures: WebGL gives it 16, the sun's shadows on Ultra take four), its mean colour in linear
-  // light, and how many times it repeats a metre.
-  surfaces: THREE.CompressedArrayTexture;
+  // Each kind's texture (none on Ultra: they're in `ultra`), its mean colour in linear light, and how
+  // many times it repeats a metre.
+  surfaces: THREE.Texture[];
   mean: THREE.Vector3[];
   scale: number[];
-  // On Ultra, each kind's relief, a normal map a layer, and how rough each kind is; null below it.
-  relief: { normals: THREE.CompressedArrayTexture; roughness: number[] } | null;
+  // On Ultra (braga-map's task 085), each kind's texture at its finest, a layer each in the kinds' order
+  // (one array: the land's shader has room for few textures there, as WebGL gives it 16 and the sun's
+  // cascades take four), its relief (a normal map a layer, another) and how rough each kind is. null
+  // below Ultra, which draws as it did.
+  ultra: { surfaces: THREE.CompressedArrayTexture; normals: THREE.CompressedArrayTexture; roughness: number[] } | null;
   dispose(): void;
 }
 
@@ -58,7 +60,8 @@ async function readPixels(url: string): Promise<{ w: number; h: number; data: Ui
 const linear = (v: number) => ((v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
 
 // Textures of one size, format and number of mipmaps, as the KTX2 loader gives them, as one array, a
-// layer each in their order, tiled.
+// layer each in their order, tiled. On Ultra only: below it every object three makes is as it was, so
+// the shots' seeded noise (main.ts's ?scenery, which three's uuids draw from too) is drawn as it was.
 function stack(ts: THREE.CompressedTexture[]): THREE.CompressedArrayTexture {
   const [a] = ts;
   for (const t of ts) if (t.format !== a.format || t.image.width !== a.image.width || t.image.height !== a.image.height || t.mipmaps.length !== a.mipmaps.length) throw new Error("The ground's textures aren't all of one size and format");
@@ -145,8 +148,12 @@ export async function loadCover(map: Braga, renderer: THREE.WebGLRenderer, graph
   slots.generateMipmaps = false;
   slots.needsUpdate = true;
 
-  const textures = stack(surfaces);
-  const relief = normals ? { normals: stack(normals), roughness: kinds.map((k) => k.roughness) } : null;
+  for (const s of surfaces) {
+    s.wrapS = s.wrapT = THREE.RepeatWrapping;
+    s.anisotropy = anisotropy();
+  }
+  const fine = normals ? { surfaces: stack(surfaces), normals: stack(normals), roughness: kinds.map((k) => k.roughness) } : null;
+  const own = fine ? [] : surfaces;
   return {
     tile: map.tile,
     i0,
@@ -155,12 +162,12 @@ export async function loadCover(map: Braga, renderer: THREE.WebGLRenderer, graph
     cells: n,
     classes,
     colour,
-    surfaces: textures,
+    surfaces: own,
     mean: kinds.map((k) => new THREE.Vector3(...k.mean.map(linear))),
     scale: kinds.map((k) => 1 / k.metres),
-    relief,
+    ultra: fine,
     dispose() {
-      for (const t of [slots, classes, colour, textures, ...(relief ? [relief.normals] : [])]) t.dispose();
+      for (const t of [slots, classes, colour, ...own, ...(fine ? [fine.surfaces, fine.normals] : [])]) t.dispose();
     },
   };
 }

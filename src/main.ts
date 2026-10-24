@@ -704,20 +704,9 @@ function howTo(): HTMLElement {
           .map((i) => `${i.icon} ${i.name}`)
           .join(' · '),
       ),
-      h('li', {}, h('b', {}, 'Braga'), ' como ela é: as ruas, os prédios e os montes, e o Tourigalo. ' + `A ${HOME.name} são ${km(HOME)} dela, e em casa de cada amigo há uma surpresa.` + ' Mapa: © OpenStreetMap contributors (ODbL). Relevo e ortofotos: informação geográfica cedida pela Direção-Geral do Território. Horizonte: Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers. Fotografias: ' + photoCredits() + '.'),
+      h('li', {}, h('b', {}, 'Braga'), ' como ela é: as ruas, os prédios e os montes, e o Tourigalo. ' + `A ${HOME.name} são ${km(HOME)} dela, e em casa de cada amigo há uma surpresa.` + ' Mapa: © OpenStreetMap contributors (ODbL). Relevo e ortofotos: informação geográfica cedida pela Direção-Geral do Território. Horizonte: Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers. As texturas da cidade são feitas, não fotografadas: as fotografias de Braga servem só de referência.'),
     ),
   );
-}
-
-// The map's photos' credits (render/photos.ts and cover.ts, braga-map's tasks 007 and 016), but the
-// DGT's, which the line gives with the relief: each source with what it photographs, Mapillary's in its
-// own words, its licence and the authors of the photos used. The game publishes every photo texture,
-// drawn or not.
-function photoCredits(): string {
-  return bragaMap()
-    .photoCredits.filter((c) => c.source !== 'DGT')
-    .map((c) => `${c.kinds.map((k) => (k === 'facade' ? 'das fachadas' : 'do chão')).join(' e ')}, ${c.source === 'Mapillary' ? '© Mapillary contributors' : c.source} (${c.authors.join(', ')}), ${c.licence}`)
-    .join('; ');
 }
 
 // The race's settings, from the menu's "Corrida": the host chooses and starts it, the others see

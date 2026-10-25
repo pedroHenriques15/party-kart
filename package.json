@@ -12,7 +12,7 @@
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
-    "braga-map": "github:pedroHenriques15/braga-map#v1.40.0",
+    "braga-map": "github:pedroHenriques15/braga-map#v1.41.0",
     "peerjs": "^1.5.5",
     "three": "^0.186.1"
   },

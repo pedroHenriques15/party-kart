@@ -6,7 +6,7 @@ import { autopilot } from '../src/car/autopilot.ts';
 import { carAt, newCar, speedOf, stepCar, type Car, type Input } from '../src/car/car.ts';
 import { angleDiff, clamp, v3 } from '../src/math.ts';
 import { buildTrack } from '../src/track/track.ts';
-import { CAR_R, STEP, wallSpan, worldGround } from '../src/world/ground.ts';
+import { CAR_R, STEP, wallSpan, worldGround, type Tread } from '../src/world/ground.ts';
 
 // The open world's area (braga-map's task 032) and the tiles round it, and the world's ground over
 // it, from the map's real tiles.
@@ -375,6 +375,51 @@ test('a riser more than a step high is a wall, and how many there are', () => {
   const c2 = ground.counts;
   console.log(`risers between treads: ${c2.risers}, ${c2['risers over a step']} more than ${STEP} m high, walls; and of the treads' edges over a street or a path, ${c2['tread edges over a street over a step']} of ${c2['tread edges over a street']}; that flight climbed ${(top - foot).toFixed(2)} m of its 2`);
   assert.ok(c2['risers over a step'] > 0 && c2['risers over a step'] < c2.risers / 20, `${c2['risers over a step']} of ${c2.risers}`);
+
+  // The flights (treads joined edge to edge, less than half a metre apart), and how many a kart goes
+  // up from its foot: its lowest tread no more than a step over the street, the pavement or the path
+  // beside it, where there's one (braga-map's task 051).
+  const all = [...new Set([...ground.d.treads.m.values()].flat())];
+  const root = new Map<Tread, Tread>(all.map((t) => [t, t]));
+  const find = (t: Tread): Tread => {
+    while (root.get(t) !== t) t = root.get(t)!;
+    return t;
+  };
+  // Each edge's middle, and the way out of the tread from it.
+  const edges = (t: Tread) =>
+    t.rings.flatMap((r) =>
+      r.flatMap(([ax, az], k) => {
+        const [bx, bz] = r[(k + 1) % r.length];
+        const L = Math.hypot(bx - ax, bz - az);
+        if (L < 0.05) return [];
+        const [mx, mz] = [(ax + bx) / 2, (az + bz) / 2];
+        const s = ground.tread(mx + ((bz - az) / L) * 0.05, mz - ((bx - ax) / L) * 0.05) === t ? -1 : 1;
+        return [[mx + ((s * (bz - az)) / L) * 0.05, mz - ((s * (bx - ax)) / L) * 0.05]];
+      }),
+    );
+  for (const t of all) {
+    for (const [x, z] of edges(t)) {
+      const o = ground.tread(x, z);
+      if (o && o !== t && Math.abs(o.y - t.y) < 0.5) root.set(find(o), find(t));
+    }
+  }
+  const flights = new Map<Tread, Tread[]>();
+  for (const t of all) flights.set(find(t), [...(flights.get(find(t)) ?? []), t]);
+  let fed = 0;
+  let up = 0;
+  for (const f of flights.values()) {
+    if (f.length < 2) continue;
+    const foot = f.reduce((a, t) => (t.y < a.y ? t : a));
+    const d = ground.d;
+    const beside = edges(foot)
+      .filter(([x, z]) => !ground.tread(x, z) && (d.roads.has(x, z) || d.paves.has(x, z) || d.paths.has(x, z)))
+      .map(([x, z]) => foot.y - ground.groundAt(x, z));
+    if (!beside.length) continue;
+    fed++;
+    if (beside.some((h) => h <= STEP)) up++;
+  }
+  console.log(`flights: ${[...flights.values()].filter((f) => f.length > 1).length} of two treads or more; ${fed} with a street, a pavement or a path at their foot, a kart going up ${up} of them from it`);
+  assert.ok(up >= fed * 0.9, `a kart goes up ${up} of ${fed} flights from their foot`);
 });
 
 // The Avenida João XXI's upper lane beside the tunnels' west mouth, 3.3 m wide on the cutting's top

@@ -134,7 +134,9 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
 - The buildings' facades are the map's (braga-map's task 017, `render/facades.ts`): each building's
   kind of facade, drawn in its real proportions, its colours, its walls' material, its ground floor
   along a street, its balconies and its shutters, as a session saw it in its photos or as the map
-  guesses it. The shops' signs are the map's too (`render/signs.ts`). Every building's facade is the kit's: the ten photo facades were
+  guesses it; and where a photo showed a street wall clearly enough, its doors and windows where they
+  are (braga-map's task 086, `facade.layout`: `layoutPieces` in `world/storeys.ts`, `laidOut` in
+  `render/facades.ts`), the storeys it didn't read and every other wall in its kind's rhythm. The shops' signs are the map's too (`render/signs.ts`). Every building's facade is the kit's: the ten photo facades were
   taken out with braga-map's task 082.
 - `?stats` shows what the game costs in a corner, for measuring it on a phone (`src/stats.ts`): the
   frame rate and the worst second (of the race, or round the city since the last; after its first two), the graphics level, draw calls,

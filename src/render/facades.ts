@@ -5,12 +5,13 @@
 // shader: a kind's bay (a window and the wall round it, one storey high) repeated along each wall and
 // up it, over its material's surface tiled at its real size, each part tinted with the building's own
 // colours (the walls', the ground floor's, the shutters').
-import type { Facade, FacadeMaterial, FacadeProportions, FacadeType } from 'braga-map';
+import type { Facade, FacadeMaterial, FacadeOpening, FacadeProportions, FacadeType } from 'braga-map';
 import * as THREE from 'three';
 import { anisotropy, type Quality } from './look.ts';
 
 // How a building's walls are laid out, shared with the simulation (the rooms' openings).
 export { baysOf, storeys } from '../world/storeys.ts';
+import { layoutPieces } from '../world/storeys.ts';
 
 export const TYPES: FacadeType[] = ['old-house', 'house', 'block-1950s', 'block-1970s-90s', 'block-2000s', 'glass-office', 'civic', 'church', 'commercial', 'warehouse', 'annex'];
 export const MATERIALS: FacadeMaterial[] = ['render', 'tiles', 'mosaic', 'azulejo', 'granite', 'stone', 'brick', 'concrete', 'block', 'glass', 'metal', 'panels'];
@@ -435,6 +436,42 @@ export interface WallLayout {
   base: Rgb;
   shut: Rgb;
   door: number;
+}
+
+// A wall laid out as its photo has it (braga-map's task 086): its pieces (world/storeys.ts's
+// layoutPieces), each storey read its openings where they are, each its kind's drawing cut from its bay
+// and stretched to its width (a window of the building's kind, a door, a garage's door, a shop's front, a
+// balcony's door as the 2000s block's floor-to-ceiling window), the wall plain between them, each storey
+// not read in its kind's rhythm; and over the top storey, up to the roof, plain wall. `point(s, h)` is the
+// wall's corner [x, y, z, s, h] s metres along it and h up from its foot; `top`, its top (s, h) along it
+// from end to end; `low`, how far below its foot it starts. False (and nothing drawn) where its top falls
+// below its storeys anywhere: it's drawn as before.
+export function laidOut(walls: Walls, w: WallLayout, storeys: (FacadeOpening[] | null)[], p: FacadeProportions, L: number, low: number, top: [number, number][], point: (s: number, h: number) => number[]): boolean {
+  const eaves = w.G + (w.floors - 1) * w.S;
+  if (top.some(([, h]) => h < eaves - 0.05)) return false;
+  const plain: WallLayout = { ...w, kit: [-1, -1, w.kit[2], w.kit[3]], door: -1 };
+  const layerOf = (kind: FacadeOpening['kind'], storey: number) =>
+    kind === 'window' ? w.kit[0] : kind === 'door' && !storey ? DOOR : kind === 'door' || kind === 'balcony' ? layerOfType('block-2000s') : layerOfGround(kind === 'garage' ? 'garages' : 'shops');
+  // Two triangles, up it then along, as a whole wall's fan is, so they face out.
+  const quad = (s0: number, s1: number, h0: number, h1: number, h2: number, l: WallLayout) => {
+    const [a, b, c, d] = [point(s0, h0), point(s1, h0), point(s1, h2), point(s0, h1)];
+    walls.tri(a, d, c, l);
+    walls.tri(a, c, b, l);
+  };
+  for (const q of layoutPieces(storeys, p, w.G, w.S, w.floors, L, low)) {
+    if (q.what === 'rhythm') quad(q.s0, q.s1, q.h0, q.h1, q.h1, w);
+    else if (q.what === 'plain') quad(q.s0, q.s1, q.h0, q.h1, q.h1, plain);
+    else {
+      // Its bay's drawing across it: u0 at s0, u1 at s1.
+      const [u0, u1] = q.u!;
+      const bayW = (q.s1 - q.s0) / (u1 - u0);
+      const layer = layerOf(q.what, q.storey);
+      quad(q.s0, q.s1, q.h0, q.h1, q.h1, { ...w, kit: [layer, layer, w.kit[2], w.kit[3]], door: -1, bays: 1, bayW, margin: q.s0 - u0 * bayW });
+    }
+  }
+  // Up to the roof: under each stretch of its top, plain.
+  for (let q = 0; q + 1 < top.length; q++) if (top[q + 1][0] - top[q][0] > 0.005) quad(top[q][0], top[q + 1][0], eaves, top[q][1], top[q + 1][1], plain);
+  return true;
 }
 
 export interface Kit {

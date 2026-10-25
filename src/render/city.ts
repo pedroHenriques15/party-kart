@@ -23,7 +23,7 @@ import { GRIDS, KINDS, loadCover, type Cover } from './cover.ts';
 import { raceMarks } from './road.ts';
 import { clipConvex, convexPieces, faces, shapeOf, wallTop } from './roofs.ts';
 import { buildStreets, groundPaths, streetEdges, type Built } from './streets.ts';
-import { baysOf, facadeKit, layerOfGround, layerOfType, linearOf, MATERIALS, storeys, Walls, type Kit, type WallLayout } from './facades.ts';
+import { baysOf, facadeKit, laidOut, layerOfGround, layerOfType, linearOf, MATERIALS, storeys, Walls, type Kit, type WallLayout } from './facades.ts';
 import { buildInteriors } from './interiors.ts';
 import type { Room } from '../world/interiors.ts';
 import { streetFront } from '../world/storeys.ts';
@@ -1171,8 +1171,9 @@ function faceQuad(batch: Batch, p: THREE.Vector3[], uv: [number, number][], n: [
 // fewer) with a railing round it; continuous, a slab the wall's length; enclosed, a slab glazed in
 // up to the next floor; French, a railing across the window. Slabs in the walls' colour (into the
 // flat roofs' batch, whose texture is concrete's grain), railings dark on an old house and a house,
-// light aluminium on a block.
-function balconiesOn(f: MapBuilding['facade'], P: FacadeProportions, w: WallLayout, a: [number, number], d: [number, number], n: [number, number], L: number, foot: number, into: { flat: Batch; rails: Batch }, colour: [number, number, number]): void {
+// light aluminium on a block. Where the wall's layout read a storey (`spans`: each storey's balconies'
+// doors, from and to along the wall), a balcony at each of its doors, as wide as its window's would be.
+function balconiesOn(f: MapBuilding['facade'], P: FacadeProportions, w: WallLayout, a: [number, number], d: [number, number], n: [number, number], L: number, foot: number, into: { flat: Batch; rails: Batch }, colour: [number, number, number], spans?: ([number, number][] | null)[]): void {
   const kind = f.balconies;
   if (kind === 'none' || kind === 'recessed' || !w.bays) return;
   const wallCol = new THREE.Color().setRGB(colour[0] / 255, colour[1] / 255, colour[2] / 255, THREE.SRGBColorSpace);
@@ -1203,9 +1204,30 @@ function balconiesOn(f: MapBuilding['facade'], P: FacadeProportions, w: WallLayo
   const D = Math.max(0.6, P.balcony || 1.2);
   for (let i = 1; i < w.floors; i++) {
     const y = foot + w.G + (i - 1) * w.S;
+    const read = spans?.[i];
     if (kind === 'continuous') {
+      // None on a storey read with no balcony's door.
+      if (read && !read.length) continue;
       slab(w.margin, L - w.margin, D, y - 0.18, y, wallCol, into.flat);
       railing(w.margin, L - w.margin, D, y, true);
+      continue;
+    }
+    if (read) {
+      for (const [s0, s1] of read) {
+        const mid = (s0 + s1) / 2;
+        if (kind === 'french') {
+          railing(s0 - 0.1, s1 + 0.1, 0.12, y, false);
+          continue;
+        }
+        const half = (s1 - s0) / 2 + 0.45;
+        if (kind === 'projecting') {
+          slab(Math.max(0, mid - half), Math.min(L, mid + half), D, y - 0.18, y, wallCol, into.flat);
+          railing(Math.max(0, mid - half), Math.min(L, mid + half), D, y, true);
+        } else if (kind === 'enclosed') {
+          slab(Math.max(0, mid - half), Math.min(L, mid + half), D, y - 0.18, y + 0.9, wallCol, into.flat, true);
+          slab(Math.max(0, mid - half), Math.min(L, mid + half), D, y + 0.9, y + Math.min(w.S - 0.25, 2.4), glass, into.flat, true);
+        }
+      }
       continue;
     }
     for (let k = 0; k < w.bays; k++) {
@@ -1261,13 +1283,13 @@ function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality
     for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) area += (pts[j][0] - pts[i][0]) * (pts[j][1] + pts[i][1]);
     if (area < 0) pts = [...pts].reverse();
     // A building cut back at the kerb keeps the whole one's roof.
-    return { b, pts, shape: shapeOf({ ...b, pts: b.whole ?? pts }) };
+    return { b, pts, shape: shapeOf({ ...b, pts: b.whole ?? pts }), rev: area < 0 };
   });
   const side = (a: [number, number], c: [number, number]) => `${a[0]},${a[1]}>${c[0]},${c[1]}`;
   const sides = new Map<string, (typeof all)[number]>();
   for (const it of all) for (let k = 0; k < it.pts.length; k++) sides.set(side(it.pts[k], it.pts[(k + 1) % it.pts.length]), it);
 
-  for (const { b, pts, shape } of all) {
+  for (const { b, pts, shape, rev } of all) {
     const { walls, tiles, flat, rails } = setOf(b);
     const base = b.y - 0.6;
     const foot = b.y;
@@ -1304,6 +1326,13 @@ function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality
         }
       }
     }
+    // Where its doors and windows are on each side, as a photo showed them (braga-map's task 086): the map's
+    // side for this one, run the other way where the footprint was turned round.
+    const layoutOf = (k: number, L: number) => {
+      const n = pts.length;
+      const st = f.layout?.[rev ? (2 * n - 2 - k) % n : k];
+      return st && (rev ? st.map((o) => o && o.map((q) => ({ ...q, at: L - q.at - q.w })).reverse()) : st);
+    };
     let u = 0;
     for (let k = 0; k < pts.length; k++) {
       const top = wallTop(shape, pts[k], pts[(k + 1) % pts.length]);
@@ -1326,6 +1355,7 @@ function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality
         const door = side ? side.door : k === doorWall && bays.bays ? Math.floor(bays.bays / 2) : -1;
         const layout: WallLayout = { G, S, floors, ...bays, s0: u, kit: [storeyLayer, groundLayer, wallMat, baseMat], wall: wallRgb, base: baseRgb, shut: shutRgb, door };
         const at = (x: number, z: number, y: number) => [x, y, z, Math.hypot(x - x0, z - z0), y - foot];
+        const laid = side?.open.length ? null : layoutOf(k, L);
         if (side?.open.length) {
           // With its openings: the wall's outline along it and up it (s, h) with a hole for each.
           const V2 = (s: number, h: number) => new THREE.Vector2(s, h);
@@ -1341,14 +1371,16 @@ function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality
             if (ex * nx + ez * nz < 0) walls.tri(a, d, c, layout);
             else walls.tri(a, c, d, layout);
           }
-        } else {
+        } else if (!(laid && laidOut(walls, layout, laid, P, L, base - foot, top.map(([x, z, h]) => [Math.hypot(x - x0, z - z0), h]), (s, h) => at(x0 + ((x1 - x0) * s) / L, z0 + ((z1 - z0) * s) / L, foot + h)))) {
           const foot0 = at(x0, z0, base);
           const corners = top.map(([x, z, h]) => at(x, z, foot + h));
           corners.push(at(x1, z1, base));
           for (let q = 0; q + 1 < corners.length; q++) walls.tri(foot0, corners[q], corners[q + 1], layout);
         }
-        // Its balconies, along a street, in the open world or by it.
-        if (onStreet && b.road <= balconyReach && floors > 1) balconiesOn(f, P, layout, [x0, z0], [(x1 - x0) / L, (z1 - z0) / L], [nx, nz], L, foot, { flat, rails }, map.facadeColours[f.colour]);
+        // Its balconies, along a street, in the open world or by it: where its layout has them, at its
+        // balconies' doors.
+        const spans = laid?.map((st) => st && st.filter((o) => o.kind === 'balcony').map((o): [number, number] => [o.at, o.at + o.w]));
+        if (onStreet && b.road <= balconyReach && floors > 1) balconiesOn(f, P, layout, [x0, z0], [(x1 - x0) / L, (z1 - z0) / L], [nx, nz], L, foot, { flat, rails }, map.facadeColours[f.colour], spans);
       }
       u += L;
     }

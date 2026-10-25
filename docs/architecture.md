@@ -672,7 +672,8 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   given up when it's left): the scene drawn into a buffer as the screen would show it (three tone maps and
   encodes only for the screen or an XR device's buffer, and this one says it's the latter, so the haze is
   still mixed in after the tone mapping), then the occlusion laid over it, then what's dithered resolved,
-  then SMAA to the screen; what's drawn over the world (your gun) after that, as on the other levels.
+  then the reflections, then SMAA to the screen; what's drawn over the world (your gun) after that, as on
+  the other levels.
   - **The sun's shadows in four cascades** (three's `CSM`) of 4096 px, ending 60, 200, 650 and 2,000 m off,
     in the one sun's place (hidden while they're on): the first as sharp as Ultra's one 140 m box was,
     faded into each other, turned with the sun each frame and fitted again when the camera's field of
@@ -696,6 +697,17 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     behind it: the dither's dots become their share of each pixel, a bare crown far off a soft mass, not a
     stipple. What stands in front of a crown and everything away from one are left as they were. Its own
     buffer, as it reads the frame's depth.
+  - **Reflections** (braga-map's task 117), from the frame itself: what reflects says how strongly in the
+    frame's alpha (`reflects`: 2, its spread's hundredths twice over, and its strength), and a pass sends
+    each such pixel's ray along its reflection (its normal from the depth round it) through the frame's
+    depth, in 40 steps that grow, till it passes behind what's drawn, and takes that pixel's colour: by
+    Schlick's Fresnel from water's 4% straight on, faded at the screen's edge and from 150 to 400 m, and
+    where it finds nothing or the sky, the material's own sky (the environment's). A surface that isn't
+    a mirror spreads what it reflects up and down the screen, as a wet street does. The Rio Este reflects
+    fully, a wet street (`?weather=grey`, `rain`) 0.6 and its paint 0.5, spread 0.04 of the way. It
+    reads the resolved frame and writes into the occlusion's buffer, done with by then. What's off the
+    screen isn't reflected (the far side of a street seen in a puddle at the screen's foot): the sky's
+    environment is drawn there, as before.
   - **SMAA** for the edges; not TAA, as three's `TAARenderPass` doesn't reproject (it adds up frames only
     while the camera is still).
 - **`Look`** (`render/look.ts`, braga-map's task 022): Braga's light at a moment of the day, by default the clear

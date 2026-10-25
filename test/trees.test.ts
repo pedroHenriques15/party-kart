@@ -18,7 +18,7 @@ test("Ultra's trees with limbs are the kinds the map says drop their leaves", ()
 
 // On Ultra each kind's crown follows its year in Braga (braga-map's task 093, src/render/season.ts): by
 // the game's default day, 13 March, the deciduous kinds are bare, as that day's photos have the planes.
-test('the crowns on Ultra by the date: bare in winter and on the default 13 March, in leaf in summer, turning in autumn (mid-November)', () => {
+test('the crowns on Ultra by the date: bare in winter and on the default 13 March, in leaf in summer, turning in autumn', () => {
   const kinds = map().treeKinds;
   const on = (date: string) => dayOf(Date.UTC(+date.slice(0, 4), +date.slice(5, 7) - 1, +date.slice(8, 10), 12));
   assert.equal(on('2026-03-13'), 72);
@@ -32,8 +32,11 @@ test('the crowns on Ultra by the date: bare in winter and on the default 13 Marc
     assert.deepEqual([at('2026-07-15').leaves, at('2026-07-15').turned], [1, 0], `${kind} in July`);
     const may = at('2026-05-01');
     assert.ok(may.leaves > 0.5 && may.fresh > 0, `${kind} on 1 May: ${JSON.stringify(may)}`);
-    const nov = at('2026-11-15');
-    assert.ok(nov.turned > 0.3 && nov.leaves > 0 && nov.leaves < 1, `${kind} on 15 November: ${JSON.stringify(nov)}`);
+    // Halfway from its leaves' turning to half of them down, as its year has it.
+    const autumn = seasonOf(year, Math.round((year!.turn! + year!.fall!) / 2));
+    assert.ok(autumn.turned > 0.3 && autumn.leaves > 0.5 && autumn.leaves < 1, `${kind} in autumn: ${JSON.stringify(autumn)}`);
+    // And in November, every one turning, falling or bare.
+    assert.ok(at('2026-11-30').turned > 0 && at('2026-11-30').leaves < 1, `${kind} on 30 November`);
   }
   // The limes in flower in June.
   assert.ok(seasonOf(kinds.find((k) => k.kind === 'lime')!.year, on('2026-06-20')).bloom > 0.5);

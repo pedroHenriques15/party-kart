@@ -661,7 +661,7 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   (braga-map's task 081): offered where the device isn't played by touch first and its graphics card takes
   textures 16,384 pixels wide or is a discrete one by its name (`ultraOffered`); `?quality=` sets any level
   whatever the device. Ultra builds the city at High's level (`levelOf`) but where a task gives it its own:
-  so far the screen's every pixel (no cap at 2), the near trees to 700 m, its frame (below), and its
+  so far the screen's every pixel (no cap at 2), the near trees to 700 m and in the wind (below), its frame (below), and its
   textures (braga-map's task 085): the map's own Ultra files (each made texture at twice High's size, the
   ground's and the barks' relief), the streets' drawings made 4× finer (1024 px a layer, `finer` in
   `textures.ts`), and every texture filtered at the card's most (`anisotropy` in `look.ts`, set before the
@@ -800,7 +800,12 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     reaches the graphics card a frame later, so the counts change then). Further off, every tree is
     a billboard of its kind, baked from a near tree of its kind's usual proportions when the city is
     built, turned to face the camera and as wide as its crown and as tall as itself; the two fade
-    into each other, dithered, over 25 m. Then the Rio Este,
+    into each other, dithered, over 25 m.
+    **On Ultra** (braga-map's task 089) the near ones sway in a breeze from the west-south-west in gusts
+    (`WIND`, by the game's clock, `clock` in `look.ts`: still at 0, so `?scenery`'s shots are), the crown
+    from its foot over a trunk that stands still, and those of the kinds that drop their leaves
+    (`DECIDUOUS`, the map's) within 150 m have four limbs in their bark, from their own trunk's top into
+    their leaves. Then the Rio Este,
     the decks' pillars and abutments and the tunnels' mouths (`levels.ts`), brown signs to
     landmarks on the pavement, the granite plinth with Braga's arms at the start (free roam's first
     spot: its top is a block the karts stand on, `stand` in `ground.ts`), and the easter eggs on the friends' houses (`eggs.ts`). Neither buildings nor
@@ -1045,8 +1050,8 @@ card waited on before and after), is 15.0–16.4 ms at 700 m, where a frame alon
 alone runs slower than frames one after another, as the card and the browser don't overlap): a gather adds
 3–4 ms, so about 13–14 ms as you drive (worked out so, not measured driving). The worst single steps, 42 and
 108 ms in two runs (27–56 before, and at High). The near trees go into each of the four
-cascades whole (they're drawn without culling), the most of the cascades' cost; braga-map's task 089
-remakes the trees to the horizon, and their cost with them. The buffers it draws through take about 120 MB more
+cascades whole (they're drawn without culling), the most of the cascades' cost: braga-map's task 089 measured
+where (below). The buffers it draws through take about 120 MB more
 on the card at 2560 by 1440 (worked out from their sizes, not measured).
 
 **Ultra's textures** (braga-map's task 085, 2026-10-24: party-kart on braga-map's branch for it, the same card,
@@ -1070,6 +1075,31 @@ So Ultra takes about 170 MB more on the card (some 550 MB in all with the street
 about 40 MB more than High, the ground's normal maps 28 MB of it; its frame is as it was. The land's shader
 samples 12 of WebGL's 16 textures on Ultra (13 on High, as before). Ultra's colours in UASTC as well (some 20
 MB more) looked the same at these three viewpoints, so they're ETC1S as the other levels' are.
+
+**Ultra's trees in the wind** (braga-map's task 089, 2026-10-25: party-kart on braga-map 1.40.0, the same card,
+`shots/2026-10-25-after089/` against main's `before089`, the 33 viewpoints at Ultra, High and Low, 720 pixels
+high; High and Low draw as before, to the pixel):
+
+| | Ultra with the wind and the limbs | Ultra before them (085) |
+|---|---|---|
+| The near trees | swaying (still in `?scenery`), the deciduous kinds' limbs within 150 m | still, no limbs |
+| The city alone: draw calls (median), the cascades' passes counted | 243–633 (493) | 233–618 (483) |
+| The city alone: triangles (median) | 6.94–13.18 M (9.37) | 6.43–11.78 M (8.87) |
+| Textures | 462 MB | 462 MB |
+| A frame (median) | 3.45–7.51 ms (4.66) | 3.37–7.25 ms (4.71) |
+| Building the city (median) | 8.4–14.7 s (8.7) | 8.5–13.7 s (8.8) |
+
+At 2560 by 1440, two runs each, a frame is 10.0–10.1 ms at `falperra` (9.8 before), 7.4 at `alameda-fujacal`
+(7.3) and 9.3–9.5 at `picoto-top` (9.3). A gather of the near trees, every 20 m, takes 1.8 ms (1.5 before: the
+limbs' trunk tops written too), and the frame drawn alone after it 13.2–13.3 ms (12.8–15.7 before: the runs
+spread wider than anything 089 changed). **What the near trees cost in the cascades:** at `falperra` their
+shadows are 3.7 ms of the 9.8 (6.1 with them off; 1.0 at `alameda-fujacal`, 3.3 at `picoto-top`), and
+cascade by cascade (the frame with them left out of that one) 1.3 ms in the first (to 60 m), 0.9 in the
+second (200 m), 0.4 in the third (650 m) and 0.3 in the last (2 km), though the last two draw every one of
+them: what they cost is the leaf cards filling the fine near maps, not how many trees go in. Drawing into
+each cascade only the trees that could shade what it covers (by their rings of cells, nearest first) saved
+0.3–0.4 ms, and it wasn't kept: to be sure of not losing a shadow on Braga's slopes it would need the
+ground's height, more than it saves. (The cascade by cascade figures were taken with it on.)
 
 **What every street in the area cost** (task 035, against `shots/2026-10-14-task012/`, the same 29
 viewpoints): before it, the city was 58–184 draw calls on High and Medium and 40–165 on Low,

@@ -670,8 +670,8 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
 - **Ultra's frame** (`UltraFrame`, `render/post.ts`, braga-map's task 090; made the first time Ultra draws,
   given up when it's left): the scene drawn into a buffer as the screen would show it (three tone maps and
   encodes only for the screen or an XR device's buffer, and this one says it's the latter, so the haze is
-  still mixed in after the tone mapping), then the occlusion laid over it, then SMAA to the screen; what's
-  drawn over the world (your gun) after that, as on the other levels.
+  still mixed in after the tone mapping), then the occlusion laid over it, then what's dithered resolved,
+  then SMAA to the screen; what's drawn over the world (your gun) after that, as on the other levels.
   - **The sun's shadows in four cascades** (three's `CSM`) of 4096 px, ending 60, 200, 650 and 2,000 m off,
     in the one sun's place (hidden while they're on): the first as sharp as Ultra's one 140 m box was,
     faded into each other, turned with the sun each frame and fitted again when the camera's field of
@@ -688,6 +688,13 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     smoothed only close by: from the depth alone it finds a crease between two walls too dark, and wider
     smoothing spread that over a narrow face beside it. A buffer of the surfaces' own normals (which
     reflections would want too) would let it go further.
+  - **What's dithered, resolved** (braga-map's task 132): what's drawn as a share of each pixel by a
+    dither, with no blending to give the rest to what's behind (a bare crown's finer twigs far off, a bare
+    billboard's), flags itself in the frame's alpha (`dithered`, below 0 by how much), and a pass averages
+    each pixel flagged, or seen through one within a pixel of it, with those round it that are flagged or
+    behind it: the dither's dots become their share of each pixel, a bare crown far off a soft mass, not a
+    stipple. What stands in front of a crown and everything away from one are left as they were. Its own
+    buffer, as it reads the frame's depth.
   - **SMAA** for the edges; not TAA, as three's `TAARenderPass` doesn't reproject (it adds up frames only
     while the camera is still).
 - **`Look`** (`render/look.ts`, braga-map's task 022): Braga's light at a moment of the day, by default the clear
@@ -814,14 +821,18 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     kind's year in Braga as the map gives it (`treeKinds`' `year`): bare in winter, their buds bursting,
     a spring's paler green, summer's, their autumn colour, falling. Each card of a crown is in leaf or
     bare twigs (the map's `twigs`, a card of them as its leaves are) by a number of its own, so the crown
-    thins card by card; the twigs are see-through by their own share of each pixel, dithered, so a bare
-    crown far off is a haze of them; the billboards are baked in the season, and the shadows follow it. A
+    thins card by card; the twigs are see-through by their own share of each pixel, dithered (the cards in
+    two sets apart) and the dither resolved in Ultra's frame, so a bare crown far off is a soft grey-brown
+    mass; the billboards are baked in the season, and the shadows follow it. A
     kind in summer leaf draws as before. By the default 13 March the deciduous kinds are bare, as that
     day's photos have the planes; the map's evergreen broadleaves (its tenth kind since task 093: the
     hills' woods, green in their winter photos, and the evergreens the photos and the map name) keep
     their leaves. They're drawn as the broadleaf is, in its textures (loaded once), and below Ultra with
     the broadleaves, as before. The twigs' cards are darker seen against the sun, as a twig's shaded
-    side is. Then the Rio Este,
+    side is, half way to their own grey, and take no sheen and a third of the sun (`TWIG_SUN`): a card's
+    normal is its crown's, near upright, and seen from below against the sun its sheen drew the twigs white
+    and pinkish, a hoarfrost close up and a pale haze over the town (task 132), where the winter photos'
+    twigs are dark against the sky. Then the Rio Este,
     the decks' pillars and abutments and the tunnels' mouths (`levels.ts`), brown signs to
     landmarks on the pavement, the granite plinth with Braga's arms at the start (free roam's first
     spot: its top is a block the karts stand on, `stand` in `ground.ts`), and the easter eggs on the friends' houses (`eggs.ts`). Neither buildings nor
@@ -1134,6 +1145,14 @@ At 2560 by 1440, two runs each, back to back with main: a frame is 10.6–10.7 m
 trees takes 1.7–1.9 ms either way. The round's own frame times aren't comparable: the owner was playing on
 the PC while part of it was shot. The draw calls are the evergreen broadleaves' meshes, the triangles
 mostly the limbs' forks.
+
+**Ultra's bare twigs dark** (braga-map's task 132, 2026-10-25: `shots/2026-10-25-after132/` against
+`after093`, main's state to the pixel, the 33 viewpoints at Ultra, High and Low, on braga-map 1.43.0): High and
+Low draw as before, to the pixel; on Ultra one more draw call and triangle (the resolve's), the textures the
+same, 462 MB, and a buffer the screen's size more (29 MB at 2560 by 1440, half floats). At 2560 by 1440, two
+runs each, back to back with main: a frame is 10.7 ms at `falperra` either way, 8.9–9.0 at `capela-sao-joao`
+(8.8–8.9), 7.9 at `alameda-fujacal` (7.7) and `lobato-pavement` (7.8), and 9.8 at `picoto-top` (9.6–9.7): the
+resolve and the twigs' light 0.0–0.2 ms.
 
 **What every street in the area cost** (task 035, against `shots/2026-10-14-task012/`, the same 29
 viewpoints): before it, the city was 58–184 draw calls on High and Medium and 40–165 on Low,

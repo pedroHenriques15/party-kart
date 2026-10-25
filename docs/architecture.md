@@ -1175,11 +1175,10 @@ and Low, 720 pixels high; High and Low draw as before, to the pixel):
 | The kit's bays and surfaces | 512 px a side, the bays in relief | 256 px |
 | Draw calls, triangles | the same | |
 | Textures, as `textureBytes` counts them | 511 MB | 462 MB |
-| A frame at 1920 by 1440 (two runs each, back to back with main) | 8.4–8.8 ms (one of 9.1) | 8.4–8.8 ms |
-| Building the city | 15.4–16.6 s | 15.0–15.7 s |
+| A frame, and building the city | to be taken again (the first were taken beside a game) | |
 
 The kit's three textures take 59 MB with their mipmaps (the bays, the surfaces and the bays' relief), 49
-more than High's two; working the relief out adds about half a second to building the city.
+more than High's two.
 
 **What every street in the area cost** (task 035, against `shots/2026-10-14-task012/`, the same 29
 viewpoints): before it, the city was 58–184 draw calls on High and Medium and 40–165 on Low,

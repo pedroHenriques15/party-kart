@@ -784,6 +784,11 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     (render, small tiles, mosaic, azulejos, granite, stone slabs, brick, concrete, blocks, glass,
     metal sheets, panels); the bay's alpha says what each pixel is, so one shader tints the wall with
     the building's colour, the ground floor with its base's and the roller shutters with theirs. The
+    bays and the surfaces are 256 px a side (128 on Low); on Ultra 512, and the bays in relief
+    (braga-map's task 123, `render/relief.ts`): each part of a bay drawn with how far it stands out of its
+    wall or into it (a window's frame in its reveal, its glass behind, a sill, a stone frame, a shutter's
+    slats, a shop's glass, an arcade), turned into normals the walls' shader tilts its light by, their
+    alpha the bay's panes (for a pane's reflections). The
     walls (and the photo facades) take a third of the sky's reflections everything else takes
     (`WALL_SKY`, in their shader: three.js gives a material the scene's environment at the scene's
     intensity whatever its own says), as the hemisphere light lights them from the sky already and the
@@ -1153,6 +1158,28 @@ same, 462 MB, and a buffer the screen's size more (29 MB at 2560 by 1440, half f
 runs each, back to back with main: a frame is 10.7 ms at `falperra` either way, 8.9–9.0 at `capela-sao-joao`
 (8.8–8.9), 7.9 at `alameda-fujacal` (7.7) and `lobato-pavement` (7.8), and 9.8 at `picoto-top` (9.6–9.7): the
 resolve and the twigs' light 0.0–0.2 ms.
+
+**Ultra's roofs** (braga-map's task 087, 2026-10-25: `shots/2026-10-25-after087b/` against main's
+`before087b`, both on braga-map 1.43.0, `picoto-top`, `monte-da-forca`, `bom-jesus`, `sameiro`,
+`lobato-crossing` and `fujacal-west` at Ultra, High and Low, 720 pixels high; High and Low draw as before, to
+the pixel): on Ultra the same draw calls (`lobato-crossing` one fewer) and textures (462 MB), the triangles
+3.6% to 6.2% more (`picoto-top` 14.02 to 14.63 M), the frame within 0.2 ms; braga-map's tiles 9.7% more to
+download (15.7 MB against 14.3).
+
+**Ultra's facade kit** (braga-map's task 123, 2026-10-25: `shots/2026-10-25-after123/` against main's
+`before123`, both on braga-map 1.44.0, `conselheiro-lobato`, `lobato-east` and `fujacal-start` at Ultra, High
+and Low, 720 pixels high; High and Low draw as before, to the pixel):
+
+| | Ultra's facade kit | Ultra before it |
+|---|---|---|
+| The kit's bays and surfaces | 512 px a side, the bays in relief | 256 px |
+| Draw calls, triangles | the same | |
+| Textures, as `textureBytes` counts them | 511 MB | 462 MB |
+| A frame at 1920 by 1440 (two runs each, back to back with main) | 8.4–8.8 ms (one of 9.1) | 8.4–8.8 ms |
+| Building the city | 15.4–16.6 s | 15.0–15.7 s |
+
+The kit's three textures take 59 MB with their mipmaps (the bays, the surfaces and the bays' relief), 49
+more than High's two; working the relief out adds about half a second to building the city.
 
 **What every street in the area cost** (task 035, against `shots/2026-10-14-task012/`, the same 29
 viewpoints): before it, the city was 58–184 draw calls on High and Medium and 40–165 on Low,

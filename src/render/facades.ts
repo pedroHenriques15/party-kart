@@ -124,9 +124,10 @@ class Bay {
       this.lines(x + 0.04, y + h - d, w - 0.08, d, 'rgba(0,0,0,0.18)', Math.round(d / 0.06), true, 0.012, FRAME + 0.01);
     }
   }
-  // Its relief as normals (relief.ts), its panes in their alpha, as rgba() lays the bay out.
+  // Its relief as normals (relief.ts), its edges softened over 3 cm (a reveal's side as it's seen at an
+  // angle, so it reads past a pixel or two 20 m off), its panes in their alpha, as rgba() lays the bay out.
   normals(): Uint8Array {
-    return normalsOf(this.z!, N, this.w / N, this.h / N, 0.015, this.q!);
+    return normalsOf(this.z!, N, this.w / N, this.h / N, 0.03, this.q!);
   }
   // The bay as RGBA, row 0 its bottom (as a texture's v runs up), the alpha what each pixel is.
   rgba(): Uint8Array {

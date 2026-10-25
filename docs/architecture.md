@@ -765,7 +765,10 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   - Buildings are their footprints from the map, standing on the ground at their lowest corner
     (`y`, from the map), so a row of houses steps down a hill, and raised to their floors, with
     hipped or gabled roofs over each footprint's rectangle where it nearly fills it (flat otherwise;
-    cut to it when the building's been cut at the kerb). Their walls are their facades as the map
+    cut to it when the building's been cut at the kerb). On Ultra, a roof is its own planes where
+    braga-map measured them (its task 087, `render/roofs.ts`): each group of planes where it's the
+    highest, so an L's valleys show, the eaves out as far as the points reach, a flat roof's deck
+    inside its parapet, and what stands on it (a chimney, a dormer, a lift's room) as boxes. Their walls are their facades as the map
     says they are (braga-map's task 017, `render/facades.ts`): the kind's bay (a window and the wall
     round it, a storey high, drawn on a canvas in metres in the kind's proportions,
     `map().facadeTypes`) repeated along each wall and up it, the ground floor below the first

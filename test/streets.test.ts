@@ -180,7 +180,7 @@ test("the land steps under a retaining wall, not in front of it: none stands ove
   // triangle a wall's footprint, or a strip along a pavement's back where the land's higher (braga-map's
   // task 044), meets cut along it.
   const stretches = retainingStretches(world);
-  const S = new Surface(new Lattice(world.box, 10, 2), land, new Holes([...wallFootprints(stretches), ...ground.backs()]));
+  const S = new Surface(new Lattice(world.box, 10, 2), land, new Holes([...wallFootprints(stretches), ...ground.backs().map((b) => b.pts)]));
   S.L.fine.fill(1);
   const near = (q: (typeof stretches)[number], x: number, z: number) => {
     const [dx, dz] = [q.bx - q.ax, q.bz - q.az];

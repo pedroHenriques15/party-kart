@@ -319,10 +319,11 @@ export async function buildCity(track: Track, course: Course, graphics: Graphics
   // where the land shows beside a street and its triangles would miss it: splitting them all, round
   // the 80 km of the map's retaining walls, cost a fifth more triangles at every viewpoint. And the
   // strips along a pavement's back where the land behind is higher than braga-map lays it (its task
-  // 044, ground.ts's backs): the land steps there, up the pavement's granite face, and each cell one
-  // meets is split, or the land would slope up over the pavement across it.
-  const walls = new Holes([...wallFootprints(retainingStretches(map)), ...wg.backs()]);
-  const backs = new Holes(wg.backs());
+  // 044, ground.ts's backs): the land steps there, up the pavement's granite face; and each cell one
+  // meets where it steps more than half a metre (on Low a metre) is split, or the land would slope up
+  // over the pavement across it.
+  const walls = new Holes([...wallFootprints(retainingStretches(map)), ...wg.backs().map((b) => b.pts)]);
+  const backs = new Holes(wg.backs().filter((b) => b.step > (quality === 'low' ? 1 : 0.5)).map((b) => b.pts));
   {
     const r = lat.r;
     const tol = quality === 'high' ? 0.8 : quality === 'medium' ? 1 : 1.2;

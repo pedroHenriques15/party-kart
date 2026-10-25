@@ -34,6 +34,15 @@ export const STEP = 0.3; // the highest a car steps up onto: a kerb, not a wall
 // How far out from a pavement laid at its heights the land rises from it no more than a metre a metre
 // (worldGround's land, braga-map's task 044).
 const BAND = 3;
+// The least the land behind a pavement laid at its heights stands over it for the land to be cut there
+// (WorldGround.backs): a kerb under the pavement, it stands less than this over it in a cell.
+const BACK = 0.3;
+
+// A strip along a pavement's back the land is cut along, and the most the land behind steps up there.
+export interface Back {
+  pts: [number, number][];
+  step: number;
+}
 const KERB = 0.15; // a kerb's height over its carriageway, as braga-map's streets.mjs has it
 const DROP = 1.2; // how far a pavement slopes up from a kerb dropped at a crossing
 const GRADE = 0.7; // a piece off the ground meets the land "at grade" within this, and is eased to it
@@ -449,7 +458,7 @@ interface Data {
   laidList: Laid[];
   // Along such a pavement's edge where the land behind is higher than it, strips the land is cut along
   // (render/city.ts), so it steps there: made when first asked for (WorldGround.backs).
-  backs: [number, number][][] | null;
+  backs: Back[] | null;
   dropped: Cells<Wall>; // kerbs dropped at crossings
   kerbs: Cells<Wall>; // raised kerbs, for which way a bump goes
   lines: Cells<{ ax: number; az: number; bx: number; bz: number; ya: number; yb: number; ground: boolean }>;
@@ -517,17 +526,18 @@ export class WorldGround implements Ground {
   // (laidOver), so this game's own changes to the land under the streets (at a retaining wall, a
   // tunnel's mouth, the stadium's pads) carry it with them. From tiles without those heights, a kerb's
   // height, sloping down to a kerb dropped at a crossing.
-  // Where the land behind a pavement laid at its heights is higher than it by more than a kerb, 30 cm,
-  // a metre or 2 m out, across a cell of the land's lattice (braga-map's task 044): a strip 2 cm wide
-  // along that edge, a metre at a time, which the land is cut
-  // along (render/city.ts), so it steps there, up the pavement's granite face (render/streets.ts), and
-  // doesn't slope up over the pavement across a cell of its lattice. (By a kerb or less, the land under
-  // the pavement a kerb under it, it stands no more than that over it, as anywhere.) Not where another
-  // street's beyond. Made when first asked for: only the land's drawing needs them.
-  backs(): [number, number][][] {
+  // Where the land behind a pavement laid at its heights is higher than it by more than BACK, 30 cm, a
+  // metre or 2 m out, across a cell of the land's lattice (braga-map's task 044): a strip 2 cm wide
+  // along that edge, for each run of it, which the land is cut along (render/city.ts), so it steps there
+  // up the pavement's granite face (render/streets.ts) and doesn't slope up over the pavement across a
+  // cell; and the most it steps, for which cells to split for it. (Less, the land under the pavement a
+  // kerb under it, it stands no more than a few centimetres over it in a cell.) Not where another
+  // street's beyond; but where a building is, its base in braga-map's ground over the pavement. Made
+  // when first asked for: only the land's drawing needs them.
+  backs(): Back[] {
     if (this.d.backs) return this.d.backs;
     const { world, land, roads, paves, paths, raised } = this.d;
-    const backs: [number, number][][] = [];
+    const backs: Back[] = [];
     for (const q of this.d.laidList) {
       let e = 0;
       for (const r of q.outline) {
@@ -535,22 +545,35 @@ export class WorldGround implements Ground {
         for (let k = 0; k < r.length; k++) a2 += r[k][0] * r[(k + 1) % r.length][1] - r[(k + 1) % r.length][0] * r[k][1];
         const out = Math.sign(a2) || 1;
         for (let k = 0; k < r.length; k++, e += 6) {
-          // The edge, and its heights at its ends (Laid's e).
+          // The edge, and its heights at its ends (Laid's e), a metre at a time.
           const [ax, az, ay, bx, bz, by] = q.e.slice(e, e + 6);
           const L = Math.hypot(bx - ax, bz - az);
           if (L < 1e-3) continue;
           const [nx, nz] = [(out * (bz - az)) / L, (-out * (bx - ax)) / L];
           const n = Math.ceil(L);
+          let from = -1;
+          let step = 0;
+          const strip = (i0: number, i1: number) => {
+            const [px, pz, qx, qz] = [ax + ((bx - ax) * i0) / n, az + ((bz - az) * i0) / n, ax + ((bx - ax) * i1) / n, az + ((bz - az) * i1) / n];
+            backs.push({ pts: [[px - nx * 0.01, pz - nz * 0.01], [qx - nx * 0.01, qz - nz * 0.01], [qx + nx * 0.01, qz + nz * 0.01], [px + nx * 0.01, pz + nz * 0.01]], step });
+          };
           for (let i = 0; i < n; i++) {
-            const [px, pz] = [ax + ((bx - ax) * i) / n, az + ((bz - az) * i) / n];
-            const [qx, qz] = [ax + ((bx - ax) * (i + 1)) / n, az + ((bz - az) * (i + 1)) / n];
-            const [mx, mz] = [(px + qx) / 2, (pz + qz) / 2];
+            const [mx, mz] = [ax + ((bx - ax) * (i + 0.5)) / n, az + ((bz - az) * (i + 0.5)) / n];
             const [ox, oz] = [mx + nx * 0.3, mz + nz * 0.3];
-            const y = ay + ((by - ay) * (i + 0.5)) / n + KERB;
-            if (roads.has(ox, oz) || paves.has(ox, oz) || paths.has(ox, oz) || raised.has(ox, oz)) continue;
-            if (![0.3, 1, 2].some((o) => world.height(mx + nx * o, mz + nz * o) > y - 0.5 && land.land(mx + nx * o, mz + nz * o) > y)) continue;
-            backs.push([[px - nx * 0.01, pz - nz * 0.01], [qx - nx * 0.01, qz - nz * 0.01], [qx + nx * 0.01, qz + nz * 0.01], [px + nx * 0.01, pz + nz * 0.01]]);
+            const y = ay + ((by - ay) * (i + 0.5)) / n;
+            let up = 0;
+            if (!roads.has(ox, oz) && !paves.has(ox, oz) && !paths.has(ox, oz) && !raised.has(ox, oz)) {
+              for (const o of [0.3, 1, 2]) if (world.height(mx + nx * o, mz + nz * o) > y + BACK - 0.5) up = Math.max(up, land.land(mx + nx * o, mz + nz * o) - y);
+            }
+            if (up > BACK) {
+              if (from < 0) [from, step] = [i, 0];
+              step = Math.max(step, up);
+            } else if (from >= 0) {
+              strip(from, i);
+              from = -1;
+            }
           }
+          if (from >= 0) strip(from, n);
         }
       }
     }

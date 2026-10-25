@@ -779,7 +779,8 @@ export function cover(g: WorldGround, id: string, inside: (x: number, z: number)
   // cover): a box beside it (by the van's bonnet), and for the scaffold a crate between them; none
   // down a kerb from it, nor one a walker comes to off a kerb, from its far side, which takes the
   // run-up the jump onto it needs (braga-map's task 111, which moved the arenas' cover, stood a skip
-  // across a kerb).
+  // across a kerb); nor one more than 3 cm lower than it, whose top is out of the jump's reach of its
+  // (braga-map's task 044, laying the pavements level, left one 5 cm lower).
   const stepped = new Set<Prop[]>();
   for (const a of anchors) {
     const base = a[0];
@@ -788,7 +789,7 @@ export function cover(g: WorldGround, id: string, inside: (x: number, z: number)
       const [dx, dz] = [p.x - base.x, p.z - base.z];
       const d = Math.hypot(dx, dz) || 1;
       const [x, z] = [p.x + (dx / d) * 1.1, p.z + (dz / d) * 1.1];
-      return p.base >= base.base - 0.05 && Math.abs(g.floor(x, z, p.base + 0.5).y - p.base) < 0.05;
+      return p.base >= base.base - 0.03 && Math.abs(g.floor(x, z, p.base + 0.5).y - p.base) < 0.05;
     };
     for (const p of beside(base, base.kind === 'scaffold' ? 'crate' : 'box', at, rand)) {
       if (props.length - cars >= MOST) break;

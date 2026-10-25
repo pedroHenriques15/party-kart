@@ -325,9 +325,11 @@ export function heldAtWalls(stretches: Stretch[], nat: (x: number, z: number) =>
 
 // The land in the box (and 100 m round it, for the river). Given the race's track, the river is
 // kept well below the road where the road crosses it.
-export function makeLand(map: Braga, B: Box, track?: Track): Land {
-  // Braga-map's ground, held either side of its retaining walls (task 111).
-  const nat = heldAtWalls(retainingStretches(map), map.height);
+// ground: braga-map's ground, or as ground.ts has it, a kerb under a pavement braga-map lays lower than
+// the land (its task 044).
+export function makeLand(map: Braga, B: Box, track?: Track, ground: (x: number, z: number) => number = map.height): Land {
+  // That ground, held either side of its retaining walls (task 111).
+  const nat = heldAtWalls(retainingStretches(map), ground);
   const river: Reach[] = [];
   for (const r of map.rivers) {
     const pts = r.pts

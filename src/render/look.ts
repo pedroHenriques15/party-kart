@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { braga, sunAt, sunDir } from '../sun.ts';
 import { UltraFrame } from './post.ts';
+import { dayOf } from './season.ts';
 
 // The three levels the city is built at, a phone's and a laptop's; and the graphics a player picks,
 // which has Ultra above them, for a PC only (braga-map's task 081): everything past what a phone holds
@@ -45,6 +46,8 @@ const knob = (k: string, v: number) => (q.has(k) ? Number(q.get(k)) : v);
 export const DEFAULT_TIME = '2026-03-13T15:15';
 const when = braga(q.get('time') ?? '') ?? braga(DEFAULT_TIME)!;
 export const SUN = sunAt(when);
+// The day of the year it is (1 on 1 January): the trees' season on Ultra, braga-map's task 093.
+export const DAY = dayOf(when);
 const toSun = sunDir(when);
 export const SUN_DIR = new THREE.Vector3(toSun.x, toSun.y, toSun.z).normalize();
 // The street lamps are on once the sun is this low.

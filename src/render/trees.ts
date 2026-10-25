@@ -1,13 +1,14 @@
 // Trees. The first track's (buildTrees, plantTrees): purple jacarandas and plane trees down the Avenida,
 // round trees in the lowlands, pines on the hills, cypresses by the churches; and the city's, the map's
 // (cityTrees). Instanced, a few draw calls for thousands of trees.
-import type { TreeKind as MapTreeKind, TreeKindOf } from 'braga-map';
+import type { TreeKind as MapTreeKind, TreeKindOf, TreeYear } from 'braga-map';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RIVER_HALF_W } from '../track/layout.ts';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
-import { anisotropy, clock, levelOf, type Graphics } from './look.ts';
+import { anisotropy, clock, DAY, levelOf, type Graphics } from './look.ts';
 import { ktx2Loader } from './ktx2.ts';
+import { seasonOf } from './season.ts';
 import { LAKE, riverDistance } from './world.ts';
 
 type Ground = (x: number, z: number) => number;
@@ -165,7 +166,8 @@ export function plantTrees(trees: Tree[], TILE = 300, plain: boolean | 'lean' = 
 // leaves hangs below its foot (braga-map's task 063). Instanced: near, a crown and a trunk mesh a kind,
 // filled with the trees round the camera each time it has gone STEP metres; far, a mesh a kind holding
 // every tree, which draws none within the near ones' reach. On Ultra (braga-map's task 089) the near ones
-// sway in the wind, and those of the kinds that drop their leaves have their limbs drawn.
+// sway in the wind, and those of the kinds that drop their leaves have their limbs drawn; and those
+// kinds' crowns are in their season, near and far, by the date (task 093: bare twigs in winter).
 
 export interface CityTree {
   kind: MapTreeKind;
@@ -262,46 +264,62 @@ function cardCrown(kind: MapTreeKind, n: number): THREE.BufferGeometry {
 }
 
 // A deciduous crown's limbs over the unit crown: a few, each from its trunk's top (`aTrunkTop`, the tree's
-// own, as its trunk stands off its crown's middle and leans) out and up to a point well inside its
-// leaves (`aCentre`), a tube of a few lengths tapering to a twig; round it, `position.xy` the way out
-// from its middle line (the shader turns it to the limb's own way, which differs from tree to tree), and
-// how far along it, `aAlong`.
+// own, as its trunk stands off its crown's middle and leans) out and up into its leaves (`aCentre`), a
+// tube of a few lengths tapering to a twig, and two forks from each, on out and up towards the crown's
+// edge, which a bare crown shows (braga-map's task 093). A fork starts `aFrom.w` along its limb, whose end
+// is `aFrom.xyz` (a limb's own `aFrom.w` is 0: it starts at the trunk's top), and is `aThick` as thick.
+// Round each, `position.xy` the way out from its middle line (the shader turns it to the limb's own way,
+// which differs from tree to tree), and how far along it, `aAlong`.
 const LIMB_SIDES = 6;
 function limbGeometry(kind: MapTreeKind): THREE.BufferGeometry {
   const s = SHAPES[kind], rnd = seeded(29 + CITY_KINDS.indexOf(kind) * 53);
-  const pos: number[] = [], end: number[] = [], along: number[] = [], uv: number[] = [], idx: number[] = [];
-  const LIMBS = 4, SEG = 4;
-  for (let k = 0; k < LIMBS; k++) {
-    const th = (k / LIMBS) * Math.PI * 2 + rnd() * 1.2, y1 = 0.4 + rnd() * 0.25, r1 = 0.5 * s.outline(y1) * (0.3 + 0.25 * rnd());
+  const pos: number[] = [], end: number[] = [], from: number[] = [], thick: number[] = [], along: number[] = [], uv: number[] = [], idx: number[] = [];
+  const LIMBS = 5, FORKS = 2, SEG = 4;
+  const tube = (tip: number[], start: number[], k: number) => {
     const base = pos.length / 3;
     for (let i = 0; i <= SEG; i++) {
       for (let j = 0; j < LIMB_SIDES; j++) {
         const a = (j / LIMB_SIDES) * Math.PI * 2;
         pos.push(Math.cos(a), Math.sin(a), 0);
-        end.push(Math.cos(th) * r1, y1, Math.sin(th) * r1);
+        end.push(...tip);
+        from.push(...start);
+        thick.push(k);
         along.push(i / SEG);
         uv.push(j / LIMB_SIDES, (i / SEG) * 3);
       }
       if (i)
         for (let j = 0; j < LIMB_SIDES; j++) {
           const a0 = base + (i - 1) * LIMB_SIDES + j, a1 = base + (i - 1) * LIMB_SIDES + ((j + 1) % LIMB_SIDES), b0 = a0 + LIMB_SIDES, b1 = a1 + LIMB_SIDES;
-          idx.push(a0, b0, a1, a1, b0, b1);
+          // Wound to face out, as its normals do (a limb is drawn from both sides, which turns a face's
+          // normal round where its back is seen).
+          idx.push(a0, a1, b0, a1, b1, b0);
         }
+    }
+  };
+  for (let k = 0; k < LIMBS; k++) {
+    const th = (k / LIMBS) * Math.PI * 2 + rnd() * 1.0, y1 = 0.45 + rnd() * 0.2, r1 = 0.5 * s.outline(y1) * (0.35 + 0.25 * rnd());
+    const tip = [Math.cos(th) * r1, y1, Math.sin(th) * r1];
+    tube(tip, [0, 0, 0, 0], 1);
+    for (let f = 0; f < FORKS; f++) {
+      const t = th + (f ? 1 : -1) * (0.35 + rnd() * 0.3), y2 = Math.min(0.92, y1 + 0.1 + rnd() * 0.2), r2 = 0.5 * s.outline(y2) * (0.55 + 0.25 * rnd());
+      tube([Math.cos(t) * r2, y2, Math.sin(t) * r2], [...tip, 0.5 + rnd() * 0.2], 0.5);
     }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('aCentre', new THREE.Float32BufferAttribute(end, 3));
+  g.setAttribute('aFrom', new THREE.Float32BufferAttribute(from, 4));
+  g.setAttribute('aThick', new THREE.Float32BufferAttribute(thick, 1));
   g.setAttribute('aAlong', new THREE.Float32BufferAttribute(along, 1));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx);
   return g;
 }
 
-// A limb's vertex, in the unit crown: along its line from its tree's trunk top to its end, bowed up a
-// little, round it at its radius in metres (k × the crown's width within [min, max], down to a fifth at
-// its end); and lit by the way out from its line, in metres.
+// A limb's vertex, in the unit crown: along its line from its tree's trunk top (or, a fork, from along
+// its limb) to its end, bowed up a little, round it at its radius in metres (k × the crown's width within
+// [min, max], a fork's less, down to a fifth at its end); and lit by the way out from its line, in metres.
 function limbVertex(sh: Shader, size: [number, number, number]): void {
   sh.uniforms.cardSize = { value: new THREE.Vector3(...size) };
   sh.uniforms.windTime = clock;
@@ -312,6 +330,8 @@ function limbVertex(sh: Shader, size: [number, number, number]): void {
       '#include <common>',
       `#include <common>
 attribute vec3 aCentre;
+attribute vec4 aFrom;
+attribute float aThick;
 attribute float aAlong;
 attribute vec3 aTrunkTop;
 uniform vec3 cardSize;
@@ -319,13 +339,14 @@ varying vec3 vTreeAt;
 ${WIND}
 vec3 limbAt(out vec3 nrm) {
   vec3 iS = max(vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz)), vec3(1e-3));
-  vec3 way = normalize((aCentre - aTrunkTop) * iS);
+  vec3 from = mix(aTrunkTop, aFrom.xyz, aFrom.w) + vec3(0.0, 0.05 * sin(3.1416 * aFrom.w), 0.0);
+  vec3 way = normalize((aCentre - from) * iS);
   vec3 side = cross(way, vec3(0.0, 1.0, 0.0));
   side = length(side) > 1e-3 ? normalize(side) : vec3(1.0, 0.0, 0.0);
   vec3 outward = side * position.x + cross(way, side) * position.y;
   nrm = outward * iS;
-  float cs = clamp(cardSize.x * iS.x, cardSize.y, cardSize.z) * (1.0 - 0.8 * aAlong);
-  return mix(aTrunkTop, aCentre, aAlong) + vec3(0.0, 0.12 * sin(3.1416 * aAlong), 0.0) + outward * cs / iS;
+  float cs = clamp(cardSize.x * iS.x, cardSize.y, cardSize.z) * aThick * (1.0 - 0.8 * aAlong);
+  return mix(from, aCentre, aAlong) + vec3(0.0, 0.05 * sin(3.1416 * aAlong), 0.0) + outward * cs / iS;
 }`,
     )
     .replace('#include <beginnormal_vertex>', 'vec3 objectNormal;\nlimbAt(objectNormal);')
@@ -428,8 +449,78 @@ function crownVertex(sh: Shader, card: [number, number, number], fixed: number):
 #endif
 #else
   vTreeAt = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+#endif
+#ifdef TREE_SEASON
+  vCard = fract(sin(dot(aCentre * 3.7 + vTreeAt * 0.0173, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
 #endif`,
   );
+  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n#ifdef TREE_SEASON\nvarying float vCard;\n#endif');
+}
+
+// The season on Ultra (braga-map's task 093, season.ts), where a crown's material has TREE_SEASON. Each
+// card is in leaf or bare twigs by a number of its own (`vCard`, by where it is in its crown and where its
+// tree stands), so the crown thins card by card as the year goes on. A card in leaf takes the season's
+// colours, each as bright as the leaf's own texel: a spring's paler green, its kind's autumn colour (each
+// card turning on its own) and its flowers'. A card of twigs shows its kind's: cut where a twig is as wide
+// as a few pixels, and where they're finer see-through by their own share of each pixel, dithered, so a
+// bare crown far off is a haze, as one is, not nothing (on a billboard's bake, TREE_BAKE, a plain cut);
+// taken a little darker, as the leaves are to their green, a card being lit as its crown is, from its
+// heart (most of a twig is in its own and its neighbours' shade); and darker still seen against the sun
+// (TREE_LIT), as a twig's shaded side is.
+const SEASON = `uniform vec4 season;
+uniform vec3 leafGreen;
+uniform vec3 leafMean;
+uniform vec3 autumnColour;
+uniform vec3 freshColour;
+uniform vec3 bloomColour;
+uniform sampler2D twigMap;
+varying float vCard;
+float seasonDither() { return fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.00583715, 0.06711056)))); }`;
+// A spring's new leaves.
+const FRESH = '#b8d070';
+
+function seasonFragment(sh: Shader, u: Record<string, THREE.IUniform>): void {
+  Object.assign(sh.uniforms, u);
+  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\n${SEASON}`).replace(
+    '#include <map_fragment>',
+    `if (vCard >= season.x) {
+  vec4 twig = texture2D(twigMap, vMapUv);
+#ifdef TREE_BAKE
+  if (twig.a < 0.3) discard;
+#else
+  vec2 tx = dFdx(vMapUv) * vec2(textureSize(twigMap, 0)), ty = dFdy(vMapUv) * vec2(textureSize(twigMap, 0));
+  float lod = 0.5 * log2(max(1.0, max(dot(tx, tx), dot(ty, ty))));
+  if (twig.a <= mix(0.5, seasonDither(), clamp(lod / 3.0, 0.0, 1.0))) discard;
+#endif
+  diffuseColor = vec4(twig.rgb * 0.65, 1.0);
+#if defined(TREE_LIT) && NUM_DIR_LIGHTS > 0
+  diffuseColor.rgb *= mix(1.0, 0.3, smoothstep(0.0, 0.7, -dot(normalize(-vViewPosition), directionalLights[0].direction)));
+#endif
+} else {
+#include <map_fragment>
+  float own = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722)) / max(1e-4, dot(leafGreen * leafMean, vec3(0.2126, 0.7152, 0.0722)));
+  diffuseColor.rgb = mix(diffuseColor.rgb, freshColour * own, 0.6 * season.z);
+  diffuseColor.rgb = mix(diffuseColor.rgb, autumnColour * own, clamp(season.y * 1.6 - fract(vCard * 7.31) * 0.6, 0.0, 1.0));
+  diffuseColor.rgb = mix(diffuseColor.rgb, bloomColour * own, 0.35 * season.w * step(fract(vCard * 3.17), 0.6));
+}`,
+  );
+}
+
+// A deciduous kind's season on a day, as its crowns' shaders take it; null when its crowns are as in
+// summer (in full leaf, neither fresh, turning nor in flower), so they draw as they did before task 093.
+function seasonUniforms(look: TreeLooks, green: string, day: number): Record<string, THREE.IUniform> | null {
+  if (!look.leaves || !look.twigs || look.year?.bud === undefined) return null;
+  const s = seasonOf(look.year, day), mean = look.leafMean ?? [128, 128, 128];
+  if (s.leaves >= 1 && s.turned === 0 && s.fresh === 0 && s.bloom === 0) return null;
+  return {
+    season: { value: new THREE.Vector4(s.leaves, s.turned, s.fresh, s.bloom) },
+    leafGreen: { value: new THREE.Color(green) },
+    leafMean: { value: new THREE.Color().setRGB(mean[0] / 255, mean[1] / 255, mean[2] / 255, THREE.SRGBColorSpace) },
+    autumnColour: { value: new THREE.Color(look.year.autumn ?? green) },
+    freshColour: { value: new THREE.Color(FRESH) },
+    bloomColour: { value: new THREE.Color(look.year.flowers?.colour ?? green) },
+    twigMap: { value: look.twigs },
+  };
 }
 
 // A near mesh's fragment, faded out past the near reach.
@@ -445,6 +536,11 @@ export interface TreeLooks {
   leaves: THREE.Texture | null;
   // On Ultra, the bark's relief (a normal map) and its roughness (braga-map's task 085).
   barkRelief?: { normal: THREE.Texture; roughness: THREE.Texture };
+  // On Ultra, a deciduous kind's bare twigs, its year and its leaves' mean colour (sRGB bytes), for its
+  // season (braga-map's task 093).
+  twigs?: THREE.Texture | null;
+  year?: TreeYear | null;
+  leafMean?: [number, number, number];
 }
 
 // Loads each kind's bark and leaves at the graphics level, as the graphics card takes them; a kind the
@@ -468,7 +564,10 @@ export async function loadTreeLooks(kinds: TreeKindOf[], renderer: THREE.WebGLRe
         t.repeat.set(1, 3);
       }
       if (leaves) leaves.anisotropy = anisotropy(4);
-      out[k.kind] = { bark, leaves, ...(normal && roughness ? { barkRelief: { normal, roughness } } : {}) };
+      // A deciduous kind's twigs, for its season on Ultra.
+      const twigs = ultra && SEASONAL.includes(k.kind) && k.twigs && k.year?.bud !== undefined ? await load(k.twigs.ultra.colour) : null;
+      if (twigs) twigs.anisotropy = anisotropy(4);
+      out[k.kind] = { bark, leaves, ...(normal && roughness ? { barkRelief: { normal, roughness } } : {}), ...(twigs ? { twigs, year: k.year, leafMean: k.leaves?.mean } : {}) };
     }),
   );
   loader.dispose();
@@ -489,6 +588,10 @@ const LEAN = 0.47;
 // have their limbs drawn: the sky through such a crown shows its branches. test/trees.test.ts keeps it
 // the map's.
 export const DECIDUOUS: MapTreeKind[] = ['broadleaf', 'poplar', 'plane', 'lime', 'birch'];
+// The kinds whose crowns are in their season on Ultra (braga-map's task 093): those that drop their leaves
+// but the broadleaf, which holds the hills' woods, green in the winter photos, with the avenues'
+// hackberries and robinias, till task 130 gives the evergreen ones a kind of their own.
+export const SEASONAL: MapTreeKind[] = DECIDUOUS.filter((k) => k !== 'broadleaf');
 // A limb's radius at its foot: this share of its crown's width, within [min, max] metres; and how far
 // from the camera they're drawn (past it a limb in a crown is a pixel or less).
 const LIMB: [number, number, number] = [0.012, 0.05, 0.14];
@@ -548,15 +651,22 @@ export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, g
     const geo = kind === 'palm' ? palmCrown(cardsOf(kind)) : cardCrown(kind, cardsOf(kind));
     const crownMat = new THREE.MeshStandardMaterial({ color: look.leaves ? s.green : '#4f6b33', map: look.leaves, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9 });
     const wind = ultra ? { TREE_WIND: '' } : {};
-    crownMat.defines = { ...wind };
+    // On Ultra a deciduous kind's crowns in their season, and their shadows with them (task 093).
+    const season = ultra && SEASONAL.includes(kind) ? seasonUniforms(look, s.green, DAY) : null;
+    const seasonal = season ? { TREE_SEASON: '' } : {};
+    crownMat.defines = { ...wind, ...seasonal, ...(season ? { TREE_LIT: '' } : {}) };
     crownMat.onBeforeCompile = (sh) => {
       crownVertex(sh, s.card, fixed);
       nearFragment(sh, near);
+      if (season) seasonFragment(sh, season);
     };
     crownMat.customProgramCacheKey = () => `crown-${kind}`;
     const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: look.leaves, alphaTest: 0.5, side: THREE.DoubleSide });
-    depth.defines = { ...wind };
-    depth.onBeforeCompile = (sh) => crownVertex(sh, s.card, fixed);
+    depth.defines = { ...wind, ...seasonal };
+    depth.onBeforeCompile = (sh) => {
+      crownVertex(sh, s.card, fixed);
+      if (season) seasonFragment(sh, season);
+    };
     depth.customProgramCacheKey = () => `crown-depth-${kind}`;
     const trunkMat = new THREE.MeshStandardMaterial({ color: look.bark ? '#ffffff' : '#5e4630', map: look.bark, roughness: 1, normalMap: look.barkRelief?.normal ?? null, roughnessMap: look.barkRelief?.roughness ?? null });
     trunkMat.onBeforeCompile = (sh) => {
@@ -607,7 +717,10 @@ export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, g
 
     // Far: its billboard, a quad turned to face the camera about the upright, as wide as its tree's crown
     // and as tall as the tree, lit from the sky; none within the near reach but the band they fade over.
-    const mat = new THREE.MeshStandardMaterial({ color: look.leaves ? s.green : '#ffffff', map: bakeBillboard(kind, geo, trunkGeo, look, all, renderer), alphaTest: 0.4, roughness: 0.95, side: THREE.DoubleSide });
+    // In its season its colours are baked into it, and it's see-through by its own share of each pixel, as
+    // a bare crown's twigs are (task 093).
+    const mat = new THREE.MeshStandardMaterial({ color: look.leaves && !season ? s.green : '#ffffff', map: bakeBillboard(kind, geo, trunkGeo, look, all, renderer, season), alphaTest: 0.4, roughness: 0.95, side: THREE.DoubleSide });
+    if (season && season.season.value.x < 1) mat.defines = { TREE_HASHED: '' };
     mat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', '#include <common>\nuniform vec2 treeNear;\nvarying vec3 vTreeAt;')
@@ -634,7 +747,8 @@ if (distance(cameraPosition.xz, tAt.xz) < treeNear.x - treeNear.y - 2.0) gl_Posi
       sh.uniforms.treeNear = near;
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>\nuniform vec2 treeNear;\nvarying vec3 vTreeAt;\n${DITHER}`)
-        .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\nif (${NEARNESS} > treeDither()) discard;`);
+        .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\nif (${NEARNESS} > treeDither()) discard;`)
+        .replace('#include <alphatest_fragment>', '#ifdef TREE_HASHED\nif (diffuseColor.a <= fract(treeDither() * 7.0 + 0.5)) discard;\ndiffuseColor.a = 1.0;\n#endif\n#include <alphatest_fragment>');
     };
     mat.customProgramCacheKey = () => 'tree-billboard';
     const list = trees.map((t, i) => (t.kind === kind ? i : -1)).filter((i) => i >= 0);
@@ -709,7 +823,7 @@ if (distance(cameraPosition.xz, tAt.xz) < treeNear.x - treeNear.y - 2.0) gl_Posi
 // A kind's billboard: a near tree of its kind's usual proportions (the middle of its trees' heights over
 // their widths, and feet over heights), drawn from the side into a texture, lit as a crown is (its top
 // brighter than its underside), see-through round it.
-function bakeBillboard(kind: MapTreeKind, crownGeo: THREE.BufferGeometry, trunkGeo: THREE.BufferGeometry, look: TreeLooks, trees: CityTree[], renderer: THREE.WebGLRenderer): THREE.Texture {
+function bakeBillboard(kind: MapTreeKind, crownGeo: THREE.BufferGeometry, trunkGeo: THREE.BufferGeometry, look: TreeLooks, trees: CityTree[], renderer: THREE.WebGLRenderer, season: Record<string, THREE.IUniform> | null = null): THREE.Texture {
   const mid = (a: number[]) => (a.length ? a.sort((p, q) => p - q)[a.length >> 1] : 0);
   const s = SHAPES[kind];
   const tall = Math.max(1, Math.min(5, mid(trees.map((t) => t.h / t.crown))));
@@ -721,10 +835,13 @@ function bakeBillboard(kind: MapTreeKind, crownGeo: THREE.BufferGeometry, trunkG
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vShade;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvShade = 0.5 + 0.5 * normal.y;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vShade;').replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= 0.55 + 0.45 * vShade;');
   };
-  const crownMat = new THREE.MeshBasicMaterial({ color: look.leaves ? '#ffffff' : '#4f6b33', map: look.leaves, alphaTest: 0.5, side: THREE.DoubleSide });
+  // In its season (task 093), with its leaves' green and its twigs' own colours baked in.
+  const crownMat = new THREE.MeshBasicMaterial({ color: !look.leaves ? '#4f6b33' : season ? s.green : '#ffffff', map: look.leaves, alphaTest: 0.5, side: THREE.DoubleSide });
+  if (season) crownMat.defines = { TREE_SEASON: '', TREE_BAKE: '' };
   crownMat.onBeforeCompile = (sh) => {
     crownVertex(sh, s.card, kind === 'palm' ? 0 : 1);
     shade(sh);
+    if (season) seasonFragment(sh, season);
   };
   crownMat.customProgramCacheKey = () => `bake-${kind}`;
   const trunkMat = new THREE.MeshBasicMaterial({ color: look.bark ? '#a0a0a0' : '#5e4630', map: look.bark });
@@ -739,8 +856,9 @@ function bakeBillboard(kind: MapTreeKind, crownGeo: THREE.BufferGeometry, trunkG
   cam.lookAt(0, 0, 0);
   const was = renderer.getRenderTarget(), clear = renderer.getClearColor(new THREE.Color()), alpha = renderer.getClearAlpha();
   renderer.setRenderTarget(rt);
-  // See-through in the leaves' own colour, so the smaller mipmaps fade to it and not to black.
-  renderer.setClearColor(look.leaves ? s.green : '#4f6b33', 0);
+  // See-through in the leaves' own colour, so the smaller mipmaps fade to it and not to black (in its
+  // season, a twig's brown where it's mostly bare).
+  renderer.setClearColor(season && season.season.value.x < 0.5 ? '#6b5a48' : look.leaves ? s.green : '#4f6b33', 0);
   renderer.clear();
   renderer.render(scene, cam);
   renderer.setRenderTarget(was);

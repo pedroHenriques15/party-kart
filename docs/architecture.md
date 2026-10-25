@@ -661,7 +661,7 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
   (braga-map's task 081): offered where the device isn't played by touch first and its graphics card takes
   textures 16,384 pixels wide or is a discrete one by its name (`ultraOffered`); `?quality=` sets any level
   whatever the device. Ultra builds the city at High's level (`levelOf`) but where a task gives it its own:
-  so far the screen's every pixel (no cap at 2), the near trees to 700 m and in the wind (below), its frame (below), and its
+  so far the screen's every pixel (no cap at 2), the near trees to 700 m, in the wind and in their season (below), its frame (below), and its
   textures (braga-map's task 085): the map's own Ultra files (each made texture at twice High's size, the
   ground's and the barks' relief), the streets' drawings made 4× finer (1024 px a layer, `finer` in
   `textures.ts`), and every texture filtered at the card's most (`anisotropy` in `look.ts`, set before the
@@ -804,8 +804,16 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     **On Ultra** (braga-map's task 089) the near ones sway in a breeze from the west-south-west in gusts
     (`WIND`, by the game's clock, `clock` in `look.ts`: still at 0, so `?scenery`'s shots are), the crown
     from its foot over a trunk that stands still, and those of the kinds that drop their leaves
-    (`DECIDUOUS`, the map's) within 150 m have four limbs in their bark, from their own trunk's top into
-    their leaves. Then the Rio Este,
+    (`DECIDUOUS`, the map's) within 150 m have five limbs in their bark, from their own trunk's top into
+    their leaves, each forking twice on towards the crown's edge. And those kinds' crowns are in their
+    season by the date (braga-map's task 093; `seasonOf` in `season.ts`, `DAY` in `look.ts`), from each
+    kind's year in Braga as the map gives it (`treeKinds`' `year`): bare in winter, their buds bursting,
+    a spring's paler green, summer's, their autumn colour, falling. Each card of a crown is in leaf or
+    bare twigs (the map's `twigs`, a card of them as its leaves are) by a number of its own, so the crown
+    thins card by card; the twigs are see-through by their own share of each pixel, dithered, so a bare
+    crown far off is a haze of them; the billboards are baked in the season, and the shadows follow it. A
+    kind in summer leaf draws as before. By the default 13 March the deciduous kinds are bare, as that
+    day's photos have the planes. Then the Rio Este,
     the decks' pillars and abutments and the tunnels' mouths (`levels.ts`), brown signs to
     landmarks on the pavement, the granite plinth with Braga's arms at the start (free roam's first
     spot: its top is a block the karts stand on, `stand` in `ground.ts`), and the easter eggs on the friends' houses (`eggs.ts`). Neither buildings nor

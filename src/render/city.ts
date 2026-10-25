@@ -31,6 +31,7 @@ import * as tex from './textures.ts';
 import { buildSigns } from './signs.ts';
 import { buildPlates } from './plates.ts';
 import { cityTrees, loadTreeLooks, type CityTree } from './trees.ts';
+import { reflects } from './post.ts';
 import type { World } from './world.ts';
 
 // How far a point is from the open world's area (0 inside it), roughly (to within 40 m), from a grid
@@ -605,7 +606,10 @@ export async function buildCity(track: Track, course: Course, graphics: Graphics
     geo.setIndex(idx);
     geo.computeVertexNormals();
     const normal = tex.ripples();
-    const water = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: '#2f6a78', roughness: 0.06, metalness: 0.1, normalMap: normal, normalScale: new THREE.Vector2(0.6, 0.6), side: THREE.DoubleSide }));
+    const waterMat = new THREE.MeshStandardMaterial({ color: '#2f6a78', roughness: 0.06, metalness: 0.1, normalMap: normal, normalScale: new THREE.Vector2(0.6, 0.6), side: THREE.DoubleSide });
+    // On Ultra the city in it, its banks and bridges and the trees over it (braga-map's task 117).
+    if (graphics === 'ultra') waterMat.onBeforeCompile = (sh) => reflects(sh, '1.0');
+    const water = new THREE.Mesh(geo, waterMat);
     water.receiveShadow = true;
     group.add(water);
     updates.push((t) => normal.offset.set(t * 0.02, -t * 0.12));

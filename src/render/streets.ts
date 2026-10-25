@@ -18,6 +18,7 @@ import { clearedPieces } from '../world/race.ts';
 import { bake, box, mat } from './kit.ts';
 import type { Surface } from './lattice.ts';
 import { levelOf, LIT, WET, type Graphics, type Quality } from './look.ts';
+import { reflects } from './post.ts';
 import { halos } from './road.ts';
 import * as tex from './textures.ts';
 import { edgePoints, surface, type Grain, type Height } from './tin.ts';
@@ -182,7 +183,8 @@ function layers(fine: number): THREE.DataArrayTexture {
 }
 
 // The streets' material: each vertex's texture is a layer of the array, its uv and layer in `tuv`. Wet
-// (look.ts's grey day), a street is darker and gives back the sky.
+// (look.ts's grey day), a street is darker and gives back the sky; on Ultra, the city too (braga-map's
+// task 117), as much as a film of water on it does (WET_REFLECTS).
 function surfaceMaterial(graphics: Graphics): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ color: WET ? '#a6a6a6' : '#ffffff', roughness: WET ? 0.32 : 0.86, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
   const array = layers(graphics === 'ultra' ? 4 : 1);
@@ -192,9 +194,13 @@ function surfaceMaterial(graphics: Graphics): THREE.MeshStandardMaterial {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform highp sampler2DArray layers;\nvarying vec3 vTuv;')
       .replace('#include <map_fragment>', 'diffuseColor *= texture(layers, vTuv);');
+    if (WET && graphics === 'ultra') reflects(sh, WET_REFLECTS.street, WET_REFLECTS.spread);
   };
   return m;
 }
+// How much a wet street and its paint reflect on Ultra, of what water would (GLSL), and how far what
+// they reflect spreads, of the way to it: a film of water over the asphalt's grain, not a mirror.
+const WET_REFLECTS = { street: '0.6', paint: '0.5', spread: 0.04 };
 
 // Numbers three at a time, in an array that grows as they come.
 class Floats {
@@ -350,6 +356,7 @@ export function buildStreets(world: Braga, wg: WorldGround, landMesh: Surface, h
   // ---- The materials, and the batches per tile: the surfaces and faces, and the paint. ----
   const surfaces = surfaceMaterial(graphics);
   const paintMat = new THREE.MeshStandardMaterial({ color: WET ? '#c9c9c3' : '#efefe8', roughness: WET ? 0.3 : 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 });
+  if (WET && graphics === 'ultra') paintMat.onBeforeCompile = (sh) => reflects(sh, WET_REFLECTS.paint, WET_REFLECTS.spread);
   // Metres a tile of each texture: along the street's rows for the setts and the calçada.
   const SCALE: Partial<Record<Layer, number>> = { asphalt: 8, setts: 2, calcada: 2.5, verge: 2, dirt: 6, granite: 1, paving: 2, cycle: 8, gravel: 4, blocks: 2, render: 2, hedge: 2, cement: 2, planks: 0.6 };
   const tiles = new Map<string, { surf: Batch; paint: Batch }>();

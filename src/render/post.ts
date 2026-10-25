@@ -2,8 +2,9 @@
 // a buffer as the screen would show it (tone mapped and its haze mixed in after that, as look.ts has
 // it), then what a phone can't afford laid over it: the corners, the eaves and the foot of each wall
 // darkened as the light reaching them is (ground truth ambient occlusion, from the frame's own depth),
-// what's dithered averaged with the pixels round it (task 132), and the edges smoothed (SMAA). High
-// and below draw straight to the screen with the one sun, as before.
+// what's dithered averaged with the pixels round it (task 132), what the glass, the river and a wet
+// street reflect (task 117, from the frame itself), and the edges smoothed (SMAA). High and below draw
+// straight to the screen with the one sun, as before.
 import * as THREE from 'three';
 import { CSM } from 'three/addons/csm/CSM.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
@@ -118,6 +119,112 @@ function displayBuffer(w: number, h: number, depth: boolean): THREE.WebGLRenderT
   return Object.assign(t, { isXRRenderTarget: true });
 }
 
+// Reflections (braga-map's task 117): what a surface reflects, worked out from the frame itself. A
+// material that reflects (the windows' glass, the Rio Este, a wet street) says how strongly in the
+// frame's alpha, which three leaves at 1 for whatever's opaque: 2 and that strength, 0 to 1 (`reflects`).
+// Each such pixel sends a ray along its reflection, its way from the frame's depth round it, through the
+// depth till it passes behind what's drawn, and takes that pixel's colour: as much as a surface
+// reflects at that angle (Schlick's, from glass's and water's 4% straight on) and as sure as the ray is
+// (it fades at the screen's edge and as far as it goes). Where it finds nothing, or the sky, it keeps
+// what the material made of the sky. A surface not smooth enough for a mirror (a wet street's film of
+// water on the asphalt) spreads what it reflects, `spread` of the way the ray went either side (to a
+// hundredth), drawn out up and down the screen as a wet street's reflections are: that in the alpha
+// too, two for each hundredth over the 2 and the strength.
+export function reflects(sh: { fragmentShader: string }, strength: string, spread = 0): void {
+  const code = 2 + 2 * Math.round(Math.min(Math.max(spread, 0), 0.15) * 100);
+  sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `#include <opaque_fragment>\ngl_FragColor.a = ${code.toFixed(1)} + clamp(${strength}, 0.0, 1.0);`);
+}
+const REFLECTION = `#include <packing>
+uniform sampler2D tColour;
+uniform sampler2D tFrame;
+uniform sampler2D tDepth;
+uniform mat4 projection;
+uniform mat4 unprojection;
+uniform float near;
+uniform float far;
+uniform vec2 texel;
+varying vec2 vUv;
+vec3 viewAt(vec2 uv) {
+  vec4 p = unprojection * vec4(vec3(uv, texture2D(tDepth, uv).x) * 2.0 - 1.0, 1.0);
+  return p.xyz / p.w;
+}
+float zAt(vec2 uv) { return perspectiveDepthToViewZ(texture2D(tDepth, uv).x, near, far); }
+vec2 uvOf(vec3 p) { vec4 c = projection * vec4(p, 1.0); return c.xy / c.w * 0.5 + 0.5; }
+void main() {
+  vec4 colour = texture2D(tColour, vUv);
+  gl_FragColor = colour;
+  float code = texture2D(tFrame, vUv).a - 2.0, level = floor(code / 2.0), strength = code - 2.0 * level;
+  if (code < 0.0 || strength <= 0.001 || texture2D(tDepth, vUv).x >= 1.0) return;
+  // Its normal from the depth round it, each way the nearer neighbour's (across an edge it isn't the surface).
+  vec3 p = viewAt(vUv);
+  vec3 l = viewAt(vUv - vec2(texel.x, 0.0)), r = viewAt(vUv + vec2(texel.x, 0.0)), b = viewAt(vUv - vec2(0.0, texel.y)), t = viewAt(vUv + vec2(0.0, texel.y));
+  vec3 n = normalize(cross(abs(r.z - p.z) < abs(p.z - l.z) ? r - p : p - l, abs(t.z - p.z) < abs(p.z - b.z) ? t - p : p - b));
+  vec3 v = normalize(p);
+  if (dot(n, v) > 0.0) n = -n;
+  vec3 dir = reflect(v, n);
+  float fresnel = 0.04 + 0.96 * pow(1.0 - max(dot(-v, n), 0.0), 5.0);
+  // Out along it in steps that grow, from a little off the surface.
+  float dist = length(p);
+  vec3 o = p + n * (0.02 + 0.002 * dist);
+  float t0 = 0.0, t1 = 0.25 + 0.01 * dist, hit = -1.0;
+  for (int i = 0; i < REFLECTION_STEPS; i++) {
+    vec3 q = o + dir * t1;
+    if (q.z > -near) break;
+    vec2 uv = uvOf(q);
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break;
+    float behind = zAt(uv) - q.z;
+    if (behind > 0.0 && behind < 2.0 * (t1 - t0) + 0.3) {
+      hit = t1;
+      break;
+    }
+    t0 = t1;
+    t1 *= 1.15;
+  }
+  if (hit < 0.0) return;
+  // Where it went behind, between the last two steps.
+  float lo = t0, hi = hit;
+  for (int i = 0; i < 5; i++) {
+    float m = 0.5 * (lo + hi);
+    vec3 q = o + dir * m;
+    if (zAt(uvOf(q)) - q.z > 0.0) hi = m;
+    else lo = m;
+  }
+  vec2 at = uvOf(o + dir * hi);
+  if (texture2D(tDepth, at).x >= 1.0) return;
+  vec2 edge = smoothstep(0.0, 0.08, at) * smoothstep(0.0, 0.08, 1.0 - at);
+  float sure = edge.x * edge.y * (1.0 - smoothstep(150.0, 400.0, hi));
+  // Spread, for a surface that isn't a mirror: seven samples up and down the screen through what it hit,
+  // as far as the spread is there (at most 40 pixels).
+  vec3 seen = texture2D(tColour, at).rgb;
+  if (level > 0.5) {
+    vec3 h = o + dir * hi;
+    float wide = min(0.01 * level * hi * projection[1][1] / max(-h.z, near) * 0.5, 40.0 * texel.y);
+    seen = vec3(0.0);
+    for (int i = -3; i <= 3; i++) seen += texture2D(tColour, clamp(at + vec2(0.0, wide * float(i) / 3.0), vec2(0.0), vec2(1.0))).rgb;
+    seen /= 7.0;
+  }
+  gl_FragColor.rgb = mix(colour.rgb, seen, clamp(strength * fresnel * sure, 0.0, 1.0));
+}`;
+function reflection(colour: THREE.Texture, frame: THREE.Texture, depth: THREE.Texture): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    defines: { REFLECTION_STEPS: 40 },
+    uniforms: {
+      tColour: { value: colour },
+      tFrame: { value: frame },
+      tDepth: { value: depth },
+      projection: { value: new THREE.Matrix4() },
+      unprojection: { value: new THREE.Matrix4() },
+      near: { value: 0.1 },
+      far: { value: 1000 },
+      texel: { value: new THREE.Vector2() },
+    },
+    vertexShader: 'varying vec2 vUv;\nvoid main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: REFLECTION,
+    depthTest: false,
+    depthWrite: false,
+  });
+}
+
 export class UltraFrame {
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
@@ -126,6 +233,7 @@ export class UltraFrame {
   private shaded: THREE.WebGLRenderTarget;
   private resolved: THREE.WebGLRenderTarget;
   private resolving: FullScreenQuad;
+  private reflection: FullScreenQuad;
   private gtao: GTAOPass;
   private smaa: SMAAPass;
   private sun: THREE.DirectionalLight;
@@ -159,6 +267,7 @@ export class UltraFrame {
     this.shaded = displayBuffer(s.x, s.y, false);
     this.resolved = displayBuffer(s.x, s.y, false);
     this.resolving = new FullScreenQuad(resolve());
+    this.reflection = new FullScreenQuad(reflection(this.resolved.texture, this.drawn.texture, this.drawn.depthTexture!));
     // From the depth the frame was drawn with, its normals worked out from that depth: a pass of its own
     // for them would draw the trees' leaf cards whole, dark squares round every crown. (Given a depth at
     // once, three 0.186's pass never makes the buffer it then sizes and disposes of: so after.)
@@ -230,7 +339,16 @@ export class UltraFrame {
     u.depth.value = this.drawn.depthTexture;
     r.setRenderTarget(this.resolved);
     this.resolving.render(r);
-    this.smaa.render(r, this.drawn, this.resolved, 0, false); // to the screen: its write buffer unused
+    // The reflections from the resolved frame, into the occlusion's buffer, which is done with.
+    const v = (this.reflection.material as THREE.ShaderMaterial).uniforms;
+    v.projection.value.copy(c.projectionMatrix);
+    v.unprojection.value.copy(c.projectionMatrixInverse);
+    v.near.value = c.near;
+    v.far.value = c.far;
+    v.texel.value.set(1 / this.drawn.width, 1 / this.drawn.height);
+    r.setRenderTarget(this.shaded);
+    this.reflection.render(r);
+    this.smaa.render(r, this.drawn, this.shaded, 0, false); // to the screen: its write buffer unused
     r.setRenderTarget(null);
   }
 
@@ -249,6 +367,8 @@ export class UltraFrame {
     this.resolved.dispose();
     this.resolving.material.dispose();
     this.resolving.dispose();
+    this.reflection.material.dispose();
+    this.reflection.dispose();
     this.gtao.dispose();
     this.smaa.dispose();
   }

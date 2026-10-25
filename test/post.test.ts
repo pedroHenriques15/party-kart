@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as THREE from 'three';
 import { CSM } from 'three/addons/csm/CSM.js';
-import { cascadedLights, dithered } from '../src/render/post.ts';
+import { cascadedLights, dithered, reflects } from '../src/render/post.ts';
 
 // Ultra's shadows in cascades (braga-map's task 090, src/render/post.ts): its lit materials take three's
 // own lights chunk with CSM's loop over the suns in it, as CSM's copy of the whole chunk is older than
@@ -36,4 +36,12 @@ test("a dithered pixel says so in Ultra's frame, and a bare twig's sheen is thre
   }
   assert.match(THREE.ShaderLib.standard.fragmentShader, /#include <lights_physical_fragment>/);
   for (const field of ['specularColor', 'specularColorBlended', 'specularF90']) assert.match(THREE.ShaderChunk.lights_physical_fragment, new RegExp(`material\\.${field} = `));
+});
+
+// What reflects says how strongly in Ultra's frame, for the reflections (braga-map's task 117): 2 and
+// its strength, after three has set the alpha, in the standard material the water and the streets are.
+test("a reflecting pixel says how strongly in Ultra's frame", () => {
+  const sh = { fragmentShader: THREE.ShaderLib.standard.fragmentShader };
+  reflects(sh, 'wet');
+  assert.match(sh.fragmentShader, /#include <opaque_fragment>\ngl_FragColor\.a = 2\.0 \+ clamp\(wet, 0\.0, 1\.0\);/);
 });

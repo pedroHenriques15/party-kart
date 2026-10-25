@@ -6,7 +6,7 @@
 // carriageway; trees; the Rio Este and its bridges; the decks and tunnels (levels.ts); the granite
 // plinth with Braga's arms at the start; the sights (sights.ts); and the friends' easter eggs on their
 // houses (eggs.ts). What only a race adds to the streets is road.ts, built for each track (raceOn).
-import { heightOn, loadWorld, type Box, type Building as MapBuilding, type FacadeProportions, type Track as Course, type World as Braga } from 'braga-map';
+import { heightOn, loadWorld, type Box, type Building as MapBuilding, type FacadeProportions, type RoofBlock, type Track as Course, type World as Braga } from 'braga-map';
 import * as THREE from 'three';
 import { onGrid, type Bound } from '../game/flyer.ts';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
@@ -21,7 +21,7 @@ import { buildLevels, isDeck, nearLevels } from './levels.ts';
 import { anisotropy, levelOf, type Graphics, type Quality } from './look.ts';
 import { GRIDS, KINDS, loadCover, type Cover } from './cover.ts';
 import { raceMarks } from './road.ts';
-import { clipConvex, convexPieces, faces, shapeOf, wallTop } from './roofs.ts';
+import { clipConvex, convexPieces, faces, shapeOf, wallTop, type Shape } from './roofs.ts';
 import { buildStreets, groundPaths, streetEdges, type Built } from './streets.ts';
 import { baysOf, facadeKit, laidOut, layerOfGround, layerOfType, linearOf, MATERIALS, storeys, Walls, type Kit, type WallLayout } from './facades.ts';
 import { buildInteriors } from './interiors.ts';
@@ -689,7 +689,7 @@ export async function buildCity(track: Track, course: Course, graphics: Graphics
   const covers = map.sights.flatMap((s) => ('covers' in s ? [s.covers] : []));
   const drawn = list.filter((b) => !covers.some((r) => inside(r, b.cx, b.cz)));
   const rooms = new Map(wg.d.rooms.map((r) => [r.b.pts, r] as const));
-  group.add(Object.assign(buildBuildings(drawn, map, facadeKit(map.facadeTypes, quality), quality, rooms), { name: 'buildings' }));
+  group.add(Object.assign(buildBuildings(drawn, map, facadeKit(map.facadeTypes, quality), quality, rooms, graphics === 'ultra'), { name: 'buildings' }));
   // The rooms' insides: the walls' inside faces, the floors, the stairs, the roof's parapet and hut.
   group.add(Object.assign(buildInteriors(wg.d.rooms, map), { name: 'interiors' }));
   // The shops' signs, on the buildings drawn.
@@ -1166,6 +1166,32 @@ function faceQuad(batch: Batch, p: THREE.Vector3[], uv: [number, number][], n: [
   else batch.quad(p[0], p[3], p[2], p[1], uv[0], uv[3], uv[2], uv[1], color);
 }
 
+// What stands on a roof as the LiDAR's points have it (braga-map's task 087): a chimney, a dormer, a lift's
+// machine room, a water tank, each a box from the roof under it up to its top, its sides in the walls'
+// colour and its top the roof's (into the flat roofs' batch, whose texture is concrete's grain).
+function roofBlocks(blocks: RoofBlock[], shape: Shape, foot: number, into: Batch, side: THREE.Color, top: THREE.Color): void {
+  const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+  for (const q of blocks) {
+    const vx = -q.uz;
+    const vz = q.ux;
+    const c = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]): [number, number] => [q.x + q.ux * q.l * a + vx * q.w * b, q.z + q.uz * q.l * a + vz * q.w * b]);
+    // From a little under the roof where it's lowest under the box, so it never stands clear of it.
+    const low = foot + Math.min(...c.map(([x, z]) => shape.height(x, z))) - 0.05;
+    const high = foot + q.top;
+    if (high < low + 0.2) continue;
+    for (let k = 0; k < 4; k++) {
+      const [ax, az] = c[k];
+      const [bx, bz] = c[(k + 1) % 4];
+      const l = Math.hypot(bx - ax, bz - az);
+      const mx = (ax + bx) / 2 - q.x;
+      const mz = (az + bz) / 2 - q.z;
+      const m = Math.hypot(mx, mz) || 1;
+      faceQuad(into, [V(ax, low, az), V(bx, low, bz), V(bx, high, bz), V(ax, high, az)], [[0, low / 3], [l / 3, low / 3], [l / 3, high / 3], [0, high / 3]], [mx / m, 0, mz / m], side);
+    }
+    faceQuad(into, c.map(([x, z]) => V(x, high, z)), c.map(([x, z]): [number, number] => [x / 3, z / 3]), [0, 1, 0], top);
+  }
+}
+
 // A wall's balconies, as its facade says they are (braga-map's task 017), on each storey over the
 // ground floor: projecting, a slab under every other bay's window (every bay's on a wall of two or
 // fewer) with a railing round it; continuous, a slab the wall's length; enclosed, a slab glazed in
@@ -1257,7 +1283,7 @@ function balconiesOn(f: MapBuilding['facade'], P: FacadeProportions, w: WallLayo
 // facade as the map says it is (facades.ts, braga-map's task 017): its kind's windows, in its storeys,
 // its material and colours, and along a street its ground floor as it is. A wall another building
 // stands against, as high as it or higher, isn't drawn.
-function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality, rooms: Map<[number, number][], Room>): THREE.Group {
+function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality, rooms: Map<[number, number][], Room>, ultra = false): THREE.Group {
   // Balconies on the buildings in the open world or by it (High: within 60 m of its edge; Medium: in it).
   const balconyReach = quality === 'high' ? 60 : quality === 'medium' ? 0 : -1;
   const front = streetFront(map.lines);
@@ -1282,8 +1308,9 @@ function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality
     let area = 0;
     for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) area += (pts[j][0] - pts[i][0]) * (pts[j][1] + pts[i][1]);
     if (area < 0) pts = [...pts].reverse();
-    // A building cut back at the kerb keeps the whole one's roof.
-    return { b, pts, shape: shapeOf({ ...b, pts: b.whole ?? pts }), rev: area < 0 };
+    // A building cut back at the kerb keeps the whole one's roof; on Ultra, the roof's own planes where
+    // the map has them (braga-map's task 087), but over a room's stairs.
+    return { b, pts, shape: shapeOf({ ...b, pts: b.whole ?? pts }, ultra && !rooms.has(b.pts)), rev: area < 0 };
   });
   const side = (a: [number, number], c: [number, number]) => `${a[0]},${a[1]}>${c[0]},${c[1]}`;
   const sides = new Map<string, (typeof all)[number]>();
@@ -1386,7 +1413,7 @@ function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality
     }
 
     // The roof. Flat: the footprint at the eaves; a tower's open over its stairs.
-    if (b.roof === 0) {
+    if (b.roof === 0 && !shape.groups) {
       const contour = pts.map(([x, z]) => new THREE.Vector2(x, z));
       const hole = room?.stair ? [room.stair.hole.map(([x, z]) => new THREE.Vector2(x, z))] : [];
       const ring = [...pts, ...(room?.stair ? room.stair.hole : [])];
@@ -1397,20 +1424,23 @@ function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality
         flat.up(P(i), P(j), P(k), U(i), U(j), U(k), roofCol);
       }
     } else {
-      // Pitched: each face, its tiles (or sheets, grey) in rows along its eaves. Over the footprint's
-      // rectangle, overhanging the walls, where the footprint nearly fills it; else cut to the
-      // footprint.
-      const batch = tiles;
+      // Pitched, or of its own planes (braga-map's task 087): each face, its tiles (or sheets, grey) in
+      // rows along its eaves, a flat roof's its own. Over the footprint's rectangle, overhanging the
+      // walls (a pitched roof of its own planes as far as the points say), where the footprint nearly
+      // fills it; else cut to the footprint.
+      const level = b.roof === 0;
+      const batch = level ? flat : tiles;
       const lay = (poly: [number, number][], g: { gx: number; gz: number }) => {
         const k = Math.hypot(g.gx, g.gz) || 1;
         const ax = -g.gz / k;
         const az = g.gx / k;
         const sin = Math.sin(Math.atan(k));
         const P = (p: [number, number]) => V(p[0], foot + shape.height(p[0], p[1]), p[1]);
-        const U = (p: [number, number]): [number, number] => [(p[0] * ax + p[1] * az) / 3, (foot + shape.height(p[0], p[1])) / (3 * (sin || 1))];
+        const U = (p: [number, number]): [number, number] => (level ? [p[0] / 6, p[1] / 6] : [(p[0] * ax + p[1] * az) / 3, (foot + shape.height(p[0], p[1])) / (3 * (sin || 1))]);
         for (let i = 1; i + 1 < poly.length; i++) batch.up(P(poly[0]), P(poly[i]), P(poly[i + 1]), U(poly[0]), U(poly[i]), U(poly[i + 1]), roofCol);
       };
-      if (shape.fill > 0.9 && !b.whole) for (const f of faces(shape, 0.4)) lay(f.pts, f.plane);
+      const over = level ? 0 : shape.groups && b.overhang != null ? b.overhang : 0.4;
+      if (shape.fill > 0.9 && !b.whole) for (const f of faces(shape, over)) lay(f.pts, f.plane);
       else {
         const contour = pts.map(([x, z]) => new THREE.Vector2(x, z));
         const fs = faces(shape, 0);
@@ -1421,7 +1451,25 @@ function buildBuildings(list: Building[], map: Braga, kit: Kit, quality: Quality
           }
         }
       }
+      // Where the walls stand over a roof of its own planes (a flat roof's parapet round its deck): their
+      // inside, in the roof's colour.
+      if (shape.eaves !== undefined) {
+        for (let k = 0; k < pts.length; k++) {
+          const top = wallTop(shape, pts[k], pts[(k + 1) % pts.length]);
+          for (let q = 0; q + 1 < top.length; q++) {
+            const [ax, az, ah] = top[q];
+            const [cx, cz, ch] = top[q + 1];
+            const ra = shape.height(ax, az);
+            const rc = shape.height(cx, cz);
+            if (ah - ra < 0.05 && ch - rc < 0.05) continue;
+            const l = Math.hypot(cx - ax, cz - az) || 1;
+            faceQuad(flat, [V(ax, foot + ra, az), V(cx, foot + rc, cz), V(cx, foot + ch, cz), V(ax, foot + ah, az)], [[0, ra / 3], [l / 3, rc / 3], [l / 3, ch / 3], [0, ah / 3]], [-(cz - az) / l, 0, (cx - ax) / l], roofCol);
+          }
+        }
+      }
     }
+    // What stands on the roof, on Ultra (braga-map's task 087).
+    if (ultra && b.blocks && shape.planes.length) roofBlocks(b.blocks, shape, foot, flat, new THREE.Color().setRGB(...(map.facadeColours[f.colour].map((v) => v / 255) as [number, number, number]), THREE.SRGBColorSpace), roofCol);
 
     // A church the LiDAR didn't see gets a bell tower at one end. (One it saw has its own, as a part
     // of it.)

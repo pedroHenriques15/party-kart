@@ -60,3 +60,58 @@ test('a roof cut to an L-shaped footprint covers it once', () => {
   for (const piece of [rect(0, 0, 12, 4), rect(6, 4, 12, 8)]) for (const f of faces(s, 0)) covered += area(clipConvex(f.pts, piece));
   near(covered, area(L), 1e-6);
 });
+
+// An L of two gabled wings 6 m wide, 31° (0.6 a metre), their eaves at 5 m: one along x (z 0 to 6),
+// one along z (x 6 to 12, z 0 to 14), as braga-map's task 087 gives a roof of its own planes.
+const L: XZ[] = [[0, 0], [12, 0], [12, 14], [6, 14], [6, 6], [0, 6]];
+const ell = (over: Partial<Roofed> = {}): Roofed => ({
+  pts: L,
+  roof: 2,
+  ends: 0,
+  dir: 0,
+  pitch: 31,
+  h: 5,
+  ridge: 6.8,
+  planes: [
+    { c: 5, gx: 0, gz: 0.6 },
+    { c: 5 + 3.6, gx: 0, gz: -0.6 },
+    { c: 5 - 3.6, gx: 0.6, gz: 0 },
+    { c: 5 + 7.2, gx: -0.6, gz: 0 },
+  ],
+  groups: [
+    [0, 1],
+    [2, 3],
+  ],
+  ...over,
+});
+
+test('a roof of its own planes: an L, its two ridges and the valleys where its wings meet', () => {
+  const s = shapeOf(ell(), true);
+  near(s.height(3, 3), 6.8);
+  near(s.height(9, 10), 6.8);
+  near(s.height(0, 0), 5);
+  // In the corner the wings share, the higher of the two: a valley where they're level.
+  near(s.height(8, 2), 6.2);
+  near(s.height(10, 1), Math.max(Math.min(5.6, 8), Math.min(7.4, 6.2)));
+  // Its faces cover the rectangle round it once, each where its plane is the roof.
+  const f = faces(s, 0);
+  near(f.reduce((a, q) => a + area(q.pts), 0), 12 * 14, 1e-6);
+  for (const q of f) {
+    const x = q.pts.reduce((a, p) => a + p[0], 0) / q.pts.length;
+    const z = q.pts.reduce((a, p) => a + p[1], 0) / q.pts.length;
+    near(q.plane.c + q.plane.gx * x + q.plane.gz * z, s.height(x, z), 1e-6);
+  }
+  // A wall's top follows it: the gable end of the wing along x rises to its ridge.
+  const end = wallTop(s, [0, 6], [0, 0]);
+  assert.equal(end.length, 3);
+  near(end[1][2], 6.8);
+  // Without `own`, the shape the map measured, as before.
+  near(shapeOf(ell()).height(3, 3), shapeOf({ ...ell(), planes: undefined, groups: undefined }).height(3, 3));
+});
+
+test("a flat roof's own planes: a deck under its parapet, the walls up to the eaves round it", () => {
+  const s = shapeOf(house({ roof: 0, h: 10, ridge: 10, planes: [{ c: 9, gx: 0.02, gz: 0 }], groups: [[0]] }), true);
+  near(s.height(6, 4), 9.12);
+  assert.deepEqual(wallTop(s, [0, 0], [12, 0]).map((p) => p[2]), [10, 10]);
+  near(faces(s, 0).reduce((a, q) => a + area(q.pts), 0), 96, 1e-6);
+});

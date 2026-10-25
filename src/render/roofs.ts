@@ -4,6 +4,11 @@
 // planes over the rectangle round the footprint lined up with the ridge: each of its faces is where
 // one of them is lowest. The walls rise to it, so a gable is the wall at a gabled end. Plain
 // geometry, without three.js, so the tests can check it.
+//
+// Or, where the map has them (braga-map's task 087), the roof's own planes as the LiDAR's points lie
+// on them: the highest of a few groups' lowest, so a group's planes meet in its ridges and hips and two
+// groups' in a valley (an L's, a T's, a mansard). Where the map calls the roof flat, the walls stand at
+// least to its eaves round planes lower than them: a parapet round a deck.
 
 export type XZ = [number, number];
 
@@ -15,10 +20,12 @@ export interface Roofed {
   pitch: number; // degrees
   h: number; // the eaves, above the ground it stands on
   ridge: number; // the ridge, above the same
+  planes?: Plane[]; // its own, above the same (braga-map's task 087)
+  groups?: number[][];
 }
 
 // A plane over the map: its height at (x, z) is c + gx·x + gz·z.
-interface Plane {
+export interface Plane {
   c: number;
   gx: number;
   gz: number;
@@ -36,11 +43,27 @@ export interface Shape {
   W: number;
   fill: number;
   planes: Plane[];
-  // The roof's height over (x, z), from the ground the building stands on.
+  // Its own planes' groups, where it has them (task 087); and the height its walls reach at least.
+  groups?: number[][];
+  eaves?: number;
+  // The roof's height over (x, z), from the ground the building stands on; and its walls'.
   height: (x: number, z: number) => number;
+  wall: (x: number, z: number) => number;
 }
 
-export function shapeOf(b: Roofed): Shape {
+// The highest of each group's lowest plane.
+const maxMin = (planes: Plane[], groups: number[][], x: number, z: number) => {
+  let top = -Infinity;
+  for (const g of groups) {
+    let low = Infinity;
+    for (const i of g) low = Math.min(low, at(planes[i], x, z));
+    top = Math.max(top, low);
+  }
+  return top;
+};
+
+// With `own`, the roof's own planes where the map has them.
+export function shapeOf(b: Roofed, own = false): Shape {
   // Flat roofs and those without a direction: the footprint's long side.
   const ux = Math.cos(b.dir);
   const uz = Math.sin(b.dir);
@@ -65,6 +88,14 @@ export function shapeOf(b: Roofed): Shape {
   // A plane whose height is h0 at the rectangle's middle, rising ka a metre along the ridge and kb
   // across it (to its left, the way (-uz, ux) points).
   const plane = (h0: number, ka: number, kb: number): Plane => ({ c: h0 - ka * am - kb * bm, gx: ka * ux - kb * uz, gz: ka * uz + kb * ux });
+  if (own && b.planes?.length && b.groups?.length) {
+    const planes = b.planes;
+    const groups = b.groups;
+    const eaves = b.roof === 0 ? b.h : undefined;
+    const height = (x: number, z: number) => maxMin(planes, groups, x, z);
+    const wall = eaves === undefined ? height : (x: number, z: number) => Math.max(eaves, height(x, z));
+    return { cx, cz, ux, uz, L, W, fill, planes, groups, eaves, height, wall };
+  }
   const rise = Math.max(0, b.ridge - b.h);
   const planes: Plane[] = [];
   if (b.roof === 0 || rise < 0.05) planes.push(plane(b.h, 0, 0));
@@ -87,7 +118,7 @@ export function shapeOf(b: Roofed): Shape {
     for (const p of planes) m = Math.min(m, at(p, x, z));
     return m;
   };
-  return { cx, cz, ux, uz, L, W, fill, planes, height };
+  return { cx, cz, ux, uz, L, W, fill, planes, height, wall: height };
 }
 
 // Sutherland-Hodgman: a polygon cut down to where `keep` is positive, a linear function.
@@ -155,8 +186,19 @@ export function convexPieces(pts: XZ[], tris: number[][]): number[][] {
   return polys;
 }
 
+// A convex polygon cut in two by the line where f is 0, a linear function: the pieces either side.
+const polyArea = (p: XZ[]) => {
+  let a = 0;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) a += (p[j][0] + p[i][0]) * (p[j][1] - p[i][1]);
+  return a / 2;
+};
+const split = (poly: XZ[], f: (x: number, z: number) => number): XZ[][] => [clipHalf(poly, f), clipHalf(poly, (x, z) => -f(x, z))].filter((p) => p.length >= 3 && Math.abs(polyArea(p)) > 1e-6);
+const middle = (p: XZ[]): XZ => [p.reduce((s, q) => s + q[0], 0) / p.length, p.reduce((s, q) => s + q[1], 0) / p.length];
+
 // The roof's faces over the rectangle round the footprint, `o` metres past it all round (its eaves
-// and verges overhanging the walls): each where its plane is the lowest, and that plane.
+// and verges overhanging the walls): each where its plane is the lowest, and that plane. Of a roof
+// of groups: where a plane is its group's lowest and its group the highest (the first of those level
+// with it), in convex pieces.
 export function faces(s: Shape, o: number): { pts: XZ[]; plane: Plane }[] {
   const L = s.L + o;
   const W = s.W + o;
@@ -169,6 +211,32 @@ export function faces(s: Shape, o: number): { pts: XZ[]; plane: Plane }[] {
     [s.cx - s.ux * L + vx * W, s.cz - s.uz * L + vz * W],
   ];
   const out: { pts: XZ[]; plane: Plane }[] = [];
+  if (s.groups) {
+    const groups = s.groups;
+    groups.forEach((g, gi) => {
+      for (const i of g) {
+        const p = s.planes[i];
+        let poly = rect;
+        for (const j of g) if (j !== i && poly.length >= 3) poly = clipHalf(poly, (x, z) => at(s.planes[j], x, z) - at(p, x, z));
+        if (poly.length < 3) continue;
+        // Where another group's lowest is over this plane, that group's roof is: cut along where each
+        // of its planes crosses this one, and keep the pieces this one is the higher in.
+        let pieces = [poly];
+        groups.forEach((h, hi) => {
+          if (hi === gi || !pieces.length) return;
+          for (const j of h) pieces = pieces.flatMap((q) => split(q, (x, z) => at(s.planes[j], x, z) - at(p, x, z)));
+          pieces = pieces.filter((q) => {
+            const [x, z] = middle(q);
+            let low = Infinity;
+            for (const j of h) low = Math.min(low, at(s.planes[j], x, z));
+            return hi < gi ? low < at(p, x, z) - 1e-6 : low <= at(p, x, z) + 1e-6;
+          });
+        });
+        for (const q of pieces) out.push({ pts: q, plane: p });
+      }
+    });
+    return out;
+  }
   s.planes.forEach((p, i) => {
     let poly = rect;
     for (let j = 0; j < s.planes.length && poly.length >= 3; j++) {
@@ -184,11 +252,13 @@ export function faces(s: Shape, o: number): { pts: XZ[]; plane: Plane }[] {
 // The top of a wall from a to c, as [x, z, height] at each end and wherever the roof over it bends.
 export function wallTop(s: Shape, a: XZ, c: XZ): [number, number, number][] {
   const ts = [0, 1];
-  for (let i = 0; i < s.planes.length; i++) {
-    for (let j = i + 1; j < s.planes.length; j++) {
+  // The planes, and the eaves the walls reach at least as one more, level.
+  const all = s.eaves === undefined ? s.planes : [...s.planes, { c: s.eaves, gx: 0, gz: 0 }];
+  for (let i = 0; i < all.length; i++) {
+    for (let j = i + 1; j < all.length; j++) {
       // Where planes i and j are level along the wall.
-      const p = s.planes[i];
-      const q = s.planes[j];
+      const p = all[i];
+      const q = all[j];
       const fa = at(p, a[0], a[1]) - at(q, a[0], a[1]);
       const fc = at(p, c[0], c[1]) - at(q, c[0], c[1]);
       if ((fa > 0 && fc < 0) || (fa < 0 && fc > 0)) ts.push(fa / (fa - fc));
@@ -199,7 +269,7 @@ export function wallTop(s: Shape, a: XZ, c: XZ): [number, number, number][] {
   for (const t of ts) {
     const x = a[0] + (c[0] - a[0]) * t;
     const z = a[1] + (c[1] - a[1]) * t;
-    const y = s.height(x, z);
+    const y = s.wall(x, z);
     const last = out[out.length - 1];
     if (last && Math.abs(last[0] - x) < 1e-6 && Math.abs(last[1] - z) < 1e-6) continue;
     // Where two planes cross under the lowest, the roof runs straight on: no bend.

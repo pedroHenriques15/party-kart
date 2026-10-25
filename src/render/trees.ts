@@ -182,7 +182,7 @@ export interface CityTree {
   foot: number;
   trunk: number;
 }
-const CITY_KINDS: MapTreeKind[] = ['broadleaf', 'pine', 'eucalyptus', 'conifer', 'poplar', 'palm', 'plane', 'lime', 'birch'];
+const CITY_KINDS: MapTreeKind[] = ['broadleaf', 'pine', 'eucalyptus', 'conifer', 'poplar', 'palm', 'plane', 'lime', 'birch', 'evergreen-broadleaf'];
 
 interface Shape {
   // Cards on High (Medium has two thirds, Low half); each card's side as a share of the crown's width,
@@ -219,6 +219,8 @@ const SHAPES: Record<MapTreeKind, Shape> = {
   lime: { cards: 72, card: [0.45, 0.8, 3.6], outline: (v) => round(v) * 0.95 + 0.05, into: 0.4, tilt: 0.5, green: '#7a9566' },
   // A birch's: a light oval on a trunk that runs up into it, its sprays hanging.
   birch: { cards: 44, card: [0.6, 0.6, 2.8], outline: (v) => round(v) * 0.8 + 0.2, into: 0.75, tilt: 0.1, green: '#a9c38b' },
+  // braga-map's task 093: a broadleaf that keeps its leaves in winter, drawn as the broadleaf is.
+  'evergreen-broadleaf': { cards: 56, card: [0.5, 0.9, 4.5], outline: (v) => round(v) * 0.9 + 0.1, into: 0.45, tilt: 0.45, green: '#a3bd86' },
 };
 
 // A seeded random, so the trees are the same every time (the shots compare).
@@ -551,8 +553,12 @@ export async function loadTreeLooks(kinds: TreeKindOf[], renderer: THREE.WebGLRe
   const quality = levelOf(graphics), ultra = graphics === 'ultra';
   const load = (f: { url: string } | null | undefined) => (f ? loader.loadAsync(f.url) : Promise.resolve(null));
   const out: Record<string, TreeLooks> = {};
+  // A kind drawn in another's bark and leaves (the evergreen broadleaf in the broadleaf's, braga-map's
+  // task 093) takes that one's, loaded once.
+  const look = (k: TreeKindOf) => `${k.bark?.id}|${k.leaves?.id}`, first = new Map<string, string>();
+  for (const k of kinds) if (!first.has(look(k))) first.set(look(k), k.kind);
   await Promise.all(
-    kinds.map(async (k) => {
+    kinds.filter((k) => first.get(look(k)) === k.kind).map(async (k) => {
       const [bark, leaves, normal, roughness] = await Promise.all([
         ...[k.bark, k.leaves].map((t) => load(t && (ultra ? t.ultra.colour : t.files[quality]))),
         ...(ultra ? [load(k.bark?.ultra.normal), load(k.bark?.ultra.roughness)] : []),
@@ -570,6 +576,10 @@ export async function loadTreeLooks(kinds: TreeKindOf[], renderer: THREE.WebGLRe
       out[k.kind] = { bark, leaves, ...(normal && roughness ? { barkRelief: { normal, roughness } } : {}), ...(twigs ? { twigs, year: k.year, leafMean: k.leaves?.mean } : {}) };
     }),
   );
+  for (const k of kinds) {
+    const of = out[first.get(look(k))!];
+    if (!out[k.kind] && of) out[k.kind] = { bark: of.bark, leaves: of.leaves, ...(of.barkRelief ? { barkRelief: of.barkRelief } : {}) };
+  }
   loader.dispose();
   return out;
 }
@@ -588,16 +598,18 @@ const LEAN = 0.47;
 // have their limbs drawn: the sky through such a crown shows its branches. test/trees.test.ts keeps it
 // the map's.
 export const DECIDUOUS: MapTreeKind[] = ['broadleaf', 'poplar', 'plane', 'lime', 'birch'];
-// The kinds whose crowns are in their season on Ultra (braga-map's task 093): those that drop their leaves
-// but the broadleaf, which holds the hills' woods, green in the winter photos, with the avenues'
-// hackberries and robinias, till task 130 gives the evergreen ones a kind of their own.
-export const SEASONAL: MapTreeKind[] = DECIDUOUS.filter((k) => k !== 'broadleaf');
+// The kinds whose crowns are in their season on Ultra (braga-map's task 093): those that drop their
+// leaves. The hills' woods, green in the winter photos, are the map's evergreen broadleaves since 093.
+export const SEASONAL: MapTreeKind[] = DECIDUOUS;
 // A limb's radius at its foot: this share of its crown's width, within [min, max] metres; and how far
 // from the camera they're drawn (past it a limb in a crown is a pixel or less).
 const LIMB: [number, number, number] = [0.012, 0.05, 0.14];
 const LIMB_REACH = 150;
 
 export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, graphics: Graphics, renderer: THREE.WebGLRenderer): THREE.Group {
+  // Below Ultra the evergreen broadleaves are drawn as broadleaves, as they were before braga-map's task
+  // 093 named them: only Ultra's seasons tell them apart.
+  if (graphics !== 'ultra') trees = trees.map((t) => (t.kind === 'evergreen-broadleaf' ? { ...t, kind: 'broadleaf' } : t));
   const group = new THREE.Group();
   const quality = levelOf(graphics);
   const R = NEAR[graphics];

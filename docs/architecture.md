@@ -805,7 +805,8 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     (`WIND`, by the game's clock, `clock` in `look.ts`: still at 0, so `?scenery`'s shots are), the crown
     from its foot over a trunk that stands still, and those of the kinds that drop their leaves
     (`DECIDUOUS`, the map's) within 150 m have five limbs in their bark, from their own trunk's top into
-    their leaves, each forking twice on towards the crown's edge. And those kinds' crowns are in their
+    their leaves, each forking twice on towards the crown's edge (wound to face out: task 089's were
+    inside out, and drew pale against the sun). And those kinds' crowns are in their
     season by the date (braga-map's task 093; `seasonOf` in `season.ts`, `DAY` in `look.ts`), from each
     kind's year in Braga as the map gives it (`treeKinds`' `year`): bare in winter, their buds bursting,
     a spring's paler green, summer's, their autumn colour, falling. Each card of a crown is in leaf or
@@ -813,7 +814,11 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     thins card by card; the twigs are see-through by their own share of each pixel, dithered, so a bare
     crown far off is a haze of them; the billboards are baked in the season, and the shadows follow it. A
     kind in summer leaf draws as before. By the default 13 March the deciduous kinds are bare, as that
-    day's photos have the planes. Then the Rio Este,
+    day's photos have the planes; the map's evergreen broadleaves (its tenth kind since task 093: the
+    hills' woods, green in their winter photos, and the evergreens the photos and the map name) keep
+    their leaves. They're drawn as the broadleaf is, in its textures (loaded once), and below Ultra with
+    the broadleaves, as before. The twigs' cards are darker seen against the sun, as a twig's shaded
+    side is. Then the Rio Este,
     the decks' pillars and abutments and the tunnels' mouths (`levels.ts`), brown signs to
     landmarks on the pavement, the granite plinth with Braga's arms at the start (free roam's first
     spot: its top is a block the karts stand on, `stand` in `ground.ts`), and the easter eggs on the friends' houses (`eggs.ts`). Neither buildings nor
@@ -1108,6 +1113,24 @@ them: what they cost is the leaf cards filling the fine near maps, not how many 
 each cascade only the trees that could shade what it covers (by their rings of cells, nearest first) saved
 0.3–0.4 ms, and it wasn't kept: to be sure of not losing a shadow on Braga's slopes it would need the
 ground's height, more than it saves. (The cascade by cascade figures were taken with it on.)
+
+**Ultra's seasons** (braga-map's task 093, 2026-10-25: party-kart on braga-map's branch for it, the same card,
+`shots/2026-10-25-after093/` against `before093`, shot from a worktree of main after `npm ci` (braga-map
+1.42.0), the 33 viewpoints at Ultra, High and Low, 720 pixels high, on the default 13 March; High and Low draw
+as before, to the pixel):
+
+| | Ultra in its season (13 March: the deciduous kinds bare) | Ultra before it |
+|---|---|---|
+| The city alone: draw calls (median), the cascades' passes counted | 254–644 (504) | 243–633 (493) |
+| The city alone: triangles (median) | 8.25–14.29 M (10.28) | 6.94–13.18 M (9.37) |
+| Textures, as `textureBytes` counts them | 462 MB | 462 MB |
+
+At 2560 by 1440, two runs each, back to back with main: a frame is 10.6–10.7 ms at `falperra` (10.0–10.1),
+7.7 at `alameda-fujacal` (7.3), 8.7–8.8 at `capela-sao-joao` (8.0), 7.7 at `lobato-pavement` (7.4) and 9.6 at
+`picoto-top` (9.5): the bare crowns' twigs and the forking limbs about 0.1–0.8 ms. A gather of the near
+trees takes 1.7–1.9 ms either way. The round's own frame times aren't comparable: the owner was playing on
+the PC while part of it was shot. The draw calls are the evergreen broadleaves' meshes, the triangles
+mostly the limbs' forks.
 
 **What every street in the area cost** (task 035, against `shots/2026-10-14-task012/`, the same 29
 viewpoints): before it, the city was 58–184 draw calls on High and Medium and 40–165 on Low,

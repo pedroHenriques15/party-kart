@@ -2,10 +2,12 @@
 // a buffer as the screen would show it (tone mapped and its haze mixed in after that, as look.ts has
 // it), then what a phone can't afford laid over it: the corners, the eaves and the foot of each wall
 // darkened as the light reaching them is (ground truth ambient occlusion, from the frame's own depth),
-// and the edges smoothed (SMAA). High and below draw straight to the screen with the one sun, as before.
+// what's dithered averaged with the pixels round it (task 132), and the edges smoothed (SMAA). High
+// and below draw straight to the screen with the one sun, as before.
 import * as THREE from 'three';
 import { CSM } from 'three/addons/csm/CSM.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 
 const q = new URLSearchParams(globalThis.location?.search);
@@ -52,6 +54,61 @@ uniform vec2 CSM_cascades[CSM_CASCADES];
 uniform float cameraNear;
 uniform float shadowFar;`;
 
+// What's drawn as a share of each pixel by a dither, with no blending to give the rest of the pixel to
+// what's behind (a bare crown's finer twigs far off, its billboard's, trees.ts's: braga-map's task 132),
+// says so in the frame's alpha, which nothing else reads: below 0, to -1, by how much of it is dithered
+// (`share`, GLSL; none, and it's 1 as everything else is). The resolve averages it with the pixels round
+// it, so a bare crown far off is a soft mass, as one is, where the dither alone left a stipple. Called
+// from a material's onBeforeCompile; on a material not drawn into Ultra's frame it does nothing.
+export function dithered(sh: { fragmentShader: string }, share: string): void {
+  sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `#include <opaque_fragment>\nif (${share} > 0.0) gl_FragColor.a = -min(${share}, 1.0);`);
+}
+// The resolve: a pixel dithered, or seen through one within a pixel of it (no nearer than it), mixed by
+// the most dithered there with the mean of those of the nine round it that are dithered or behind it, so
+// the dither's dots, spread evenly as its pattern spreads them, become their share of each pixel. What
+// stands in front of a dithered crown (a sign, a lamp post, a wall's edge) and everything away from
+// one is left as it was.
+const RESOLVE = `uniform sampler2D frame;
+uniform sampler2D depth;
+void main() {
+  ivec2 at = ivec2(gl_FragCoord.xy), most = textureSize(frame, 0) - 1;
+  vec4 own = texelFetch(frame, at, 0);
+  // The nearest dithered pixel round this one, and how dithered the most is.
+  float near = 1.0, share = 0.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    ivec2 p = clamp(at + ivec2(x, y), ivec2(0), most);
+    float a = texelFetch(frame, p, 0).a;
+    if (a < 0.0) {
+      near = min(near, texelFetch(depth, p, 0).r);
+      share = max(share, -a);
+    }
+  }
+  if (share <= 0.0 || (own.a >= 0.0 && texelFetch(depth, at, 0).r < near)) {
+    gl_FragColor = vec4(own.rgb, 1.0);
+    return;
+  }
+  vec3 sum = vec3(0.0);
+  float n = 0.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    ivec2 p = clamp(at + ivec2(x, y), ivec2(0), most);
+    vec4 c = texelFetch(frame, p, 0);
+    if (c.a < 0.0 || texelFetch(depth, p, 0).r >= near) {
+      sum += c.rgb;
+      n += 1.0;
+    }
+  }
+  gl_FragColor = vec4(mix(own.rgb, sum / n, share), 1.0);
+}`;
+function resolve(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: { frame: { value: null }, depth: { value: null } },
+    vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: RESOLVE,
+    depthTest: false,
+    depthWrite: false,
+  });
+}
+
 // A buffer holding the frame as the screen shows it: three tone maps and encodes to sRGB only what it
 // draws to the screen or to an XR device's buffer, and this one says it is the latter. Half floats, so
 // nothing reads it back as sRGB and decodes it again.
@@ -67,6 +124,8 @@ export class UltraFrame {
   private camera: THREE.PerspectiveCamera;
   private drawn: THREE.WebGLRenderTarget;
   private shaded: THREE.WebGLRenderTarget;
+  private resolved: THREE.WebGLRenderTarget;
+  private resolving: FullScreenQuad;
   private gtao: GTAOPass;
   private smaa: SMAAPass;
   private sun: THREE.DirectionalLight;
@@ -98,6 +157,8 @@ export class UltraFrame {
     const s = renderer.getDrawingBufferSize(new THREE.Vector2());
     this.drawn = displayBuffer(s.x, s.y, true);
     this.shaded = displayBuffer(s.x, s.y, false);
+    this.resolved = displayBuffer(s.x, s.y, false);
+    this.resolving = new FullScreenQuad(resolve());
     // From the depth the frame was drawn with, its normals worked out from that depth: a pass of its own
     // for them would draw the trees' leaf cards whole, dark squares round every crown. (Given a depth at
     // once, three 0.186's pass never makes the buffer it then sizes and disposes of: so after.)
@@ -115,6 +176,7 @@ export class UltraFrame {
   setSize(w: number, h: number): void {
     this.drawn.setSize(w, h);
     this.shaded.setSize(w, h);
+    this.resolved.setSize(w, h);
     this.gtao.setSize(...aoSize(w, h));
     this.smaa.setSize(w, h);
   }
@@ -163,7 +225,12 @@ export class UltraFrame {
     r.clear();
     r.render(this.scene, this.camera);
     this.gtao.render(r, this.shaded, this.drawn, 0, false);
-    this.smaa.render(r, this.drawn, this.shaded, 0, false); // to the screen: its write buffer unused
+    const u = (this.resolving.material as THREE.ShaderMaterial).uniforms;
+    u.frame.value = this.shaded.texture;
+    u.depth.value = this.drawn.depthTexture;
+    r.setRenderTarget(this.resolved);
+    this.resolving.render(r);
+    this.smaa.render(r, this.drawn, this.resolved, 0, false); // to the screen: its write buffer unused
     r.setRenderTarget(null);
   }
 
@@ -179,6 +246,9 @@ export class UltraFrame {
     this.sun.visible = true;
     this.drawn.dispose();
     this.shaded.dispose();
+    this.resolved.dispose();
+    this.resolving.material.dispose();
+    this.resolving.dispose();
     this.gtao.dispose();
     this.smaa.dispose();
   }

@@ -8,6 +8,7 @@ import { RIVER_HALF_W } from '../track/layout.ts';
 import { distanceToRoad, surfacePoint, type Track } from '../track/track.ts';
 import { anisotropy, clock, DAY, levelOf, type Graphics } from './look.ts';
 import { ktx2Loader } from './ktx2.ts';
+import { dithered } from './post.ts';
 import { seasonOf } from './season.ts';
 import { LAKE, riverDistance } from './world.ts';
 
@@ -465,10 +466,16 @@ function crownVertex(sh: Shader, card: [number, number, number], fixed: number):
 // colours, each as bright as the leaf's own texel: a spring's paler green, its kind's autumn colour (each
 // card turning on its own) and its flowers'. A card of twigs shows its kind's: cut where a twig is as wide
 // as a few pixels, and where they're finer see-through by their own share of each pixel, dithered, so a
-// bare crown far off is a haze, as one is, not nothing (on a billboard's bake, TREE_BAKE, a plain cut);
-// taken a little darker, as the leaves are to their green, a card being lit as its crown is, from its
-// heart (most of a twig is in its own and its neighbours' shade); and darker still seen against the sun
-// (TREE_LIT), as a twig's shaded side is.
+// bare crown far off is a haze, as one is, not nothing (on a billboard's bake, TREE_BAKE, a plain cut),
+// and the dither resolved in Ultra's frame (post.ts's `dithered`), so it's a soft mass and not a stipple;
+// the cards in two sets dithered apart, so one set's fill in what the other's leave (task 132: the one
+// pattern for all left the same holes in each, too thin a veil once resolved, pink against the sky; one
+// each massed a crown near black); taken a little darker, as the leaves are to their green, a card being
+// lit as its crown is, from its heart (most of a twig is in its own and its neighbours' shade), and half
+// way to its own grey, as the winter photos' twigs are against the sky; and darker still seen against the
+// sun (TREE_LIT), as a twig's shaded side is. A twig has no sheen: a card's normal is its crown's, near
+// upright, and the sun glancing off it seen from below drew it white (task 132), where a twig is a dark
+// line against the sky.
 const SEASON = `uniform vec4 season;
 uniform vec3 leafGreen;
 uniform vec3 leafMean;
@@ -485,16 +492,18 @@ function seasonFragment(sh: Shader, u: Record<string, THREE.IUniform>): void {
   Object.assign(sh.uniforms, u);
   sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\n${SEASON}`).replace(
     '#include <map_fragment>',
-    `if (vCard >= season.x) {
+    `float seasonTwig = step(season.x, vCard), seasonShare = 0.0;
+if (vCard >= season.x) {
   vec4 twig = texture2D(twigMap, vMapUv);
 #ifdef TREE_BAKE
   if (twig.a < 0.3) discard;
 #else
   vec2 tx = dFdx(vMapUv) * vec2(textureSize(twigMap, 0)), ty = dFdy(vMapUv) * vec2(textureSize(twigMap, 0));
   float lod = 0.5 * log2(max(1.0, max(dot(tx, tx), dot(ty, ty))));
-  if (twig.a <= mix(0.5, seasonDither(), clamp(lod / 3.0, 0.0, 1.0))) discard;
+  seasonShare = clamp(lod / 3.0, 0.0, 1.0);
+  if (twig.a <= mix(0.5, fract(seasonDither() + step(0.5, fract(vCard * 5.17)) * 0.5), seasonShare)) discard;
 #endif
-  diffuseColor = vec4(twig.rgb * 0.65, 1.0);
+  diffuseColor = vec4(mix(vec3(dot(twig.rgb, vec3(0.2126, 0.7152, 0.0722))), twig.rgb, 0.5) * 0.65, 1.0);
 #if defined(TREE_LIT) && NUM_DIR_LIGHTS > 0
   diffuseColor.rgb *= mix(1.0, 0.3, smoothstep(0.0, 0.7, -dot(normalize(-vViewPosition), directionalLights[0].direction)));
 #endif
@@ -505,8 +514,20 @@ function seasonFragment(sh: Shader, u: Record<string, THREE.IUniform>): void {
   diffuseColor.rgb = mix(diffuseColor.rgb, autumnColour * own, clamp(season.y * 1.6 - fract(vCard * 7.31) * 0.6, 0.0, 1.0));
   diffuseColor.rgb = mix(diffuseColor.rgb, bloomColour * own, 0.35 * season.w * step(fract(vCard * 3.17), 0.6));
 }`,
-  );
+  ).replace(
+    '#include <lights_physical_fragment>',
+    `#include <lights_physical_fragment>
+material.specularColor *= 1.0 - seasonTwig;
+material.specularColorBlended *= 1.0 - seasonTwig;
+material.specularF90 *= 1.0 - seasonTwig;`,
+  ).replace('#include <lights_fragment_end>', `#include <lights_fragment_end>\nreflectedLight.directDiffuse *= 1.0 - ${(1 - TWIG_SUN).toFixed(2)} * seasonTwig;`);
+  dithered(sh, 'seasonShare');
 }
+// How much of the sun a card of twigs takes of what a card of leaves facing it would: a twig is a thin
+// round stick, the sun on one side of it, and what's seen of a crown's against the sky is mostly its
+// shaded side, in the sky's light (task 132: in the whole sun a warm brown, it averaged with the sky
+// to a pink, as if in flower, and massed to a copper beech's).
+const TWIG_SUN = 0.35;
 
 // A deciduous kind's season on a day, as its crowns' shaders take it; null when its crowns are as in
 // summer (in full leaf, neither fresh, turning nor in flower), so they draw as they did before task 093.
@@ -732,7 +753,8 @@ export function cityTrees(trees: CityTree[], looks: Record<string, TreeLooks>, g
     // In its season its colours are baked into it, and it's see-through by its own share of each pixel, as
     // a bare crown's twigs are (task 093).
     const mat = new THREE.MeshStandardMaterial({ color: look.leaves && !season ? s.green : '#ffffff', map: bakeBillboard(kind, geo, trunkGeo, look, all, renderer, season), alphaTest: 0.4, roughness: 0.95, side: THREE.DoubleSide });
-    if (season && season.season.value.x < 1) mat.defines = { TREE_HASHED: '' };
+    const hashed = season !== null && season.season.value.x < 1;
+    if (hashed) mat.defines = { TREE_HASHED: '' };
     mat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', '#include <common>\nuniform vec2 treeNear;\nvarying vec3 vTreeAt;')
@@ -760,7 +782,9 @@ if (distance(cameraPosition.xz, tAt.xz) < treeNear.x - treeNear.y - 2.0) gl_Posi
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>\nuniform vec2 treeNear;\nvarying vec3 vTreeAt;\n${DITHER}`)
         .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\nif (${NEARNESS} > treeDither()) discard;`)
-        .replace('#include <alphatest_fragment>', '#ifdef TREE_HASHED\nif (diffuseColor.a <= fract(treeDither() * 7.0 + 0.5)) discard;\ndiffuseColor.a = 1.0;\n#endif\n#include <alphatest_fragment>');
+        .replace('#include <alphatest_fragment>', '#ifdef TREE_HASHED\nfloat hashShare = 1.0 - diffuseColor.a;\nif (diffuseColor.a <= fract(treeDither() * 7.0 + 0.5)) discard;\ndiffuseColor.a = 1.0;\n#endif\n#include <alphatest_fragment>');
+      // Its dither resolved in Ultra's frame, by how see-through it is there (task 132).
+      if (hashed) dithered(sh, 'hashShare');
     };
     mat.customProgramCacheKey = () => 'tree-billboard';
     const list = trees.map((t, i) => (t.kind === kind ? i : -1)).filter((i) => i >= 0);

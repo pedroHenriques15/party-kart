@@ -54,6 +54,73 @@ function earcut(rings: [number, number][][]): { pts: number[]; tris: number[] } 
   return { pts, tris };
 }
 
+// The triangles (three indices into pts each) made Delaunay's within the polygon: an edge two triangles
+// share is swapped for the four points' other diagonal where the one triangle's far corner is inside
+// the other's circumcircle and the four make a convex quad, until none is; the rings' own edges
+// (consecutive points, each ring of `sizes` points in turn) stay. Ear clipping leaves long slivers
+// where a ring's points nearly line up, as a pavement laid at heights of its own has a point wherever
+// they bend along its kerb (braga-map's task 044): a surface over such a sliver took its height there
+// from metres off, and dipped by the kerb.
+function delaunay(pts: number[], tris: number[], sizes: number[]): void {
+  const key = (a: number, b: number) => (a < b ? a * 1e7 + b : b * 1e7 + a);
+  const fixed = new Set<number>();
+  let at = 0;
+  for (const n of sizes) {
+    for (let k = 0; k < n; k++) fixed.add(key(at + k, at + ((k + 1) % n)));
+    at += n;
+  }
+  // Each edge's triangles (by their first index in tris).
+  const by = new Map<number, number[]>();
+  const link = (t: number) => {
+    for (let k = 0; k < 3; k++) {
+      const e = key(tris[t + k], tris[t + ((k + 1) % 3)]);
+      const l = by.get(e);
+      if (l) l.push(t);
+      else by.set(e, [t]);
+    }
+  };
+  const unlink = (t: number) => {
+    for (let k = 0; k < 3; k++) {
+      const e = key(tris[t + k], tris[t + ((k + 1) % 3)]);
+      const l = by.get(e);
+      if (l) l.splice(l.indexOf(t), 1);
+    }
+  };
+  for (let t = 0; t < tris.length; t += 3) link(t);
+  const X = (i: number) => pts[i * 2];
+  const Z = (i: number) => pts[i * 2 + 1];
+  const cross = (a: number, b: number, c: number) => (X(b) - X(a)) * (Z(c) - Z(a)) - (Z(b) - Z(a)) * (X(c) - X(a));
+  // Whether d is inside the circle through a, b and c (whichever way they wind).
+  const inCircle = (a: number, b: number, c: number, d: number) => {
+    const [ax, az, bx, bz, cx, cz] = [X(a) - X(d), Z(a) - Z(d), X(b) - X(d), Z(b) - Z(d), X(c) - X(d), Z(c) - Z(d)];
+    const det = (ax * ax + az * az) * (bx * cz - cx * bz) - (bx * bx + bz * bz) * (ax * cz - cx * az) + (cx * cx + cz * cz) * (ax * bz - bx * az);
+    return det * Math.sign(cross(a, b, c)) > 1e-9;
+  };
+  const stack = [...by.keys()].filter((e) => !fixed.has(e));
+  let flips = 0;
+  while (stack.length && flips < 20 * tris.length) {
+    const e = stack.pop()!;
+    const l = by.get(e);
+    if (!l || l.length !== 2 || fixed.has(e)) continue;
+    const [t1, t2] = l;
+    const u = Math.floor(e / 1e7);
+    const v = e % 1e7;
+    const p = [0, 1, 2].map((k) => tris[t1 + k]).find((i) => i !== u && i !== v)!;
+    const q = [0, 1, 2].map((k) => tris[t2 + k]).find((i) => i !== u && i !== v)!;
+    if (!inCircle(u, v, p, q)) continue;
+    // A convex quad: u and v either side of p–q.
+    if (Math.sign(cross(p, q, u)) === Math.sign(cross(p, q, v)) || cross(p, q, u) === 0 || cross(p, q, v) === 0) continue;
+    unlink(t1);
+    unlink(t2);
+    [tris[t1], tris[t1 + 1], tris[t1 + 2]] = [p, q, u];
+    [tris[t2], tris[t2 + 1], tris[t2 + 2]] = [p, q, v];
+    link(t1);
+    link(t2);
+    flips++;
+    for (const [a, b] of [[u, p], [p, v], [v, q], [q, u]]) if (!fixed.has(key(a, b))) stack.push(key(a, b));
+  }
+}
+
 // The polygon (an outline, then its holes) as triangles, each three flat x, z pairs.
 export function triangles(rings: [number, number][][]): number[][] {
   const { pts, tris } = earcut(rings);
@@ -103,7 +170,9 @@ export function surface(rings: [number, number][][], h: Height, g: Grain, emit: 
       split(mx, mz, m2!, bx, bz, by, cx, cz, cy, depth + 1);
     }
   };
-  const { pts, tris } = earcut(rings.map((r) => dense(r, g.dense)));
+  const dr = rings.map((r) => dense(r, g.dense));
+  const { pts, tris } = earcut(dr);
+  delaunay(pts, tris, dr.map((r) => r.length));
   const ys: number[] = [];
   for (let k = 0; k < pts.length; k += 2) ys.push(h(pts[k], pts[k + 1]));
   for (let k = 0; k < tris.length; k += 3) {

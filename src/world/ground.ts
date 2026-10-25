@@ -264,15 +264,26 @@ function crossesOdd(e: number[], px: number, pz: number, rx: number, rz: number)
   return odd;
 }
 
-// How far a pavement laid at its heights is over the ground the land is made from at (x, z): that ground
-// is braga-map's, or a kerb under the pavement where it's laid lower than that (worldGround).
-function laidOver(p: Laid, world: Braga, x: number, z: number): number {
-  return Math.max(KERB, p.raw(x, z) - world.height(x, z));
+// How far a pavement laid at its heights is over the ground the land is made from at (x, z) (Data's
+// base, worldGround's).
+function laidOver(p: Laid, base: (x: number, z: number) => number, x: number, z: number): number {
+  return p.raw(x, z) - base(x, z);
 }
 
-// The pavement laid at its heights (Laid) that (x, z) is on, if any.
-function laidAt(laid: Cells<Laid>, x: number, z: number): Laid | null {
-  for (const p of laid.at(x, z) ?? []) if (x >= p.box.x0 && x <= p.box.x1 && z >= p.box.z0 && z <= p.box.z1 && p.rings.has(x, z)) return p;
+// The pavement laid at its heights (Laid) that (x, z) is on, if any; `edge`, or within that of its
+// outline: a point of its outline, which a surface laid on it has (streets.ts), is in it or out by
+// turns as the polygon test takes it, and out it had a draped pavement's height (a white sawtooth along
+// a kerb, its points at the one and its triangles inward at the other).
+function laidAt(laid: Cells<Laid>, x: number, z: number, edge = 0): Laid | null {
+  const near = laid.at(x, z) ?? [];
+  for (const p of near) if (x >= p.box.x0 && x <= p.box.x1 && z >= p.box.z0 && z <= p.box.z1 && p.rings.has(x, z)) return p;
+  if (edge) {
+    for (const p of near) {
+      if (x < p.box.x0 - edge || x > p.box.x1 + edge || z < p.box.z0 - edge || z > p.box.z1 + edge) continue;
+      const e = p.e;
+      for (const k of p.cells.at(x, z) ?? []) if (toSegment(x, z, e[k * 6], e[k * 6 + 1], e[k * 6 + 3], e[k * 6 + 4]).d <= edge) return p;
+    }
+  }
   return null;
 }
 
@@ -456,6 +467,7 @@ interface Data {
   posts: Cells<Post>;
   laid: Cells<Laid>; // the pavements on the ground, and the paths flush with them, at their heights
   laidList: Laid[];
+  base: (x: number, z: number) => number; // the ground the land is made from (worldGround)
   // Along such a pavement's edge where the land behind is higher than it, strips the land is cut along
   // (render/city.ts), so it steps there: made when first asked for (WorldGround.backs).
   backs: Back[] | null;
@@ -582,8 +594,8 @@ export class WorldGround implements Ground {
   }
 
   raise(x: number, z: number): number {
-    const p = laidAt(this.d.laid, x, z);
-    if (p) return laidOver(p, this.d.world, x, z);
+    const p = laidAt(this.d.laid, x, z, 0.02);
+    if (p) return laidOver(p, this.d.base, x, z);
     let r = KERB;
     for (const k of this.d.dropped.at(x, z) ?? []) r = Math.min(r, KERB * Math.min(1, toSegment(x, z, k.ax, k.az, k.bx, k.bz).d / DROP));
     return r;
@@ -1206,10 +1218,14 @@ export function worldGround(world: Braga): WorldGround {
   const nearEdges: number[] = [];
   let look = 0;
   const edgeSeen = new Map<Laid, Int32Array>();
-  const land = makeLand(world, world.box, undefined, (x, z) => {
+  const base = (x: number, z: number) => {
     const h = world.height(x, z);
     const p = laidAt(laid, x, z);
     if (p) return Math.min(h, p.raw(x, z) - KERB);
+    // On its outline (a point of it, which what it meets has too): at it or under it, but no kerb under
+    // it, so a carriageway's edge along its kerb, and a kerb dropped at a crossing, keep braga-map's.
+    const q = laidAt(laid, x, z, 0.02);
+    if (q) return Math.min(h, q.raw(x, z));
     // (Its lower side on the right of its line, as land.ts has it.)
     if (!(reached.at(x, z) ?? []).some((s) => (s.bx - s.ax) * (z - s.az) - (s.bz - s.az) * (x - s.ax) > 0 && toSegment(x, z, s.ax, s.az, s.bx, s.bz).d < R)) return h;
     let y = h;
@@ -1236,7 +1252,8 @@ export function worldGround(world: Braga): WorldGround {
       }
     }
     return y;
-  });
+  };
+  const land = makeLand(world, world.box, undefined, base);
   const H = land.land;
   const counts: Record<string, number> = {};
   // What stands past the area's edge can't be reached: only what's within 50 m of its box counts.
@@ -1284,8 +1301,8 @@ export function worldGround(world: Braga): WorldGround {
   const pieceCells = new Cells<Piece>();
   for (const p of pieces) pieceCells.add(p.box.x0, p.box.z0, p.box.x1, p.box.z1, p);
   const laidRaise = (x: number, z: number) => {
-    const p = laidAt(laid, x, z);
-    return p ? laidOver(p, world, x, z) : KERB;
+    const p = laidAt(laid, x, z, 0.02);
+    return p ? laidOver(p, base, x, z) : KERB;
   };
 
   const walls = new Cells<Wall>();
@@ -1464,7 +1481,7 @@ export function worldGround(world: Braga): WorldGround {
   counts.pieces = pieces.length;
   counts.paths = flat.length;
   counts.treads = treadList.length;
-  const g = new WorldGround({ world, land, roads, paves, setts, paths, raised, pathSetts, treads, cuts, pieces, pieceCells, walls, posts, laid, laidList, backs: null, dropped, kerbs, lines, sides, inside, blocks: new Cells<Block>(), rooms: [], roomCells: new Cells<Room>(), roomWalls: new Map(), counts });
+  const g = new WorldGround({ world, land, roads, paves, setts, paths, raised, pathSetts, treads, cuts, pieces, pieceCells, walls, posts, laid, laidList, base, backs: null, dropped, kerbs, lines, sides, inside, blocks: new Cells<Block>(), rooms: [], roomCells: new Cells<Room>(), roomWalls: new Map(), counts });
 
   // The walls, fences, railings, hedges and gates (braga-map's task 013), each from under the ground
   // to its top, a gate shut whatever the map says (it's for someone on foot); one thicker than a car

@@ -689,7 +689,7 @@ export async function buildCity(track: Track, course: Course, graphics: Graphics
   const covers = map.sights.flatMap((s) => ('covers' in s ? [s.covers] : []));
   const drawn = list.filter((b) => !covers.some((r) => inside(r, b.cx, b.cz)));
   const rooms = new Map(wg.d.rooms.map((r) => [r.b.pts, r] as const));
-  group.add(Object.assign(buildBuildings(drawn, map, facadeKit(map.facadeTypes, quality), quality, rooms, graphics === 'ultra'), { name: 'buildings' }));
+  group.add(Object.assign(buildBuildings(drawn, map, facadeKit(map.facadeTypes, quality, graphics === 'ultra'), quality, rooms, graphics === 'ultra'), { name: 'buildings' }));
   // The rooms' insides: the walls' inside faces, the floors, the stairs, the roof's parapet and hut.
   group.add(Object.assign(buildInteriors(wg.d.rooms, map), { name: 'interiors' }));
   // The shops' signs, on the buildings drawn.

@@ -177,9 +177,10 @@ test("the land cut along the retaining walls has no crack where a split cell mee
 test("the land steps under a retaining wall, not in front of it: none stands over a street at its foot, and the street isn't curled up to it (braga-map's task 111)", () => {
   // The land as city.ts draws it on High beside a street at a wall: the lattice's small cells (a cell
   // there is split where its triangles would miss the land, as they do across a wall's step), each
-  // triangle a wall's footprint meets cut along it.
+  // triangle a wall's footprint, or a strip along a pavement's back where the land's higher (braga-map's
+  // task 044), meets cut along it.
   const stretches = retainingStretches(world);
-  const S = new Surface(new Lattice(world.box, 10, 2), land, new Holes(wallFootprints(stretches)));
+  const S = new Surface(new Lattice(world.box, 10, 2), land, new Holes([...wallFootprints(stretches), ...ground.backs()]));
   S.L.fine.fill(1);
   const near = (q: (typeof stretches)[number], x: number, z: number) => {
     const [dx, dz] = [q.bx - q.ax, q.bz - q.az];

@@ -26,11 +26,14 @@ import type { World as Braga, Path, Wall as Barrier } from 'braga-map';
 import { bounce, carAt, fly, settle, STICK, WALL_H, type Car, type Ground } from '../car/car.ts';
 import { norm, v3, type V } from '../math.ts';
 import { locate, type Track } from '../track/track.ts';
-import { makeLand, mouthShape, THROAT, type Land } from './land.ts';
+import { makeLand, mouthShape, retainingStretches, STEP_REACH, THROAT, type Land } from './land.ts';
 import { furnish, inside as inRoomRing, roomFloor, roomWalls, type Room } from './interiors.ts';
 
 const CELL = 10;
 export const STEP = 0.3; // the highest a car steps up onto: a kerb, not a wall
+// How far out from a pavement laid at its heights the land rises from it no more than a metre a metre
+// (worldGround's land, braga-map's task 044).
+const BAND = 3;
 const KERB = 0.15; // a kerb's height over its carriageway, as braga-map's streets.mjs has it
 const DROP = 1.2; // how far a pavement slopes up from a kerb dropped at a crossing
 const GRADE = 0.7; // a piece off the ground meets the land "at grade" within this, and is eased to it
@@ -284,6 +287,8 @@ export class Laid {
   e: number[] = []; // its edges, six numbers each: ax, az, ay, bx, bz, by
   cells = new Cells<number>();
   box: { x0: number; z0: number; x1: number; z1: number };
+  low = Infinity; // its lowest point's height
+  seen = 0; // which of worldGround's land's looks last met it, so it's looked at once a time
   // For raw(): which edges it has looked at this time, so an edge in two cells counts once.
   private stamp: Int32Array = new Int32Array(0);
   private looks = 0;
@@ -297,6 +302,7 @@ export class Laid {
         const [bx, bz] = r[(k + 1) % r.length];
         const at = this.e.length / 6;
         this.e.push(ax, az, ys[ri][k], bx, bz, ys[ri][(k + 1) % r.length]);
+        this.low = Math.min(this.low, ys[ri][k]);
         this.cells.add(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), at);
         this.box = { x0: Math.min(this.box.x0, ax), z0: Math.min(this.box.z0, az), x1: Math.max(this.box.x1, ax), z1: Math.max(this.box.z1, az) };
       }
@@ -440,6 +446,10 @@ interface Data {
   walls: Cells<Wall>;
   posts: Cells<Post>;
   laid: Cells<Laid>; // the pavements on the ground, and the paths flush with them, at their heights
+  laidList: Laid[];
+  // Along such a pavement's edge where the land behind is higher than it, strips the land is cut along
+  // (render/city.ts), so it steps there: made when first asked for (WorldGround.backs).
+  backs: [number, number][][] | null;
   dropped: Cells<Wall>; // kerbs dropped at crossings
   kerbs: Cells<Wall>; // raised kerbs, for which way a bump goes
   lines: Cells<{ ax: number; az: number; bx: number; bz: number; ya: number; yb: number; ground: boolean }>;
@@ -507,6 +517,47 @@ export class WorldGround implements Ground {
   // (laidOver), so this game's own changes to the land under the streets (at a retaining wall, a
   // tunnel's mouth, the stadium's pads) carry it with them. From tiles without those heights, a kerb's
   // height, sloping down to a kerb dropped at a crossing.
+  // Where the land behind a pavement laid at its heights is higher than it by more than a kerb, 30 cm,
+  // a metre or 2 m out, across a cell of the land's lattice (braga-map's task 044): a strip 2 cm wide
+  // along that edge, a metre at a time, which the land is cut
+  // along (render/city.ts), so it steps there, up the pavement's granite face (render/streets.ts), and
+  // doesn't slope up over the pavement across a cell of its lattice. (By a kerb or less, the land under
+  // the pavement a kerb under it, it stands no more than that over it, as anywhere.) Not where another
+  // street's beyond. Made when first asked for: only the land's drawing needs them.
+  backs(): [number, number][][] {
+    if (this.d.backs) return this.d.backs;
+    const { world, land, roads, paves, paths, raised } = this.d;
+    const backs: [number, number][][] = [];
+    for (const q of this.d.laidList) {
+      let e = 0;
+      for (const r of q.outline) {
+        let a2 = 0;
+        for (let k = 0; k < r.length; k++) a2 += r[k][0] * r[(k + 1) % r.length][1] - r[(k + 1) % r.length][0] * r[k][1];
+        const out = Math.sign(a2) || 1;
+        for (let k = 0; k < r.length; k++, e += 6) {
+          // The edge, and its heights at its ends (Laid's e).
+          const [ax, az, ay, bx, bz, by] = q.e.slice(e, e + 6);
+          const L = Math.hypot(bx - ax, bz - az);
+          if (L < 1e-3) continue;
+          const [nx, nz] = [(out * (bz - az)) / L, (-out * (bx - ax)) / L];
+          const n = Math.ceil(L);
+          for (let i = 0; i < n; i++) {
+            const [px, pz] = [ax + ((bx - ax) * i) / n, az + ((bz - az) * i) / n];
+            const [qx, qz] = [ax + ((bx - ax) * (i + 1)) / n, az + ((bz - az) * (i + 1)) / n];
+            const [mx, mz] = [(px + qx) / 2, (pz + qz) / 2];
+            const [ox, oz] = [mx + nx * 0.3, mz + nz * 0.3];
+            const y = ay + ((by - ay) * (i + 0.5)) / n + KERB;
+            if (roads.has(ox, oz) || paves.has(ox, oz) || paths.has(ox, oz) || raised.has(ox, oz)) continue;
+            if (![0.3, 1, 2].some((o) => world.height(mx + nx * o, mz + nz * o) > y - 0.5 && land.land(mx + nx * o, mz + nz * o) > y)) continue;
+            backs.push([[px - nx * 0.01, pz - nz * 0.01], [qx - nx * 0.01, qz - nz * 0.01], [qx + nx * 0.01, qz + nz * 0.01], [px + nx * 0.01, pz + nz * 0.01]]);
+          }
+        }
+      }
+    }
+    this.d.backs = backs;
+    return backs;
+  }
+
   raise(x: number, z: number): number {
     const p = laidAt(this.d.laid, x, z);
     if (p) return laidOver(p, this.d.world, x, z);
@@ -1112,16 +1163,56 @@ export function worldGround(world: Braga): WorldGround {
   // The pavements on the ground and the paths flush with them, at the heights braga-map lays them at
   // (its task 044), where the tiles have them.
   const laid = new Cells<Laid>();
+  const laidList: Laid[] = [];
   for (const p of [...S.pavements, ...S.paths.filter((q) => q.raised)]) {
     if ((p.level !== 'ground' && p.level !== 'under') || !p.ys) continue;
     const q = new Laid(p.rings, p.ys);
     laid.add(q.box.x0, q.box.z0, q.box.x1, q.box.z1, q);
+    laidList.push(q);
   }
   // The ground under such a pavement laid lower than braga-map's is a kerb under its top, so the land
-  // doesn't stand through it, and on a retaining wall's lower side it's held to it (land.ts).
+  // doesn't stand through it, and on a retaining wall's lower side it's held to it (land.ts). And on
+  // that side, within its reach (land.ts's STEP_REACH) and within BAND of the pavement's edge, it rises
+  // from a kerb under the edge no more than a metre for each metre out: braga-map's 2 m ground beside a
+  // pavement averages in the wall's foot and top (its task 044), which would stand in front of the
+  // wall over the pavement beside it. (Elsewhere the land's cut at a pavement's back, backs.)
+  const reached = new Cells<{ ax: number; az: number; bx: number; bz: number }>();
+  const R = STEP_REACH;
+  for (const s of retainingStretches(world)) reached.add(Math.min(s.ax, s.bx) - R, Math.min(s.az, s.bz) - R, Math.max(s.ax, s.bx) + R, Math.max(s.az, s.bz) + R, s);
+  const nearLaid: Laid[] = [];
+  const nearEdges: number[] = [];
+  let look = 0;
+  const edgeSeen = new Map<Laid, Int32Array>();
   const land = makeLand(world, world.box, undefined, (x, z) => {
+    const h = world.height(x, z);
     const p = laidAt(laid, x, z);
-    return p ? Math.min(world.height(x, z), p.raw(x, z) - KERB) : world.height(x, z);
+    if (p) return Math.min(h, p.raw(x, z) - KERB);
+    // (Its lower side on the right of its line, as land.ts has it.)
+    if (!(reached.at(x, z) ?? []).some((s) => (s.bx - s.ax) * (z - s.az) - (s.bz - s.az) * (x - s.ax) > 0 && toSegment(x, z, s.ax, s.az, s.bx, s.bz).d < R)) return h;
+    let y = h;
+    look++;
+    // Each once (a piece, and an edge, is in each cell its box meets); not one whose lowest point is
+    // over this, less a kerb: it can't hold it down.
+    for (const q of laid.near(x - BAND, z - BAND, x + BAND, z + BAND, nearLaid)) {
+      if (q.seen === look) continue;
+      q.seen = look;
+      if (q.low - KERB >= y || x < q.box.x0 - BAND || x > q.box.x1 + BAND || z < q.box.z0 - BAND || z > q.box.z1 + BAND) continue;
+      const e = q.e;
+      let seen = edgeSeen.get(q);
+      if (!seen) edgeSeen.set(q, (seen = new Int32Array(e.length / 6)));
+      for (const k of q.cells.near(x - BAND, z - BAND, x + BAND, z + BAND, nearEdges)) {
+        if (seen[k] === look) continue;
+        seen[k] = look;
+        const [ax, az, ay, bx, bz, by] = [e[k * 6], e[k * 6 + 1], e[k * 6 + 2], e[k * 6 + 3], e[k * 6 + 4], e[k * 6 + 5]];
+        if (Math.min(ay, by) - KERB >= y) continue;
+        const [ex, ez] = [bx - ax, bz - az];
+        const L = ex * ex + ez * ez;
+        const t = L ? Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / L)) : 0;
+        const d = Math.hypot(ax + ex * t - x, az + ez * t - z);
+        if (d < BAND) y = Math.min(y, ay + (by - ay) * t - KERB + d);
+      }
+    }
+    return y;
   });
   const H = land.land;
   const counts: Record<string, number> = {};
@@ -1350,7 +1441,7 @@ export function worldGround(world: Braga): WorldGround {
   counts.pieces = pieces.length;
   counts.paths = flat.length;
   counts.treads = treadList.length;
-  const g = new WorldGround({ world, land, roads, paves, setts, paths, raised, pathSetts, treads, cuts, pieces, pieceCells, walls, posts, laid, dropped, kerbs, lines, sides, inside, blocks: new Cells<Block>(), rooms: [], roomCells: new Cells<Room>(), roomWalls: new Map(), counts });
+  const g = new WorldGround({ world, land, roads, paves, setts, paths, raised, pathSetts, treads, cuts, pieces, pieceCells, walls, posts, laid, laidList, backs: null, dropped, kerbs, lines, sides, inside, blocks: new Cells<Block>(), rooms: [], roomCells: new Cells<Room>(), roomWalls: new Map(), counts });
 
   // The walls, fences, railings, hedges and gates (braga-map's task 013), each from under the ground
   // to its top, a gate shut whatever the map says (it's for someone on foot); one thicker than a car

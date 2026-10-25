@@ -317,8 +317,12 @@ export async function buildCity(track: Track, course: Course, graphics: Graphics
   // The map's retaining walls' footprints, which the land's triangles are cut along so it steps under
   // each wall (braga-map's task 111, land.ts's heldAtWalls). A cell one meets is split only as any is,
   // where the land shows beside a street and its triangles would miss it: splitting them all, round
-  // the 80 km of the map's retaining walls, cost a fifth more triangles at every viewpoint.
-  const walls = new Holes(wallFootprints(retainingStretches(map)));
+  // the 80 km of the map's retaining walls, cost a fifth more triangles at every viewpoint. And the
+  // strips along a pavement's back where the land behind is higher than braga-map lays it (its task
+  // 044, ground.ts's backs): the land steps there, up the pavement's granite face, and each cell one
+  // meets is split, or the land would slope up over the pavement across it.
+  const walls = new Holes([...wallFootprints(retainingStretches(map)), ...wg.backs()]);
+  const backs = new Holes(wg.backs());
   {
     const r = lat.r;
     const tol = quality === 'high' ? 0.8 : quality === 'medium' ? 1 : 1.2;
@@ -361,6 +365,10 @@ export async function buildCity(track: Track, course: Course, graphics: Graphics
     for (let j = 0; j <= lat.nz; j++) for (let i = 0; i <= lat.nx; i++) corner[j * (lat.nx + 1) + i] = land(B.x0 + i * C, B.z0 + j * C);
     for (let j = 0; j < lat.nz; j++) {
       for (let i = 0; i < lat.nx; i++) {
+        if (backs.touches(B.x0 + i * C, B.z0 + j * C, B.x0 + (i + 1) * C, B.z0 + (j + 1) * C)) {
+          lat.fine[j * lat.nx + i] = 1;
+          continue;
+        }
         const lv = nearLv(B.x0 + (i + 0.5) * C, B.z0 + (j + 0.5) * C);
         if (!lv && !touch[j * lat.nx + i]) continue;
         const y00 = corner[j * (lat.nx + 1) + i];

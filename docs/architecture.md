@@ -1175,7 +1175,7 @@ and Low, 720 pixels high; High and Low draw as before, to the pixel):
 | The kit's bays and surfaces | 512 px a side, the bays in relief | 256 px |
 | Draw calls, triangles | the same | |
 | Textures, as `textureBytes` counts them | 511 MB | 462 MB |
-| A frame at 1920 by 1440 (back to back with main, after the owner's game closed) | 6.2–6.7 ms | 6.3–7.1 ms |
+| A frame at 1920 by 1440 (back to back with main, after the owner's game closed) | 6.2–6.7 ms | 6.2–7.1 ms |
 
 The kit's three textures take 59 MB with their mipmaps (the bays, the surfaces and the bays' relief), 49
 more than High's two. The frames are the same within the runs' spread: in a first run `conselheiro-lobato`

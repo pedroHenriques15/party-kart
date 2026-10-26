@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-PT">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0d0f14" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Party Kart</title>
+    <meta name="description" content="Braga como ela é, para conduzir um kart por onde quiseres com os amigos, no browser. E a Volta dos Amigos, para correr contra eles." />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='3' y='13' width='26' height='8' rx='3' fill='%231d4f9c'/><circle cx='9' cy='23' r='4' fill='%23111'/><circle cx='23' cy='23' r='4' fill='%23111'/><circle cx='15' cy='9' r='5' fill='%23e2a98a'/></svg>" />
+    <!-- What shows while the city is fetched and built: up to 20 s on a phone. Its own style, as the
+         game's stylesheet comes with the game. -->
+    <style>#loading,#lost{z-index:5;color:#f4f7fb;text-align:center;background:#0d0f14;place-content:center;justify-items:center;gap:18px;font:600 17px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:grid;position:fixed;inset:0}#loading b{letter-spacing:-1.5px;font-size:44px;font-weight:900}#loading b span{color:#d4af37}#loading i{border:8px solid #2a2d35;border-top-color:#d4af37;border-radius:50%;width:46px;height:46px;animation:.9s linear infinite spin}@keyframes spin{to{transform:rotate(360deg)}}#lost{z-index:50;padding:24px}#loading p,#lost p{max-width:420px;margin:0}#loading small{color:#8b909b;overflow-wrap:anywhere;max-width:420px;font-size:12px;font-weight:400}#loading button,#lost button{color:#0d0f14;font:inherit;background:#d4af37;border:0;border-radius:999px;padding:12px 26px;font-weight:800}</style>
+    <!-- If the game stops before the city is up (no 3D in this browser, a part of the map that
+         didn't come, the game's own script that couldn't be downloaded), say so rather than spin
+         forever. In the head, before the game's own tags (the build puts them at its end), so as to
+         hear them fail. -->
+    <script>
+      (() => {
+        const again = () => {
+          const b = document.createElement('button');
+          b.textContent = 'Tentar outra vez';
+          b.onclick = () => location.reload();
+          return b;
+        };
+        const say = (text) => {
+          const p = document.createElement('p');
+          p.textContent = text;
+          return p;
+        };
+        const stop = (text, why) => {
+          const l = document.getElementById('loading');
+          if (!l || l.dataset.stopped) return;
+          l.dataset.stopped = '1';
+          const detail = document.createElement('small');
+          detail.textContent = why.slice(0, 200);
+          l.replaceChildren(l.querySelector('b'), say(text), again(), detail);
+        };
+        const fail = (e) => {
+          const why = String((e && (e.reason || e.error || e.message)) || '');
+          stop(
+            /WebGL/i.test(why)
+              ? 'Este browser não conseguiu abrir os gráficos 3D. Fecha o browser de todo (também das apps recentes), abre-o de novo e volta a tentar.'
+              : 'Algo correu mal a construir Braga. Verifica a ligação à internet e volta a tentar.',
+            why,
+          );
+        };
+        addEventListener('error', fail);
+        addEventListener('unhandledrejection', fail);
+        // A script that can't be downloaded, or a module it imports, fires its error on the <script>
+        // element, which doesn't bubble up to window: it's heard on the way down instead. That is
+        // what a page from before a deploy meets, as the deploy takes the old build's files away. A
+        // <link rel="modulepreload"> that fails is only noted, as its <script> fails after it.
+        const name = (url) => new URL(url, location.href).pathname.split('/').pop();
+        const missing = [];
+        addEventListener(
+          'error',
+          (e) => {
+            const t = e.target;
+            if (t instanceof HTMLLinkElement && t.rel === 'modulepreload') missing.push(name(t.href));
+            if (t instanceof HTMLScriptElement && t.src)
+              stop('Não foi possível descarregar o jogo. Verifica a ligação à internet e volta a tentar.', [name(t.src), ...missing].join(', '));
+          },
+          true,
+        );
+        // Anything else that holds the city back: a phone takes 25 s, so past 90 s something is wrong,
+        // but the spinner stays, as a slow computer may still get there.
+        setTimeout(() => {
+          const l = document.getElementById('loading');
+          if (l && !l.dataset.stopped) l.append(say('Está a demorar mais do que devia. Se não avançar, volta a tentar.'), again());
+        }, 90000);
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-BHY4myrZ.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BoaLYEJc.css">
+  </head>
+  <body>
+    <div id="loading"><b>Party Kart<span>.</span></b><i></i>A construir Braga…</div>
+    <canvas id="view"></canvas>
+    <div id="hud"></div>
+    <div id="ui"></div>
+  </body>
+</html>

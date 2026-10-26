@@ -31,7 +31,7 @@ don't add a backend, a build step or a dependency without a strong reason.
 ```sh
 npm install
 npm run dev          # http://localhost:5173
-npm test             # node --test over test/*.test.ts, a few seconds (the bots' rounds)
+npm test             # node --test over test/*.test.ts, four files at a time, under a minute
 npm run check        # tsc; the only type check the tests get
 npm run build        # tsc && vite build, into dist/
 npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publishes the game

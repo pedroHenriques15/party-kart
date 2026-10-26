@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "check": "tsc",
-    "test": "node --test \"test/*.test.ts\"",
+    "test": "node --test --test-concurrency=4 \"test/*.test.ts\"",
     "preview": "vite preview",
     "deploy": "bash scripts/deploy.sh"
   },

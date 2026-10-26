@@ -704,10 +704,11 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
     Schlick's Fresnel from water's 4% straight on, faded at the screen's edge and from 150 to 400 m, and
     where it finds nothing or the sky, the material's own sky (the environment's). A surface that isn't
     a mirror spreads what it reflects up and down the screen, as a wet street does. The Rio Este reflects
-    fully, a wet street (`?weather=grey`, `rain`) 0.6 and its paint 0.5, spread 0.04 of the way. It
-    reads the resolved frame and writes into the occlusion's buffer, done with by then. What's off the
-    screen isn't reflected (the far side of a street seen in a puddle at the screen's foot): the sky's
-    environment is drawn there, as before.
+    fully, the windows' panes as far as 123's relief texture marks them (its alpha, a fraction far off
+    where it's mipmapped), a wet street (`?weather=grey`, `rain`) 0.6 and its paint 0.5, spread 0.04 of
+    the way. It reads the resolved frame and writes into the occlusion's buffer, done with by then.
+    What's off the screen isn't reflected (the far side of a street seen in a puddle at the screen's
+    foot): the sky's environment is drawn there, as before.
   - **SMAA** for the edges; not TAA, as three's `TAARenderPass` doesn't reproject (it adds up frames only
     while the camera is still).
 - **`Look`** (`render/look.ts`, braga-map's task 022): Braga's light at a moment of the day, by default the clear

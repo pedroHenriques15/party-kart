@@ -8,6 +8,7 @@
 import type { Facade, FacadeMaterial, FacadeOpening, FacadeProportions, FacadeType } from 'braga-map';
 import * as THREE from 'three';
 import { anisotropy, type Quality } from './look.ts';
+import { reflects } from './post.ts';
 import { fillBox, fillHalfDisc, normalsOf } from './relief.ts';
 
 // How a building's walls are laid out, shared with the simulation (the rooms' openings).
@@ -587,13 +588,18 @@ float isWall = clamp(1.0 - 2.0 * o.a, 0.0, 1.0), isOpen = clamp(2.0 * o.a - 1.0,
 diffuseColor.rgb = wallRgb * isWall + o.rgb * (isOpen + vShut * isShut);`,
       );
     // On Ultra, the bay's relief: its normal tilted as the bay's drawing has it, in the wall's frame
-    // (along it as vSurf.x runs, up it as vSurf.y does), as three.js tilts a normal map's.
+    // (along it as vSurf.x runs, up it as vSurf.y does), as three.js tilts a normal map's. And its panes,
+    // marked in the relief's alpha, reflect the city (post.ts's `reflects`, braga-map's task 117): a
+    // fraction far off, where the mark's mipmapped.
     if (reliefs) {
       sh.fragmentShader = sh.fragmentShader.replace('uniform sampler2DArray surfaces;', 'uniform sampler2DArray surfaces;\nuniform sampler2DArray reliefs;').replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
+float glass = 0.0;
 if (u >= 0.0 && u <= vBay.z && v >= 0.0 && v <= vBay.w && layer >= -0.5) {
-  vec3 rn = textureGrad(reliefs, vec3(fract(u), fract(v), layer), du, dv).xyz * 2.0 - 1.0;
+  vec4 relief = textureGrad(reliefs, vec3(fract(u), fract(v), layer), du, dv);
+  vec3 rn = relief.xyz * 2.0 - 1.0;
+  glass = relief.a;
   vec3 q0 = dFdx(-vViewPosition), q1 = dFdy(-vViewPosition);
   vec2 st0 = dFdx(vSurf), st1 = dFdy(vSurf);
   vec3 q1perp = cross(q1, normal), q0perp = cross(normal, q0);
@@ -603,6 +609,7 @@ if (u >= 0.0 && u <= vBay.z && v >= 0.0 && v <= vBay.w && layer >= -0.5) {
   normal = normalize(T * (rn.x * sc) + B * (rn.y * sc) + rn.z * normal);
 }`,
       );
+      reflects(sh, 'glass');
     }
   };
   return {

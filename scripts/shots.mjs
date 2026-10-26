@@ -15,6 +15,7 @@
 //                                                   Ultra as real as it gets, Low what a phone sees
 // node scripts/shots.mjs landmarks --map=../braga-map-021   the viewpoints and photos of another
 //                                                   braga-map checkout, such as a worktree's
+// node scripts/shots.mjs rain --ultra --weather=rain  on a grey day or in the rain (look.ts's ?weather=)
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,11 +28,12 @@ const H = 720;
 const flags = process.argv.slice(2).filter((a) => a.startsWith('--'));
 const MAP = path.resolve(ROOT, flags.find((a) => a.startsWith('--map='))?.slice(6) ?? '../braga-map');
 const ULTRA = flags.includes('--ultra');
+const WEATHER = flags.find((a) => a.startsWith('--weather='))?.slice(10) ?? '';
 const QUALITIES = [ULTRA && 'ultra', (!ULTRA || flags.includes('--high')) && 'high', flags.includes('--medium') && 'medium', 'low'].filter(Boolean);
 const LEVEL = { ultra: 'Ultra', high: 'High', medium: 'Medium', low: 'Low' };
 const [label, ...only] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 if (!label || !/^[\w-]+$/.test(label)) {
-  console.error('node scripts/shots.mjs <label> [viewpoint ids…] [--ultra] [--high] [--medium] [--map=<braga-map folder>]   the label in letters, numbers and dashes');
+  console.error('node scripts/shots.mjs <label> [viewpoint ids…] [--ultra] [--high] [--medium] [--map=<braga-map folder>] [--weather=grey|rain]   the label in letters, numbers and dashes');
   process.exit(1);
 }
 const day = new Date();
@@ -97,6 +99,7 @@ const stats = {
   map: JSON.parse(fs.readFileSync(path.join(ROOT, 'node_modules', 'braga-map', 'package.json'), 'utf8')).version,
   gpu: '',
   pixelRatio: 1,
+  ...(WEATHER ? { weather: WEATHER } : {}),
   shots: {},
 };
 const failed = [];
@@ -123,7 +126,7 @@ try {
       try {
         errors.length = 0;
         await page.setViewportSize(size);
-        await page.goto(`${server.url}?scenery&quality=${quality}&view=${[v.x, v.y, v.z, v.tx, v.ty, v.tz, v.fov].join(',')}`);
+        await page.goto(`${server.url}?scenery&quality=${quality}${WEATHER ? `&weather=${WEATHER}` : ''}&view=${[v.x, v.y, v.z, v.tx, v.ty, v.tz, v.fov].join(',')}`);
         // The city built and two frames drawn; then what a frame costs, over 60 of them.
         await page.waitForFunction(() => window.__kart?.frames >= 2, null, { timeout: 120_000 });
         await page.screenshot({ path: path.join(OUT, quality, `${v.id}.png`) });

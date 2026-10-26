@@ -191,8 +191,9 @@ built once (about 0.2 s for the Volta dos Amigos' area) from braga-map's `loadWo
 in it is looked up in a grid of 10 m cells, so a step costs the same anywhere: eight cars take about
 40 µs a step on a desktop, timed in `test/ground.test.ts`.
 
-- **The floor.** At a point the candidates are the land (`land.ts`'s, as drawn), a pavement a kerb
-  (15 cm) over it, sloping down to a kerb dropped at a crossing, a footway, path or cycleway on it
+- **The floor.** At a point the candidates are the land (`land.ts`'s, as drawn), a pavement at the
+  heights braga-map lays it at (its task 044: level from its kerb, 2% across at most, sloping down to
+  a kerb dropped at a crossing; one with none a kerb, 15 cm, over the land), a footway, path or cycleway on it
   (braga-map's task 050; a kerb over it where it runs in a pavement, flush with it), a flight of
   steps' tread at its own height in the land's place, and every street or path piece off the
   ground over the point at its height: a bridge's deck, a footbridge's, a tunnel's road (braga-map's
@@ -845,9 +846,13 @@ as a translucent ghost. Other players don't see it. The leaderboard sorts by bes
 - **The streets** (`render/streets.ts`): every street in the open world's area as braga-map gives
   it (`world.streets`, its task 033), on the ground the karts drive on (`ground.ts`): a carriageway
   on the land without the river's bed cut into it (`firm`), a pavement, a central reservation or an
-  island a kerb over it (15 cm, sloping down to a kerb dropped at a crossing), a deck's or a
-  tunnel's road at its height. Each piece is triangulated (three.js's earcut, its outline cut into
-  pieces of at most 10 m on High) and its edges halved where the ground under them bends by more
+  island at its laid heights (braga-map's task 044; a kerb over the land where it has none), a deck's
+  or a tunnel's road at its height. Under a laid pavement the land is held a kerb under it; where the
+  land behind one is more than 30 cm over it, the land is cut along its back as at a retaining wall
+  (`WorldGround.backs`) and the pavement's granite face meets it. Each piece is triangulated (three.js's
+  earcut, its outline cut into pieces of at most 10 m on High, then flipped to Delaunay's inside its
+  outline, `tin.ts`'s `surface`, so no long sliver along a kerb takes its height from far off) and its
+  edges halved where the ground under them bends by more
   than 25 cm (50 on a pavement; coarser on Medium and Low; `tin.ts`). Whether an edge is halved
   depends on that edge alone, so the pieces either side of it meet at the same points, without
   cracks. The carriageways drawn are 3.4 cm off the ground the karts stand on at the median, and

@@ -154,6 +154,10 @@ npm run deploy       # tests, builds, force-pushes dist/ to gh-pages: it publish
   another braga-map checkout than `../braga-map` (a worktree's, whose viewpoints the main one hasn't
   got yet). It starts its own dev server, as one started before braga-map
   was last installed still serves the old map; restart yours after `npm install` too. About 2 minutes.
+  A round can be shot in chunks, a few viewpoints at a time under the same label on the same day:
+  each chunk adds its shots to the round's `stats.json` and page (braga-map's task 137), a viewpoint
+  shot again replacing the one before, and a chunk on another commit, map version or weather stops
+  before it shoots.
 - The touch controls show on a touch screen: Chrome's device toolbar, or Playwright with
   `hasTouch` and `isMobile`. Drive them with real touches (CDP's `Input.dispatchTouchEvent`), not
   synthetic events.

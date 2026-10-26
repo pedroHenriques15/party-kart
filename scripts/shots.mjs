@@ -16,6 +16,11 @@
 // node scripts/shots.mjs landmarks --map=../braga-map-021   the viewpoints and photos of another
 //                                                   braga-map checkout, such as a worktree's
 // node scripts/shots.mjs rain --ultra --weather=rain  on a grey day or in the rain (look.ts's ?weather=)
+//
+// A round can be shot in chunks, a few viewpoints at a time into the same folder: each chunk adds its
+// shots to the round's stats.json level by level, a shot taken again replacing the one before, and
+// the page lists every viewpoint shot so far. A chunk on another commit of the game, another version
+// of the map or another weather stops before it shoots: a round is one build.
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -40,7 +45,8 @@ const day = new Date();
 const round = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}-${label}`;
 const OUT = path.join(ROOT, 'shots', round);
 
-const views = JSON.parse(fs.readFileSync(path.join(MAP, 'refs', 'viewpoints.json'), 'utf8')).viewpoints.filter((v) => !only.length || only.includes(v.id));
+const viewpoints = JSON.parse(fs.readFileSync(path.join(MAP, 'refs', 'viewpoints.json'), 'utf8')).viewpoints;
+const views = viewpoints.filter((v) => !only.length || only.includes(v.id));
 const missing = only.filter((id) => !views.some((v) => v.id === id));
 if (missing.length) throw new Error(`no viewpoint called ${missing.join(', ')}`);
 
@@ -88,19 +94,33 @@ const git = (cmd) => {
   }
 };
 
+const game = git('rev-parse --short HEAD') + (git('status --porcelain') ? ' with changes' : '');
+const map = JSON.parse(fs.readFileSync(path.join(ROOT, 'node_modules', 'braga-map', 'package.json'), 'utf8')).version;
+// The round's chunks shot before this one, if any: this chunk adds to them, on the same build only.
+const earlier = fs.existsSync(path.join(OUT, 'stats.json')) ? JSON.parse(fs.readFileSync(path.join(OUT, 'stats.json'), 'utf8')) : null;
+if (earlier) {
+  const now = { game, map, weather: WEATHER };
+  const differs = Object.keys(now).filter((k) => (earlier[k] ?? '') !== now[k]);
+  if (differs.length) {
+    const say = (s) => differs.map((k) => `${k} ${s[k] || 'none'}`).join(', ');
+    console.error(`${round} was shot on ${say(earlier)}, and this is ${say(now)}: shoot this chunk on the round's build, or a round of its own under another label`);
+    process.exit(1);
+  }
+}
+
 const server = await devServer();
 const origin = new URL(server.url).origin;
 // The real graphics card: headless Chromium on Windows draws with a software one otherwise.
 const browser = await chromium.launch({ args: process.platform === 'win32' ? ['--use-angle=d3d11'] : [] });
 const stats = {
   round,
-  made: new Date().toISOString(),
-  game: git('rev-parse --short HEAD') + (git('status --porcelain') ? ' with changes' : ''),
-  map: JSON.parse(fs.readFileSync(path.join(ROOT, 'node_modules', 'braga-map', 'package.json'), 'utf8')).version,
-  gpu: '',
+  made: earlier?.made ?? new Date().toISOString(),
+  game,
+  map,
+  gpu: earlier?.gpu ?? '',
   pixelRatio: 1,
   ...(WEATHER ? { weather: WEATHER } : {}),
-  shots: {},
+  shots: earlier?.shots ?? {},
 };
 const failed = [];
 const started = Date.now();
@@ -120,7 +140,7 @@ try {
       return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '';
     });
     fs.mkdirSync(path.join(OUT, quality), { recursive: true });
-    stats.shots[quality] = {};
+    stats.shots[quality] ??= {};
     for (const v of views) {
       const size = sizeOf(v);
       try {
@@ -138,6 +158,8 @@ try {
         stats.shots[quality][v.id] = { ...size, buildMs: k.buildMs, calls: k.calls, tris: k.tris, textures: k.textures, texMB: k.texMB, geometries: k.geometries, frameMs: +frameMs.toFixed(2) };
         console.log(`${quality.padEnd(6)} ${v.id.padEnd(22)} ${String(k.calls).padStart(5)} calls ${(k.tris / 1e6).toFixed(2).padStart(6)} M triangles ${String(k.texMB).padStart(4)} MB textures ${frameMs.toFixed(2).padStart(6)} ms a frame`);
       } catch (e) {
+        // A chunk before may have shot it: its figures no longer stand for the picture on disk.
+        delete stats.shots[quality][v.id];
         failed.push(`${quality} ${v.id}: ${e.message.split('\n')[0]}`);
         console.log(`${quality.padEnd(6)} ${v.id.padEnd(22)} failed: ${e.message.split('\n')[0]}`);
       }
@@ -152,6 +174,9 @@ fs.writeFileSync(path.join(OUT, 'stats.json'), JSON.stringify(stats, null, 2) + 
 
 // ---- The sheet: each viewpoint's photo, this round's shot and the round before's. ----
 
+// Every level and viewpoint the round has so far, this chunk's and those before it, in their order.
+const levels = Object.keys(LEVEL).filter((q) => stats.shots[q]);
+const shown = viewpoints.filter((v) => views.includes(v) || levels.some((q) => stats.shots[q][v.id]));
 const before = fs
   .readdirSync(path.join(ROOT, 'shots'))
   .filter((d) => d !== round && fs.existsSync(path.join(ROOT, 'shots', d, 'stats.json')))
@@ -162,7 +187,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 const url = (p) => p.split(path.sep).map(encodeURIComponent).join('/');
 const cost = (s) => (s ? `${s.calls} calls · ${(s.tris / 1e6).toFixed(2)} M triangles${s.texMB === undefined ? '' : ` · ${s.texMB} MB textures`} · ${s.frameMs} ms a frame` : 'not shot');
 const shot = (q, s, src, what) => `<figure class="q ${q}">${s ? `<img src="${esc(src)}" alt="">` : '<div class="none"></div>'}<figcaption>${what}, ${LEVEL[q]}: ${cost(s)}</figcaption></figure>`;
-const rows = views.map((v) => {
+const rows = shown.map((v) => {
   const photo = fs.existsSync(photoOf(v))
     ? `<img src="${esc(url(path.relative(OUT, photoOf(v))))}" alt="">`
     : '<div class="none">The photo isn’t fetched: <code>node tools/refs.mjs</code> in braga-map</div>';
@@ -170,7 +195,7 @@ const rows = views.map((v) => {
   const credit = `Photo: <a href="${esc(p.url)}">${esc(p.author)}</a>, ${esc(p.licence)}, ${esc(p.source === 'mapillary' ? 'Mapillary' : p.source)}, ${esc(p.date)}`;
   // An Ultra shot beside the round before's High, where that round has no Ultra.
   const was = (q) => (before?.shots[q] || q !== 'ultra' ? q : 'high');
-  const figs = QUALITIES.flatMap((q) => [
+  const figs = levels.flatMap((q) => [
     shot(q, stats.shots[q]?.[v.id], `${q}/${v.id}.png`, 'This round'),
     before ? shot(q, before.shots[was(q)]?.[v.id], `../${before.round}/${was(q)}/${v.id}.png`, `${before.round}${was(q) === q ? '' : `, ${LEVEL[was(q)]}`}`) : `<figure class="q ${q}"><div class="none">No round before this one</div></figure>`,
   ]);
@@ -196,13 +221,13 @@ const html = `<!doctype html>
   .none { aspect-ratio: 4 / 3; border: 1px dashed var(--line); display: grid; place-items: center; text-align: center; color: var(--dim); padding: 8px; box-sizing: border-box; }
   figcaption { font-size: 12px; margin-top: 4px; }
   a { color: inherit; }
-${QUALITIES.map((q) => `  body:has(#q-${q}:checked) .q:not(.${q}) { display: none; }`).join('\n')}
+${levels.map((q) => `  body:has(#q-${q}:checked) .q:not(.${q}) { display: none; }`).join('\n')}
   @media (max-width: 760px) { .row { grid-template-columns: 1fr; } }
 </style>
 <header>
   <h1>Shots ${esc(round)}</h1>
-  <p>party-kart ${esc(stats.game)} · braga-map ${esc(stats.map)} · ${esc(stats.gpu)} · ${views.length} viewpoints${before ? ` · set beside ${esc(before.round)}` : ''}</p>
-${QUALITIES.map((q, k) => `  <label><input type="radio" name="q" id="q-${q}"${k ? '' : ' checked'}> ${LEVEL[q]}</label>`).join('\n')}
+  <p>party-kart ${esc(stats.game)} · braga-map ${esc(stats.map)} · ${esc(stats.gpu)} · ${shown.length} viewpoints${before ? ` · set beside ${esc(before.round)}` : ''}</p>
+${levels.map((q, k) => `  <label><input type="radio" name="q" id="q-${q}"${k ? '' : ' checked'}> ${LEVEL[q]}</label>`).join('\n')}
 </header>
 ${rows.join('\n')}
 </html>
